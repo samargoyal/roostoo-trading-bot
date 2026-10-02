@@ -11,12 +11,13 @@ import json
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from typing import Any, Dict, List, Optional
 
+# The 20 most traded crypto pairs on Roostoo over the 30 days to 2 October 2026, plus PAXG
+# as the defensive asset. Chosen by the rule in universe.py; regenerate with
+# `python -m bot.universe`.
 DEFAULT_UNIVERSE = [
-    # Core
-    "BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD", "XRP/USD",
-    # Higher beta
-    "DOGE/USD", "SUI/USD", "AVAX/USD", "LINK/USD", "NEAR/USD", "ZEC/USD",
-    # Defensive (gold-backed)
+    "BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "NEAR/USD", "BNB/USD",
+    "SUI/USD", "DOGE/USD", "UNI/USD", "ENA/USD", "AVAX/USD", "WLD/USD", "LINK/USD",
+    "ADA/USD", "ARB/USD", "TAO/USD", "PUMP/USD", "LTC/USD", "TRX/USD",
     "PAXG/USD",
 ]
 
@@ -31,7 +32,7 @@ class StrategyConfig:
     risk_on_exposure: float = 0.75       # max fraction of equity invested when risk-on
     risk_off_exposure: float = 0.25      # ... and when risk-off
     max_positions_risk_on: int = 4
-    max_positions_risk_off: int = 2
+    max_positions_risk_off: int = 3
 
     # Defensive asset: always held as a small core, and first in line when risk-off.
     defensive_pair: str = "PAXG/USD"
@@ -64,6 +65,16 @@ class StrategyConfig:
 
     # A holding below this fraction of equity counts as no position.
     min_position_weight: float = 0.005
+
+
+@dataclass
+class UniverseConfig:
+    """How `python -m bot.universe` and the backtest choose the pairs to trade (see universe.py)."""
+    size: int = 20                      # pairs picked by trading volume; the defensive pair is added
+    volume_days: int = 30               # trading volume is measured over this many days
+    max_spread: float = 0.001           # skip pairs whose bid-ask spread is wider (coarse tick sizes)
+    min_history_bars: int = 1000        # hourly candles needed to warm up the indicators
+    asset_type: str = "crypto"          # Roostoo's AssetType; tokenised stocks are excluded
 
 
 @dataclass
@@ -112,11 +123,16 @@ class BacktestConfig:
     taker_slippage: float = 0.0002      # half-spread paid by a market order
     warmup_bars: int = 1000
     data_dir: str = "data"
+    # Choose the universe with the universe rule as of the start of the test window, using
+    # only data available then. False backtests strategy.universe as configured, which
+    # flatters the result if that list was picked with hindsight.
+    point_in_time_universe: bool = True
 
 
 @dataclass
 class Config:
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
+    universe: UniverseConfig = field(default_factory=UniverseConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
     live: LiveConfig = field(default_factory=LiveConfig)

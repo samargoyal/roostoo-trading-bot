@@ -7,7 +7,10 @@ The Strategy and plan_trades code is exactly what the live bot runs. Orders fill
 the hourly close, in two scenarios: every order as a taker (0.1% fee plus half a
 spread of slippage), and every order as a maker (0.05%). Hourly bars cannot show
 whether a resting limit order would have filled, so live costs land in between.
-Candles are cached under data/; results are written to runs/backtest/.
+
+By default the pairs are chosen with the universe rule (universe.py) as of the start
+of the window, using only data available then; --fixed-universe tests the configured
+list instead. Candles are cached under data/; results are written to runs/backtest/.
 """
 import argparse
 import csv
@@ -19,11 +22,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from concurrent.futures import ThreadPoolExecutor
+
 from bot.config import Config, load_config
 from bot.market_data import HOUR_MS, Bar, BinanceClient, load_history
 from bot.metrics import summarize
 from bot.planner import SELL, plan_trades
+from bot.roostoo import RoostooClient
 from bot.strategy import Strategy, StrategyState
+from bot.universe import fetch_candidates, select_universe
 
 log = logging.getLogger("bot.backtest")
 
@@ -228,6 +235,19 @@ def write_outputs(result: Result, out_dir: str) -> None:
                              "%.2f" % t.notional, "%.4f" % t.fee, t.reason])
 
 
+def load_all(cfg: Config, pairs: Sequence[str], start_ms: int, end_ms: int) -> Dict[str, List[Bar]]:
+    """Cached candles for many pairs, downloading the missing ones six at a time."""
+    def one(pair: str) -> Tuple[str, List[Bar]]:
+        bars = load_history(BinanceClient(cfg.live.binance_url), pair, start_ms, end_ms,
+                            cfg.backtest.data_dir)
+        if not bars:
+            log.warning("no candles for %s", pair)
+        return pair, bars
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        return dict(pool.map(one, pairs))
+
+
 def _iso(ts_ms: int) -> str:
     return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M")
 
@@ -243,6 +263,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--start", help="first day, YYYY-MM-DD (default from config)")
     parser.add_argument("--end", help="day after the last, YYYY-MM-DD (default from config)")
     parser.add_argument("--out", default=os.path.join("runs", "backtest"), help="output directory")
+    parser.add_argument("--fixed-universe", action="store_true",
+                        help="test strategy.universe as configured instead of applying the universe rule")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -251,13 +273,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     end = args.end or cfg.backtest.end
     start_ms, end_ms = _parse_date(start), _parse_date(end)
     warmup_start = start_ms - cfg.backtest.warmup_bars * HOUR_MS
+    point_in_time = cfg.backtest.point_in_time_universe and not args.fixed_universe
 
-    client = BinanceClient(cfg.live.binance_url)
-    bars = {}
-    for pair in cfg.strategy.universe:
-        bars[pair] = load_history(client, pair, warmup_start, end_ms, cfg.backtest.data_dir)
-        if not bars[pair]:
-            log.warning("no candles for %s", pair)
+    if point_in_time:
+        roostoo = RoostooClient("", "", base_url=cfg.api.base_url)  # public endpoints only
+        pairs = sorted(fetch_candidates(roostoo, cfg.universe))
+    else:
+        pairs = list(cfg.strategy.universe)
+    bars = load_all(cfg, pairs, warmup_start, end_ms)
+    if point_in_time:
+        universe = select_universe(bars, start_ms, cfg.universe, cfg.strategy.defensive_pair)
+        if cfg.strategy.regime_pair not in universe:
+            universe.insert(0, cfg.strategy.regime_pair)
+        cfg.strategy.universe = universe
+        print("Universe: the %d most traded pairs as of %s, plus %s:\n  %s\n" % (
+            cfg.universe.size, start, cfg.strategy.defensive_pair,
+            " ".join(p.split("/")[0] for p in universe)))
+    bars = {p: bars.get(p, []) for p in cfg.strategy.universe}
 
     b = cfg.backtest
     results = [

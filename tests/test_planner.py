@@ -2,7 +2,7 @@ import unittest
 
 from bot.config import ExecutionConfig
 from bot.market_data import HOUR_MS
-from bot.planner import ACTIVITY, BUY, REBALANCE, SELL, activity_due, plan_trades
+from bot.planner import ACTIVITY, BUY, EXIT_UNIVERSE, REBALANCE, SELL, activity_due, plan_trades
 from bot.strategy import ENTRY, EXIT_TREND, HOLD, Decision
 
 DAY = 24 * HOUR_MS
@@ -39,6 +39,13 @@ class ThresholdTest(unittest.TestCase):
         trades = plan({"BTC/USD": 0.15, "ETH/USD": 0.0}, {"ETH/USD": 0.10},
                       {"BTC/USD": ENTRY, "ETH/USD": EXIT_TREND})
         self.assertEqual([t.side for t in trades], [SELL, BUY])
+
+    def test_holdings_outside_the_universe_are_sold(self):
+        trades = plan({"BTC/USD": 0.0}, {"OLD/USD": 0.05})
+        self.assertEqual(len(trades), 1)
+        self.assertEqual((trades[0].pair, trades[0].side, trades[0].reason),
+                         ("OLD/USD", SELL, EXIT_UNIVERSE))
+        self.assertTrue(trades[0].close_position)
 
     def test_orders_below_the_minimum_are_dropped(self):
         trades = plan({"BTC/USD": 0.00005}, {}, {"BTC/USD": ENTRY})  # $5

@@ -21,6 +21,7 @@ BUY = "BUY"
 SELL = "SELL"
 REBALANCE = "rebalance"
 ACTIVITY = "activity"
+EXIT_UNIVERSE = "exit_universe"  # a holding in a pair the strategy no longer trades
 
 
 @dataclass
@@ -37,9 +38,14 @@ class PlannedTrade:
 def plan_trades(decision: Decision, weights: Dict[str, float], equity: float, ts: int,
                 last_fill_ts: int, cfg: ExecutionConfig,
                 min_position_weight: float) -> List[PlannedTrade]:
-    """Trades that move the portfolio towards the targets, sells first to free cash."""
+    """Trades that move the portfolio towards the targets, sells first to free cash.
+
+    Holdings in pairs outside the strategy's universe are sold.
+    """
     trades = []
-    for pair, target in decision.targets.items():
+    pairs = list(decision.targets) + [p for p in weights if p not in decision.targets]
+    for pair in pairs:
+        target = decision.targets.get(pair, 0.0)
         current = weights.get(pair, 0.0)
         delta = target - current
         usd = abs(delta) * equity
@@ -49,9 +55,12 @@ def plan_trades(decision: Decision, weights: Dict[str, float], equity: float, ts
         opening = current < min_position_weight and target > 0.0
         if not (closing or opening or abs(delta) >= cfg.rebalance_threshold):
             continue
-        reason = decision.reasons.get(pair, REBALANCE)
-        if not (closing or opening) and reason not in (EXIT_TREND, EXIT_STOP, EXIT_REGIME):
-            reason = REBALANCE
+        if pair not in decision.targets:
+            reason = EXIT_UNIVERSE
+        else:
+            reason = decision.reasons.get(pair, REBALANCE)
+            if not (closing or opening) and reason not in (EXIT_TREND, EXIT_STOP, EXIT_REGIME):
+                reason = REBALANCE
         trades.append(PlannedTrade(pair, BUY if delta > 0 else SELL, usd, closing,
                                    current, target, reason))
 
