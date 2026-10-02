@@ -6,6 +6,7 @@ through the Roostoo REST API with no manual intervention: every order comes from
 strategy, and every order, decision and hourly equity point is recorded.
 
 - [Strategy](#strategy)
+- [Which assets it trades](#which-assets-it-trades)
 - [How it works](#how-it-works)
 - [Backtest results](#backtest-results)
 - [Setup and running](#setup-and-running)
@@ -15,14 +16,14 @@ strategy, and every order, decision and hourly equity point is recorded.
 
 ## Strategy
 
-Long-only trend following on hourly bars over 12 liquid pairs: BTC, ETH, SOL, BNB, XRP,
-DOGE, SUI, AVAX, LINK, NEAR, ZEC and PAXG (gold-backed). The goal is a steady, positive
-return with shallow drawdowns, because the competition ranks on return and then scores
+Long-only trend following on hourly bars over the 20 most traded crypto pairs on Roostoo,
+plus PAXG (gold-backed) as a defensive asset. The goal is a steady, positive return with
+shallow drawdowns, because the competition ranks on return and then scores
 `0.4 x Sortino + 0.3 x Sharpe + 0.3 x Calmar`.
 
 | Rule | Detail |
 |---|---|
-| Regime | BTC above its 200-hour EMA: up to 75% invested in up to 4 positions. Otherwise up to 25% in up to 2, with PAXG first in line. |
+| Regime | BTC above its 200-hour EMA: up to 75% invested in up to 4 positions. Otherwise up to 25% in up to 3, with PAXG first in line. |
 | Trend filter | A coin is eligible while its 50-hour EMA is above its 200-hour EMA and the close is above the 200-hour EMA. |
 | Ranking | `0.5 x 72h return / 72h volatility + 0.5 x 168h return / 168h volatility`. Free slots go to the best-ranked eligible coins. |
 | Entry timing | No new entry while RSI(14) is above 70, or within 24 hours of a stop-loss exit on that coin. |
@@ -34,6 +35,40 @@ return with shallow drawdowns, because the competition ranks on return and then 
 
 Trades are only placed when a holding is more than 4% of equity away from its target
 (entries and exits always go through), which keeps fees down.
+
+## Which assets it trades
+
+The bot trades the 20 crypto pairs with the highest USD trading volume over the last 30
+days, among Roostoo pairs with a bid-ask spread of at most 0.1% and at least 1000 hours of
+price history, plus PAXG. As of 2 October 2026 that is:
+
+> BTC, ETH, ZEC, SOL, XRP, NEAR, BNB, SUI, DOGE, UNI, ENA, AVAX, WLD, LINK, ADA, ARB, TAO,
+> PUMP, LTC, TRX, and PAXG
+
+The list lives in `bot/config.py`. `python -m bot.universe` ranks every candidate by the
+rule and prints a new list. Tokenised stocks are left out: their history is short and their
+pricing outside US market hours is unknown. Coins such as PEPE, SHIB and BONK are left out
+by the spread limit, because their coarse price steps make every trade cost 0.15% or more.
+
+**Why a rule instead of a hand-picked list.** The project brief proposed 12 coins. Broken
+down by coin, the backtest's whole profit for October 2025 to October 2026 came from ZEC,
+which rose about 20-fold that year; without ZEC the same strategy lost 2.6%. A list chosen
+after the fact flatters the backtest. The volume rule uses only what was known at the time,
+so the backtest applies it as of the first day of each test window:
+
+| Universe (market-order fees) | Oct 2025 – Oct 2026 | Oct 2024 – Oct 2025 |
+|---|---|---|
+| Brief's 12 coins (chosen with hindsight) | +19.8% | +27.0% |
+| Brief's 12 without ZEC | -2.6% | +33.4% |
+| BTC, ETH, SOL, BNB, XRP and PAXG | -5.9% | +15.4% |
+| Top 12 by volume at the start | -2.6% | +21.6% |
+| **Top 20 by volume at the start** | **+6.6%** | **+30.2%** |
+| All 36 long-listed candidates | +4.7% | +17.6% |
+
+These comparisons used the 36 candidates with two years of history and two risk-off
+positions. The top 20 did best in both years, and allowing three risk-off positions instead
+of two then improved every universe in both years. The final results, with every Roostoo
+pair as a candidate, are under [Backtest results](#backtest-results).
 
 ### How the parameters were chosen
 
@@ -47,20 +82,24 @@ change below was kept only if it improved results on **both** test years:
 | Brief baseline | -8.1% return, 24.3% max drawdown | +3.3%, 18.2% |
 | No exits for losing rank | +0.2%, 15.6% | +8.5%, 18.7% |
 | + 6 ATR stop, EMA 50/200 | +14.7%, 14.0% | +17.3%, 15.6% |
-| + 8 ATR stop, 72h/168h momentum, 4% rebalance threshold (current) | **+19.8%, 15.5%** | **+27.0%, 14.1%** |
+| + 8 ATR stop, 72h/168h momentum, 4% rebalance threshold | +19.8%, 15.5% | +27.0%, 14.1% |
 
-Figures assume every order is a market order (0.1% fee plus slippage). Removing the drawdown
-brake raised return slightly but pushed max drawdown to 24–27%, so the brake stays.
+These runs used the brief's 12 coins, and assume every order is a market order (0.1% fee
+plus slippage). Removing the drawdown brake raised return slightly but pushed max drawdown
+to 24–27%, so the brake stays. With the volume-based universe, more positions (5 or 6) and
+other stop widths did no better in both years; three risk-off positions did.
 
 ### Known weaknesses
 
 - Profits come from a minority of strong trends. Over any 14-day window (the length of the
-  competition) the median backtest return is close to zero: about half of the windows are
-  positive, and the worst lost 5.6%.
-- It gives up upside in strong bull markets. Average exposure is only about 20%, so from
-  October 2024 to October 2025 it made 27.0% while simply holding BTC made 79.5% (though
-  with a 31% drawdown against the bot's 14%).
-- The 12 coins are highly correlated, so several positions can behave like one.
+  competition) the median backtest return is close to zero: 41% of windows were positive in
+  the falling year and 52% in the rising one. The worst 14-day loss was 4.7%.
+- It gives up upside in strong bull markets. Average exposure is only about 22%, so from
+  October 2024 to October 2025 it made 43% while simply holding BTC made 80% (though with
+  a 31% drawdown against the bot's 15%).
+- Results move by several points with small changes to the coin list, so treat any single
+  backtest figure as rough.
+- The coins are highly correlated, so several positions can behave like one.
 - Backtests use Binance candles. Roostoo's prices are streamed from Binance and were
   within a fraction of a percent of them when checked, but fills on Roostoo are not
   guaranteed to match.
@@ -72,9 +111,11 @@ bot/
   config.py        every tunable number, with JSON overrides
   roostoo.py       API client: signing, clock offset, rate limit, retries, request log
   market_data.py   Binance hourly candles (live signals, warm-up, backtest cache)
+  universe.py      which pairs to trade: the most traded crypto pairs on Roostoo
   indicators.py    EMA, ATR, RSI, rolling volatility, updated one bar at a time
   strategy.py      target weights from signals and current holdings
-  planner.py       trades from targets: rebalance threshold and activity rule
+  planner.py       trades from targets: rebalance threshold, activity rule, sells
+                   anything outside the universe
   execution.py     orders on Roostoo: rounding, limit-then-market, fills
   live.py          the hourly loop, state recovery, dry-run mode
   journal.py       logs, append-only trade and equity records, saved state
@@ -117,20 +158,33 @@ python -m bot.backtest --start 2024-10-01 --end 2025-10-01
 The first run downloads candles into `data/`; later runs read the cache. The backtest runs
 the same `Strategy` and `plan_trades` code as the live bot, in two cost scenarios: every
 order as a taker (0.1% fee plus 0.02% slippage) and every order as a maker (0.05%). Live
-costs fall between the two.
+costs fall between the two. The coins are chosen by the volume rule as of the first day of
+the window (`--fixed-universe` tests the configured list instead).
 
-Oct 2025 – Oct 2026, $100,000 starting cash:
+$100,000 starting cash. "Basket" holds the same 20 coins plus PAXG in equal weights.
 
-| | Taker | Maker | BTC buy and hold | 12-coin buy and hold |
+| Oct 2025 – Oct 2026 (falling market) | Taker | Maker | Hold BTC | Hold basket |
 |---|---|---|---|---|
-| Total return | 19.8% | 31.1% | -26.8% | 127.4% |
-| Max drawdown | 15.5% | 13.9% | 53.7% | 57.5% |
-| Sharpe | 1.29 | 1.82 | -0.46 | 1.36 |
-| Sortino | 2.24 | 3.30 | -0.66 | 2.15 |
-| Calmar | 1.28 | 2.24 | -0.50 | 2.22 |
-| Composite score | 1.67 | 2.54 | -0.55 | 1.93 |
-| Trades per day | 4.3 | 4.3 | | |
-| Average exposure | 20% | 21% | | |
+| Total return | 1.8% | 8.4% | -26.8% | -34.5% |
+| Max drawdown | 15.0% | 13.1% | 53.7% | 64.9% |
+| Sharpe | 0.20 | 0.66 | -0.46 | -0.42 |
+| Sortino | 0.29 | 1.03 | -0.66 | -0.58 |
+| Calmar | 0.12 | 0.64 | -0.50 | -0.53 |
+| Composite score | 0.21 | 0.80 | -0.55 | -0.52 |
+| 14-day windows: median return / worst | -0.4% / -3.7% | -0.3% / -3.6% | | |
+
+| Oct 2024 – Oct 2025 (rising market) | Taker | Maker | Hold BTC | Hold basket |
+|---|---|---|---|---|
+| Total return | 43.2% | 49.9% | 79.5% | 38.2% |
+| Max drawdown | 14.5% | 13.6% | 30.9% | 61.2% |
+| Sharpe | 2.17 | 2.42 | 1.58 | 0.81 |
+| Sortino | 4.10 | 4.68 | 2.54 | 1.19 |
+| Calmar | 2.98 | 3.68 | 2.57 | 0.62 |
+| Composite score | 3.18 | 3.70 | 2.26 | 0.90 |
+| 14-day windows: median return / worst | +0.2% / -4.7% | +0.3% / -4.6% | | |
+
+The bot traded about 4.5 times a day, with at least 3 trades on every day, and was on
+average 22% invested.
 
 Sharpe and Sortino use daily returns annualised over 365 days; Calmar is annualised
 return over maximum drawdown. The organisers have not published their exact conventions.
