@@ -1,0 +1,13 @@
+[
+  {"name": "A current score, top-N", "score": "current"},
+  {"name": "B quality, top-N", "score": "quality"},
+  {"name": "C low-vol, top-N", "score": "low_vol"},
+  {"name": "D ML ridge72, top-N", "score": "ml:ridge:72"},
+  {"name": "E ML gbm24, top-N", "score": "ml:gbm:24"},
+  {"name": "N ensemble, top-N", "score": "ensemble"},
+  {"name": "G quality MVO daily vol1%", "score": "quality", "config": {"construction": "mvo", "decide_every": 24, "target_vol": 0.010}},
+  {"name": "L low-vol MVO daily vol1%", "score": "low_vol", "config": {"construction": "mvo", "decide_every": 24, "target_vol": 0.010}},
+  {"name": "EM gbm24 MVO daily vol1%", "score": "ml:gbm:24", "config": {"construction": "mvo", "decide_every": 24, "target_vol": 0.010}},
+  {"name": "NM ensemble MVO daily vol1%", "score": "ensemble", "config": {"construction": "mvo", "decide_every": 24, "target_vol": 0.010}},
+  {"name": "M min-variance, daily", "score": "quality", "config": {"construction": "mvo", "decide_every": 24, "ic": 0.0, "full_budget": true, "risk_aversion": 10.0}}
+]

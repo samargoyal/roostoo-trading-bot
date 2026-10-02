@@ -1,0 +1,11 @@
+[
+  {"name": "C base: low-vol, long only", "score": "low_vol"},
+  {"name": "S1 + shorts 25% when risk-off", "score": "low_vol", "config": {"short_off": 0.25}},
+  {"name": "S2 + shorts 40% when risk-off", "score": "low_vol", "config": {"short_off": 0.40}},
+  {"name": "S3 + shorts 40% off, 4 names", "score": "low_vol", "config": {"short_off": 0.40, "max_shorts": 4}},
+  {"name": "S4 + shorts 25% off, 10% on", "score": "low_vol", "config": {"short_off": 0.25, "short_on": 0.10}},
+  {"name": "S5 + shorts 40% off, stop 5", "score": "low_vol", "config": {"short_off": 0.40, "short_stop_atr": 5.0}},
+  {"name": "S6 + shorts 40% off, no RSI", "score": "low_vol", "config": {"short_off": 0.40, "short_rsi_min": 0.0}},
+  {"name": "S7 + shorts 40%, long off 10%", "score": "low_vol", "config": {"short_off": 0.40, "exposure_off": 0.10, "max_positions_off": 1}},
+  {"name": "S8 gbm score + shorts 40% off", "score": "ml:gbm:24", "config": {"short_off": 0.40}}
+]

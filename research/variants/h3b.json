@@ -1,0 +1,11 @@
+[
+  {"name": "C low-vol, top-N, hourly", "score": "low_vol"},
+  {"name": "C2 low-vol, top-N, daily", "score": "low_vol", "config": {"decide_every": 24}},
+  {"name": "G1 quality MVO daily ra10", "score": "quality", "config": {"construction": "mvo", "decide_every": 24}},
+  {"name": "G2 quality MVO daily vol1.5%", "score": "quality", "config": {"construction": "mvo", "decide_every": 24, "target_vol": 0.015}},
+  {"name": "G3 quality MVO daily vol1.0%", "score": "quality", "config": {"construction": "mvo", "decide_every": 24, "target_vol": 0.010}},
+  {"name": "G4 quality MVO d vol1% to5", "score": "quality", "config": {"construction": "mvo", "decide_every": 24, "target_vol": 0.010, "turnover_aversion": 5.0}},
+  {"name": "L lowvol MVO daily vol1%", "score": "low_vol", "config": {"construction": "mvo", "decide_every": 24, "target_vol": 0.010}},
+  {"name": "E2 gbm24 MVO daily vol1%", "score": "ml:gbm:24", "config": {"construction": "mvo", "decide_every": 24, "target_vol": 0.010}},
+  {"name": "M min-variance, full budget, daily", "score": "quality", "config": {"construction": "mvo", "decide_every": 24, "ic": 0.0, "full_budget": true, "risk_aversion": 10.0}}
+]

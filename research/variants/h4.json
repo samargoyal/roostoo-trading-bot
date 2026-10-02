@@ -1,0 +1,15 @@
+[
+  {"name": "C base: low-vol top-N", "score": "low_vol"},
+  {"name": "C no regime filter", "score": "low_vol", "config": {"regime": false}},
+  {"name": "C risk-off: PAXG only", "score": "low_vol", "config": {"exposure_off": 0.15, "max_positions_off": 1}},
+  {"name": "C risk-off: cash + core only", "score": "low_vol", "config": {"exposure_off": 0.05, "max_positions_off": 0}},
+  {"name": "C risk-on 3 positions", "score": "low_vol", "config": {"max_positions_on": 3}},
+  {"name": "C risk-on 5 positions", "score": "low_vol", "config": {"max_positions_on": 5}},
+  {"name": "C stop 5 ATR", "score": "low_vol", "config": {"stop_atr": 5.0}},
+  {"name": "C stop 12 ATR", "score": "low_vol", "config": {"stop_atr": 12.0}},
+  {"name": "C no RSI filter", "score": "low_vol", "config": {"rsi_max_entry": 100.0}},
+  {"name": "C decide every 4h", "score": "low_vol", "config": {"decide_every": 4}},
+  {"name": "C no brake", "score": "low_vol", "config": {"brake_dd": 1.0}},
+  {"name": "C max weight 20%", "score": "low_vol", "config": {"max_weight": 0.20}},
+  {"name": "C exposure on 90%", "score": "low_vol", "config": {"exposure_on": 0.90}}
+]

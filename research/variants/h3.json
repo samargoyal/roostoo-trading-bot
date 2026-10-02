@@ -1,0 +1,12 @@
+[
+  {"name": "A current score, top-N", "score": "current"},
+  {"name": "B quality, top-N", "score": "quality"},
+  {"name": "C low-vol, top-N", "score": "low_vol"},
+  {"name": "D ML ridge72, top-N", "score": "ml:ridge:72"},
+  {"name": "E ML gbm24, top-N", "score": "ml:gbm:24"},
+  {"name": "F current score, MVO", "score": "current", "config": {"construction": "mvo"}},
+  {"name": "G quality, MVO", "score": "quality", "config": {"construction": "mvo"}},
+  {"name": "H ML ridge72, MVO", "score": "ml:ridge:72", "config": {"construction": "mvo", "horizon": 72}},
+  {"name": "I ML gbm24, MVO", "score": "ml:gbm:24", "config": {"construction": "mvo"}},
+  {"name": "J quality, MVO, no trend filter", "score": "quality", "config": {"construction": "mvo", "trend_filter": false}}
+]

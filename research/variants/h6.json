@@ -1,0 +1,13 @@
+[
+  {"name": "C base: low-vol, top 20 coins", "score": "low_vol"},
+  {"name": "U10: top 10 coins", "score": "low_vol", "config": {"universe_size": 10}},
+  {"name": "U15: top 15 coins", "score": "low_vol", "config": {"universe_size": 15}},
+  {"name": "U30: top 30 coins", "score": "low_vol", "config": {"universe_size": 30}},
+  {"name": "K1 low-vol + 2w momentum", "score": "low_vol+mom336"},
+  {"name": "K2 low-vol + near 1w high", "score": "low_vol+near_high"},
+  {"name": "K3 low-vol + liquidity", "score": "low_vol+liquidity"},
+  {"name": "R2 rebalance threshold 2%", "score": "low_vol", "config": {"rebalance_threshold": 0.02}},
+  {"name": "R6 rebalance threshold 6%", "score": "low_vol", "config": {"rebalance_threshold": 0.06}},
+  {"name": "P0 no PAXG core", "score": "low_vol", "config": {"core_weight": 0.0}},
+  {"name": "P10 PAXG core 10%", "score": "low_vol", "config": {"core_weight": 0.10}}
+]

@@ -1,0 +1,8 @@
+[
+  {"name": "C base: low-vol", "score": "low_vol"},
+  {"name": "T1 vol target 2.0%/day", "score": "low_vol", "config": {"vol_target": 0.020}},
+  {"name": "T2 vol target 2.5%/day", "score": "low_vol", "config": {"vol_target": 0.025}},
+  {"name": "T3 vol target 3.0%/day", "score": "low_vol", "config": {"vol_target": 0.030}},
+  {"name": "X1 low-vol + ML gbm", "score": "low_vol+gbm"},
+  {"name": "X2 B2 shorts + vol target 2.5%", "score": "low_vol", "config": {"short_off": 0.40, "short_regime_ema": 720, "vol_target": 0.025}}
+]

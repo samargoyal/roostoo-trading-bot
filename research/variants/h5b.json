@@ -1,0 +1,8 @@
+[
+  {"name": "C base: low-vol, long only", "score": "low_vol"},
+  {"name": "S1 shorts 25%, BTC<EMA200h", "score": "low_vol", "config": {"short_off": 0.25}},
+  {"name": "B1 shorts 25%, BTC<EMA720h", "score": "low_vol", "config": {"short_off": 0.25, "short_regime_ema": 720}},
+  {"name": "B2 shorts 40%, BTC<EMA720h", "score": "low_vol", "config": {"short_off": 0.40, "short_regime_ema": 720}},
+  {"name": "B3 shorts 25%, BTC<EMA1440h", "score": "low_vol", "config": {"short_off": 0.25, "short_regime_ema": 1440}},
+  {"name": "B4 shorts 40%, BTC<EMA1440h", "score": "low_vol", "config": {"short_off": 0.40, "short_regime_ema": 1440}}
+]
