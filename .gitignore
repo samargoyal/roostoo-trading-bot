@@ -1,0 +1,23 @@
+# Secrets: API keys live only in ~/.roostoo_<account>.env on the server
+.env
+*.env
+.env.*
+
+# Runtime output: logs, journals, saved state, backtest results, cached candles
+runs/
+logs/
+data/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

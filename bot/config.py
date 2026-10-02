@@ -1,0 +1,150 @@
+"""Every tunable number in one place, shared by the backtester and the live bot.
+
+The defaults are the baseline strategy. A JSON file passed with --config overrides
+any subset of them, for example:
+
+    {"strategy": {"max_positions_risk_on": 5}, "execution": {"limit_timeout_sec": 600}}
+
+Unknown keys are rejected, so a typo cannot silently fall back to a default.
+"""
+import json
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
+from typing import Any, Dict, List, Optional
+
+DEFAULT_UNIVERSE = [
+    # Core
+    "BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD", "XRP/USD",
+    # Higher beta
+    "DOGE/USD", "SUI/USD", "AVAX/USD", "LINK/USD", "NEAR/USD", "ZEC/USD",
+    # Defensive (gold-backed)
+    "PAXG/USD",
+]
+
+
+@dataclass
+class StrategyConfig:
+    universe: List[str] = field(default_factory=lambda: list(DEFAULT_UNIVERSE))
+
+    # Market regime: risk-on while the regime pair closes above its long EMA.
+    regime_pair: str = "BTC/USD"
+    regime_ema: int = 200
+    risk_on_exposure: float = 0.75       # max fraction of equity invested when risk-on
+    risk_off_exposure: float = 0.25      # ... and when risk-off
+    max_positions_risk_on: int = 4
+    max_positions_risk_off: int = 2
+    rank_buffer: int = 1                 # a held coin is kept until it ranks below N + buffer
+
+    # Defensive asset: always held as a small core, and first in line when risk-off.
+    defensive_pair: str = "PAXG/USD"
+    core_weight: float = 0.05
+
+    # Trend filter and trend exit.
+    fast_ema: int = 20
+    slow_ema: int = 100
+
+    # Ranking: momentum over two horizons, each divided by volatility over that horizon.
+    momentum_short: int = 24
+    momentum_long: int = 72
+    momentum_short_weight: float = 0.5  # the long horizon gets 1 - this
+    volatility_window: int = 72         # hours of log returns behind the volatility estimate
+
+    # Entry timing.
+    rsi_period: int = 14
+    rsi_max_entry: float = 70.0
+
+    # Sizing and trailing stop.
+    atr_period: int = 14
+    max_weight: float = 0.15            # per-coin cap; for the defensive pair it includes the core
+    stop_atr_multiple: float = 2.5      # exit below the highest close since entry minus this many ATRs
+    stop_cooldown_hours: int = 24       # no re-entry into a coin for this long after a stop
+
+    # Portfolio drawdown brake.
+    brake_drawdown: float = 0.04         # engage when equity is this far below its peak
+    brake_release_drawdown: float = 0.02  # release once the drawdown is back under this
+    brake_factor: float = 0.5            # scale trend positions by this while engaged
+
+    # A holding below this fraction of equity counts as no position.
+    min_position_weight: float = 0.005
+
+
+@dataclass
+class ExecutionConfig:
+    rebalance_threshold: float = 0.02   # resize a held position only when this far off target (fraction of equity)
+    min_trade_usd: float = 10.0         # never send an order smaller than this
+    use_limit_orders: bool = True       # try a maker order at the touch before paying the taker fee
+    limit_timeout_sec: int = 300        # then cancel it and send the remainder at market
+    poll_interval_sec: int = 30
+    market_on_stop: bool = True         # stop-loss exits go straight to market
+    cash_buffer: float = 0.01           # leave this fraction of free cash unspent, for fees and rounding
+
+    # Activity rule: make sure at least one order fills in every UTC-aligned block of this
+    # many hours. Blocks of 8 hours guarantee two or more trades in any calendar day,
+    # whatever time zone the organisers count days in.
+    activity_block_hours: int = 8
+    activity_trigger_hours_left: float = 2.0   # act when this little of the block remains
+    activity_min_usd: float = 25.0
+
+
+@dataclass
+class ApiConfig:
+    base_url: str = "https://mock-api.roostoo.com"
+    timeout_sec: float = 10.0
+    max_calls_per_minute: int = 20      # the organisers' limit is 30 per minute, counting every call
+    max_retries: int = 3
+    backoff_sec: float = 1.0
+
+
+@dataclass
+class LiveConfig:
+    binance_url: str = "https://data-api.binance.vision"
+    history_bars: int = 1000            # hourly candles behind the indicators (EMA200 needs plenty)
+    bar_delay_sec: int = 60             # run this long after the hour, once the candle is final
+    ticker_sample_sec: int = 300        # Roostoo price samples, the fallback if Binance is unreachable
+    runs_dir: str = "runs"
+
+
+@dataclass
+class BacktestConfig:
+    start: str = "2025-10-01"
+    end: str = "2026-10-01"
+    initial_cash: float = 100000.0
+    taker_fee: float = 0.001
+    maker_fee: float = 0.0005
+    taker_slippage: float = 0.0002      # half-spread paid by a market order
+    warmup_bars: int = 1000
+    data_dir: str = "data"
+
+
+@dataclass
+class Config:
+    strategy: StrategyConfig = field(default_factory=StrategyConfig)
+    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    api: ApiConfig = field(default_factory=ApiConfig)
+    live: LiveConfig = field(default_factory=LiveConfig)
+    backtest: BacktestConfig = field(default_factory=BacktestConfig)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+def load_config(path: Optional[str] = None) -> Config:
+    """Defaults, overridden by the JSON file at `path` if one is given."""
+    cfg = Config()
+    if path:
+        with open(path, encoding="utf-8") as f:
+            apply_overrides(cfg, json.load(f))
+    return cfg
+
+
+def apply_overrides(target: Any, overrides: Dict[str, Any], prefix: str = "") -> None:
+    names = {f.name for f in fields(target)}
+    for key, value in overrides.items():
+        if key not in names:
+            raise ValueError("unknown config key: " + prefix + key)
+        current = getattr(target, key)
+        if is_dataclass(current):
+            if not isinstance(value, dict):
+                raise ValueError("config section %s%s must be an object" % (prefix, key))
+            apply_overrides(current, value, prefix + key + ".")
+        else:
+            setattr(target, key, value)
