@@ -64,9 +64,16 @@ class BinanceClient:
     def recent_closed(self, symbol: str, count: int, at_ms: Optional[int] = None) -> List[Bar]:
         """The last `count` hourly candles that had closed by `at_ms` (default: now)."""
         at_ms = now_ms() if at_ms is None else at_ms
-        bars = self.klines(symbol, limit=min(count + 1, MAX_KLINES))
-        closed = [b for b in bars if b.ts + HOUR_MS <= at_ms]
-        return closed[-count:]
+        # The newest candle is usually still open, so one page of MAX_KLINES may hold one
+        # closed candle too few; fetch earlier pages until there are enough.
+        bars = [b for b in self.klines(symbol, limit=MAX_KLINES) if b.ts + HOUR_MS <= at_ms]
+        while bars and len(bars) < count:
+            earlier = self.klines(symbol, end_ms=bars[0].ts - 1,
+                                  limit=min(MAX_KLINES, count - len(bars)))
+            if not earlier:
+                break  # no older history: the pair was listed recently
+            bars = earlier + bars
+        return bars[-count:]
 
     def history(self, symbol: str, start_ms: int, end_ms: int) -> List[Bar]:
         """Closed candles opening in [start_ms, end_ms), fetched page by page."""
