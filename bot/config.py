@@ -42,7 +42,10 @@ class StrategyConfig:
     fast_ema: int = 50
     slow_ema: int = 200
 
-    # Ranking: momentum over two horizons, each divided by volatility over that horizon.
+    # Ranking. "low_volatility" (default) prefers the coins with the calmest hourly returns
+    # over volatility_window; "momentum" uses the two-horizon volatility-adjusted momentum
+    # below. research/ shows why low volatility won (README: Strategy research).
+    ranking: str = "low_volatility"
     momentum_short: int = 72
     momentum_long: int = 168
     momentum_short_weight: float = 0.5  # the long horizon gets 1 - this

@@ -46,7 +46,7 @@ class RegimeAndSizingTest(unittest.TestCase):
     def test_risk_off_puts_paxg_first_and_shrinks_exposure(self):
         signals = {p: sig(r_short=0.10 if p == "SOL/USD" else 0.0) for p in UNIVERSE}
         signals["BTC/USD"] = sig(close=110.0, regime=120.0)  # below its regime EMA
-        d = make_strategy(signals, max_positions_risk_off=2).decide(0, 1.0, {}, StrategyState())
+        d = make_strategy(signals, max_positions_risk_off=2, ranking="momentum").decide(0, 1.0, {}, StrategyState())
         self.assertFalse(d.risk_on)
         self.assertEqual(d.reasons["PAXG/USD"], ENTRY)
         self.assertEqual(d.reasons["SOL/USD"], ENTRY)
@@ -59,7 +59,7 @@ class RegimeAndSizingTest(unittest.TestCase):
         signals["BTC/USD"] = sig(regime=200.0, r_short=0.01)
         state = StrategyState(positions={p: PositionInfo(0, 110.0)
                                          for p in ["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD"]})
-        d = make_strategy(signals, max_positions_risk_off=2).decide(0, 1.0, {}, state)
+        d = make_strategy(signals, max_positions_risk_off=2, ranking="momentum").decide(0, 1.0, {}, state)
         self.assertEqual(d.reasons["ETH/USD"], HOLD)
         self.assertEqual(d.reasons["SOL/USD"], HOLD)
         self.assertEqual(d.reasons["DOGE/USD"], EXIT_REGIME)
@@ -69,6 +69,22 @@ class RegimeAndSizingTest(unittest.TestCase):
         d = make_strategy({}).decide(0, 1.0, {}, StrategyState())
         self.assertAlmostEqual(d.targets["PAXG/USD"], 0.05)
         self.assertEqual(d.reasons["PAXG/USD"], CORE)
+
+
+class RankingTest(unittest.TestCase):
+    def test_low_volatility_ranks_first_by_default(self):
+        signals = {"BTC/USD": sig(vol=0.010), "ETH/USD": sig(vol=0.005, r_short=-0.05),
+                   "SOL/USD": sig(vol=0.030, r_short=0.30)}
+        strategy = make_strategy(signals, max_positions_risk_on=1, core_weight=0.0)
+        d = strategy.decide(0, 1.0, {}, StrategyState())
+        self.assertEqual([p for p, r in d.reasons.items() if r == ENTRY], ["ETH/USD"])
+
+    def test_momentum_ranking_is_still_available(self):
+        signals = {"BTC/USD": sig(vol=0.010), "ETH/USD": sig(vol=0.005, r_short=-0.05),
+                   "SOL/USD": sig(vol=0.030, r_short=0.30)}
+        strategy = make_strategy(signals, max_positions_risk_on=1, core_weight=0.0, ranking="momentum")
+        d = strategy.decide(0, 1.0, {}, StrategyState())
+        self.assertEqual([p for p, r in d.reasons.items() if r == ENTRY], ["SOL/USD"])
 
 
 class EntryAndExitTest(unittest.TestCase):

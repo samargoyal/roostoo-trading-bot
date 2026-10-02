@@ -7,8 +7,9 @@ exchange. Every number below is a field of StrategyConfig.
   Regime   BTC above its 200-hour EMA: up to 75% invested and 4 positions.
            Otherwise up to 25% and 2 positions, with PAXG first in line.
   Trend    a coin is eligible while EMA50 > EMA200 and its close is above EMA200.
-  Ranking  0.5 x 72h return + 0.5 x 168h return, each divided by the volatility
-           over that horizon. Free slots go to the best-ranked eligible coins.
+  Ranking  the lowest volatility of hourly returns over the last 168 hours first.
+           Free slots go to the best-ranked eligible coins. (Optionally: 0.5 x 72h
+           + 0.5 x 168h volatility-adjusted momentum, the earlier default.)
   Entry    only into eligible coins with RSI(14) <= 70, not cooling down after a stop.
   Sizing   weights proportional to 1 / (ATR / price), so each position carries a
            similar amount of risk, scaled to the exposure limit and capped at 15%.
@@ -24,7 +25,9 @@ exchange. Every number below is a field of StrategyConfig.
 The baseline in the project brief used EMA 20/100, 24h/72h momentum and a 2.5 ATR
 stop, and also re-ranked held coins every hour. Backtests on two separate years
 showed heavy churn (positions held for a median of 6 hours) and losses after fees,
-so the slower settings above replaced it. See the README for the comparison.
+so the slower settings above replaced it. Research in research/ then found that
+momentum did not predict which coin would do better next, while low volatility did
+(the low-volatility effect), so low volatility became the ranking. See the README.
 """
 import math
 from dataclasses import asdict, dataclass, field
@@ -109,8 +112,11 @@ class Strategy:
         return out
 
     def score(self, s: Signal) -> float:
-        """Momentum over two horizons, each divided by the volatility expected over that horizon."""
+        """Ranking score: higher is better."""
         c = self.cfg
+        if c.ranking == "low_volatility":
+            return -s.volatility
+        # Momentum over two horizons, each divided by the volatility expected over that horizon.
         if s.volatility <= 0:
             return 0.0
         short = s.return_short / (s.volatility * math.sqrt(c.momentum_short))

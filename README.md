@@ -7,6 +7,7 @@ strategy, and every order, decision and hourly equity point is recorded.
 
 - [Strategy](#strategy)
 - [Which assets it trades](#which-assets-it-trades)
+- [Strategy research](#strategy-research)
 - [How it works](#how-it-works)
 - [Backtest results](#backtest-results)
 - [Setup and running](#setup-and-running)
@@ -25,7 +26,7 @@ shallow drawdowns, because the competition ranks on return and then scores
 |---|---|
 | Regime | BTC above its 200-hour EMA: up to 75% invested in up to 4 positions. Otherwise up to 25% in up to 3, with PAXG first in line. |
 | Trend filter | A coin is eligible while its 50-hour EMA is above its 200-hour EMA and the close is above the 200-hour EMA. |
-| Ranking | `0.5 x 72h return / 72h volatility + 0.5 x 168h return / 168h volatility`. Free slots go to the best-ranked eligible coins. |
+| Ranking | Lowest volatility of hourly returns over the last 168 hours first (the low-volatility effect; see [Strategy research](#strategy-research)). Free slots go to the best-ranked eligible coins. |
 | Entry timing | No new entry while RSI(14) is above 70, or within 24 hours of a stop-loss exit on that coin. |
 | Sizing | Weights proportional to `price / ATR(14)`, so each position carries similar risk, scaled to the exposure limit and capped at 15% per coin. |
 | Exits | The 50-hour EMA falls below the 200-hour EMA, or the close drops 8 ATR below the highest close since entry. A held coin is never sold just for ranking lower. |
@@ -91,18 +92,95 @@ other stop widths did no better in both years; three risk-off positions did.
 
 ### Known weaknesses
 
-- Profits come from a minority of strong trends. Over any 14-day window (the length of the
-  competition) the median backtest return is close to zero: 41% of windows were positive in
-  the falling year and 52% in the rising one. The worst 14-day loss was 4.7%.
-- It gives up upside in strong bull markets. Average exposure is only about 22%, so from
-  October 2024 to October 2025 it made 43% while simply holding BTC made 80% (though with
-  a 31% drawdown against the bot's 15%).
+- Over any 14-day window (the length of the competition) the median backtest return is
+  close to zero: 46% of windows were positive in the falling year and 61% in the rising
+  one. The worst 14-day loss was 6.6%.
+- It gives up upside in strong bull markets. Average exposure is only about 22–25%, so from
+  October 2024 to October 2025 it made 37% while simply holding BTC made 80% (though with
+  a 31% drawdown against the bot's 13%).
 - Results move by several points with small changes to the coin list, so treat any single
   backtest figure as rough.
 - The coins are highly correlated, so several positions can behave like one.
 - Backtests use Binance candles. Roostoo's prices are streamed from Binance and were
   within a fraction of a percent of them when checked, but fills on Roostoo are not
   guaranteed to match.
+
+## Strategy research
+
+The `research/` folder holds the hypothesis tests behind the current strategy
+(`pip install -r requirements-research.txt` to run them). Development used October 2024 to
+June 2026. **July to September 2026 was held out**, untouched until the finalists were
+chosen, then run once. Every comparison used point-in-time coin lists and walk-forward
+models (each month predicted by a model trained only on earlier data).
+
+**H1. Which signals predict the next day?** (`research/h1_signals.py`) Daily rank
+correlation (IC) between each signal and the next 24-hour return across the coins:
+
+| Signal | Oct 24 – Sep 25 | Oct 25 – Jun 26 |
+|---|---|---|
+| Low 168h volatility | **+0.076** (t 3.0) | **+0.094** (t 3.7) |
+| Liquidity (30-day USD volume) | +0.049 (t 4.2) | +0.047 (t 2.9) |
+| Close to the 168h high | +0.037 | +0.073 (t 3.4) |
+| 72h / 168h momentum (the earlier ranking) | -0.033 / -0.014 | +0.018 / +0.041 |
+| BTC trend, for market timing | -0.03 | -0.02 |
+
+The momentum ranking the bot used had no reliable power to pick the better coin; low
+volatility did, consistently.
+
+**H2. Does machine learning rank coins better?** (`research/h2_ml.py`) Ridge regression and
+gradient-boosted trees on 20 ranked features, retrained monthly, out-of-sample IC with the
+next 24h / 72h return:
+
+| Model | Oct 24 – Sep 25 | Oct 25 – Jun 26 |
+|---|---|---|
+| Gradient-boosted trees | 0.100 / 0.105 | 0.086 / 0.102 |
+| Ridge regression | 0.083 / 0.102 | 0.087 / 0.133 |
+| Fixed blend (low vol, liquidity, near high, 2-week momentum) | 0.068 / 0.103 | 0.096 / 0.150 |
+| Low volatility alone | 0.077 / 0.098 | 0.094 / 0.149 |
+
+ML matched a single robust signal but did not beat it, so it does not earn its complexity.
+
+**H3. Does convex optimisation build better portfolios?** (`research/sim.py`) Mean-variance
+optimisation (maximise expected return minus risk and turnover penalties, subject to
+long-only, 15% per coin, the regime's exposure limit and the PAXG core), solved with an
+accelerated projected-gradient method checked against cvxpy. Hourly re-optimisation churned
+(12–23 trades a day); daily re-optimisation with a 1% daily volatility target was the best
+version, with the smallest drawdowns (8–10%) but much lower returns than simple top-N
+selection, and it earned 0.2% in the hold-out quarter. Not adopted.
+
+**H4. Signals and construction in full simulations.** Same rules as the bot, market-order
+fees, development periods:
+
+| Ranking, top-N | Oct 24 – Sep 25 | Oct 25 – Jun 26 | Composite |
+|---|---|---|---|
+| Momentum (earlier bot) | +22.0%, drawdown 21.7% | -9.9%, 15.2% | 1.53 / -1.28 |
+| **Low volatility** | **+34.0%, 15.5%** | **-4.8%, 9.7%** | **2.68 / -0.72** |
+| ML trees | +34.9%, 16.6% | -5.3%, 10.9% | 2.63 / -0.78 |
+| Fixed blend | +30.7%, 15.1% | -9.2%, 14.6% | 2.56 / -1.25 |
+
+Changes on top of low volatility that did **not** improve both periods: no regime filter
+(much worse), 3 or 5 positions, other stop widths, 4-hourly or daily decisions, no drawdown
+brake, larger positions or exposure, smaller or larger coin lists, blends with other
+signals, other rebalance thresholds and PAXG core sizes. Market volatility targeting
+improved both development periods slightly but not the hold-out.
+
+**H5. Shorting in falling markets.** Shorting the most volatile coins in downtrends while
+BTC was below its 30-day average turned the falling year positive (+6.3%) but cost 15
+points in the rising year and 22 points in the hold-out quarter. It is insurance, not an
+edge. Not adopted.
+
+**Hold-out, July – September 2026, run once (BTC +42.8%):**
+
+| Finalist | Return | Max drawdown | Composite | 14-day windows positive |
+|---|---|---|---|---|
+| Momentum ranking (earlier bot) | 34.5% | 6.8% | 14.2 | 65% |
+| **Low-volatility ranking (adopted)** | **30.8%** | **5.9%** | **14.2** | **75%** |
+| + volatility target | 29.3% | 5.9% | 13.5 | 75% |
+| + bear-market shorts | 6.9% | 7.8% | 2.4 | 61% |
+| Convex optimiser | 0.2% | 5.9% | 0.2 | 42% |
+
+Low volatility tied momentum on the composite score in the rally while giving lower
+drawdowns and more positive 14-day windows in all three periods, so it became the ranking.
 
 ## How it works
 
@@ -165,26 +243,27 @@ $100,000 starting cash. "Basket" holds the same 20 coins plus PAXG in equal weig
 
 | Oct 2025 – Oct 2026 (falling market) | Taker | Maker | Hold BTC | Hold basket |
 |---|---|---|---|---|
-| Total return | 1.8% | 8.4% | -26.8% | -34.5% |
-| Max drawdown | 15.0% | 13.1% | 53.7% | 64.9% |
-| Sharpe | 0.20 | 0.66 | -0.46 | -0.42 |
-| Sortino | 0.29 | 1.03 | -0.66 | -0.58 |
-| Calmar | 0.12 | 0.64 | -0.50 | -0.53 |
-| Composite score | 0.21 | 0.80 | -0.55 | -0.52 |
-| 14-day windows: median return / worst | -0.4% / -3.7% | -0.3% / -3.6% | | |
+| Total return | 12.9% | 19.9% | -26.8% | -34.5% |
+| Max drawdown | 12.3% | 10.3% | 53.7% | 64.9% |
+| Sharpe | 0.98 | 1.34 | -0.46 | -0.42 |
+| Sortino | 1.64 | 2.46 | -0.66 | -0.58 |
+| Calmar | 1.05 | 1.92 | -0.50 | -0.53 |
+| Composite score | 1.26 | 1.96 | -0.55 | -0.52 |
+| 14-day windows: median return / worst | -0.1% / -4.2% | 0.0% / -4.1% | | |
 
 | Oct 2024 – Oct 2025 (rising market) | Taker | Maker | Hold BTC | Hold basket |
 |---|---|---|---|---|
-| Total return | 43.2% | 49.9% | 79.5% | 38.2% |
-| Max drawdown | 14.5% | 13.6% | 30.9% | 61.2% |
-| Sharpe | 2.17 | 2.42 | 1.58 | 0.81 |
-| Sortino | 4.10 | 4.68 | 2.54 | 1.19 |
-| Calmar | 2.98 | 3.68 | 2.57 | 0.62 |
-| Composite score | 3.18 | 3.70 | 2.26 | 0.90 |
-| 14-day windows: median return / worst | +0.2% / -4.7% | +0.3% / -4.6% | | |
+| Total return | 37.2% | 47.6% | 79.5% | 38.2% |
+| Max drawdown | 12.7% | 11.5% | 30.9% | 61.2% |
+| Sharpe | 2.16 | 2.55 | 1.58 | 0.81 |
+| Sortino | 4.09 | 4.90 | 2.54 | 1.19 |
+| Calmar | 2.92 | 4.16 | 2.57 | 0.62 |
+| Composite score | 3.16 | 3.97 | 2.26 | 0.90 |
+| 14-day windows: median return / worst | +0.5% / -6.6% | +0.8% / -6.1% | | |
 
-The bot traded about 4.5 times a day, with at least 3 trades on every day, and was on
-average 22% invested.
+The bot traded about 5 times a day, with at least 3 trades on every day, and was on
+average 22–25% invested. With the earlier momentum ranking the same backtests returned
+1.8% and 43.2%, with drawdowns of 15.0% and 14.5%.
 
 Sharpe and Sortino use daily returns annualised over 365 days; Calmar is annualised
 return over maximum drawdown. The organisers have not published their exact conventions.
