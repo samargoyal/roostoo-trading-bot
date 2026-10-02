@@ -32,21 +32,20 @@ class StrategyConfig:
     risk_off_exposure: float = 0.25      # ... and when risk-off
     max_positions_risk_on: int = 4
     max_positions_risk_off: int = 2
-    rank_buffer: int = 1                 # a held coin is kept until it ranks below N + buffer
 
     # Defensive asset: always held as a small core, and first in line when risk-off.
     defensive_pair: str = "PAXG/USD"
     core_weight: float = 0.05
 
     # Trend filter and trend exit.
-    fast_ema: int = 20
-    slow_ema: int = 100
+    fast_ema: int = 50
+    slow_ema: int = 200
 
     # Ranking: momentum over two horizons, each divided by volatility over that horizon.
-    momentum_short: int = 24
-    momentum_long: int = 72
+    momentum_short: int = 72
+    momentum_long: int = 168
     momentum_short_weight: float = 0.5  # the long horizon gets 1 - this
-    volatility_window: int = 72         # hours of log returns behind the volatility estimate
+    volatility_window: int = 168        # hours of log returns behind the volatility estimate
 
     # Entry timing.
     rsi_period: int = 14
@@ -55,7 +54,7 @@ class StrategyConfig:
     # Sizing and trailing stop.
     atr_period: int = 14
     max_weight: float = 0.15            # per-coin cap; for the defensive pair it includes the core
-    stop_atr_multiple: float = 2.5      # exit below the highest close since entry minus this many ATRs
+    stop_atr_multiple: float = 8.0      # exit below the highest close since entry minus this many ATRs
     stop_cooldown_hours: int = 24       # no re-entry into a coin for this long after a stop
 
     # Portfolio drawdown brake.
@@ -69,7 +68,7 @@ class StrategyConfig:
 
 @dataclass
 class ExecutionConfig:
-    rebalance_threshold: float = 0.02   # resize a held position only when this far off target (fraction of equity)
+    rebalance_threshold: float = 0.04   # resize a held position only when this far off target (fraction of equity)
     min_trade_usd: float = 10.0         # never send an order smaller than this
     use_limit_orders: bool = True       # try a maker order at the touch before paying the taker fee
     limit_timeout_sec: int = 300        # then cancel it and send the remainder at market
