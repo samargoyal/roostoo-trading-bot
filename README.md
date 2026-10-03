@@ -411,6 +411,31 @@ z-score guard skipped exactly the leaders the rotation book exists to catch. A 1
 on the rotation book (the average loss on its worst 5% of days, from recent hourly returns)
 mostly cut returns. All remain options in the code, off.
 
+### Round 9: how robust are the rotation book's settings?
+
+Each setting moved either side of its default, which was chosen early on 20 coins and two
+years (composite per fold, from October 2020):
+
+| Change | 20–21 | 21–22 | 22–23 | 23–24 | 24–25 | 25–26 | Median | Folds better | Worst drawdown |
+|---|---|---|---|---|---|---|---|---|---|
+| **Defaults (kept)** | 11.32 | -1.91 | 1.33 | 5.65 | 4.30 | 1.44 | **2.87** | – | 42% |
+| Plus the 15% short sleeve | 8.84 | -2.04 | 1.19 | 5.55 | 5.25 | 1.61 | 3.43 | 2/6 | 41% |
+| Top 3 coins | 15.19 | -1.35 | 1.15 | 5.36 | 4.10 | 2.23 | 3.16 | 3/6 | 38% |
+| Trend filter 336h/1344h | 12.04 | -1.44 | 0.48 | 4.17 | 5.06 | 1.46 | 2.81 | 4/6 | 36% |
+| Trend filter 72h/288h | 9.08 | -2.43 | 2.39 | 3.19 | 2.72 | 0.93 | 2.56 | 1/6 | 54% |
+| Rebalance every 72h | 11.43 | -1.13 | 1.04 | 3.38 | 3.41 | 1.59 | 2.48 | 3/6 | 38% |
+| Lookback 720h | 7.92 | -2.03 | 1.76 | 3.33 | 2.38 | 1.45 | 2.07 | 2/6 | 45% |
+| Lookback 504h | 11.53 | -1.32 | 1.79 | 4.18 | 2.32 | 1.68 | 2.06 | 4/6 | 38% |
+| Lookback 168h | 16.50 | -1.91 | 1.83 | 4.71 | 1.62 | 1.68 | 1.76 | 3/6 | 48% |
+| Top 1 coin | 7.20 | -2.22 | 1.26 | 7.89 | 2.07 | 1.37 | 1.72 | 1/6 | 54% |
+
+Nothing met the rule. Two lessons. The fold-count condition matters: the short sleeve has a
+higher median only because the median of six numbers averages the middle two, while it was
+worse in four of the six folds. And the 336-hour lookback sits on a peak rather than a plateau:
+its neighbours score around 1.8–2.1. Every variant still beat holding BTC in five or six of
+the six years, so the design holds up, but expect live results nearer the neighbours than
+the defaults' 2.87.
+
 ## How it works
 
 ```
