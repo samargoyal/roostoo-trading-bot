@@ -658,6 +658,29 @@ models were screened, and nine strategy designs built from the ones that passed 
 through the six folds. None beat the current bot, so it is unchanged: signals that predict the
 average coin a little were not what this strategy needed.
 
+### Round 16: tokenized stocks, tested on their shares' history
+
+Roostoo's 21 tokenized stocks have only been listed since June–July 2026, too little history to
+test anything on. Their shares have years of it, and the tokens track them closely: at the US
+close, a daily return correlation of 0.990–1.000, an average gap of about 0.1% and a daily
+tracking error of 0.07–0.35% (SPCX 0.79%) (`research/h25_stock_proxy.py`). So strategies were
+tested on the shares, fixed before running: **S1** holds each stock while its 50-day average is
+above its 200-day; **S2** rotates weekly into the 2 stocks with the best 3-month return while
+the basket is above its 200-day average (the crypto rotation's logic).
+
+On the shares, over 15 October-to-October years from 2011, the median composite was 2.53 for
+holding all 21 equally, 2.25 for S1, 2.17 for S2 and 1.90 for QQQ. As a 20% sleeve beside the
+crypto bot, S1 was better in 3 of the 6 crypto folds and S2 in 5 of 6 (median 4.04 against
+2.87, worst drawdown 38% against 42%), which meets the rule.
+
+But the 21 shares are the ones chosen for tokenization in 2026, after their big runs (NVDA,
+PLTR, MSTR, MU, SNDK), so a strategy that buys the hottest of them is bound to look good in
+hindsight, and S2's gain came mostly from the last two years. Run instead on the 40 largest US
+companies at the start of 2011, a list made without knowing what came next, S2 had a median
+composite of 0.50 against 2.14 for holding them all, and as a 20% sleeve it was better in only
+1 of 6 crypto folds (median 2.77). Its edge on the tokenized list is the list itself, so no
+stock sleeve was added.
+
 ## How it works
 
 ```
