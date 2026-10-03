@@ -21,6 +21,11 @@ exchange. Every number below is a field of StrategyConfig.
            drawdown is back under 2%.
   Core     5% of equity stays in PAXG at all times, so there is always a position
            to rebalance on quiet days (see the activity rule in planner.py).
+  Shorts   optional (short_exposure, off by default): short the 3 most volatile coins
+           whatever their trend, sized by inverse ATR, with a trailing stop 10 ATR above
+           the lowest close since entry. Low-volatility coins have tended to beat
+           high-volatility ones, so this sleeve earns the same effect from the other side
+           and hedges the long book (research H13).
 
 The baseline in the project brief used EMA 20/100, 24h/72h momentum and a 2.5 ATR
 stop, and also re-ranked held coins every hour. Backtests on two separate years
@@ -45,12 +50,22 @@ EXIT_TREND = "exit_trend"
 EXIT_STOP = "exit_stop"
 EXIT_REGIME = "exit_regime"
 HOLD_NO_DATA = "hold_no_data"
+SHORT_ENTRY = "short_entry"
+SHORT_HOLD = "short_hold"
+EXIT_SHORT_STOP = "exit_short_stop"
+EXIT_SHORT = "exit_short"
 
 
 @dataclass
 class PositionInfo:
     entry_ts: int         # ms; when the trend position was opened
     highest_close: float  # highest hourly close since entry, for the trailing stop
+
+
+@dataclass
+class ShortInfo:
+    entry_ts: int         # ms; when the short was opened
+    lowest_close: float   # lowest hourly close since entry, for the trailing stop
 
 
 @dataclass
@@ -61,6 +76,8 @@ class StrategyState:
     peak_equity: float = 0.0
     brake_on: bool = False
     last_fill_ts: int = 0
+    shorts: Dict[str, ShortInfo] = field(default_factory=dict)        # open short positions
+    short_cooldown_until: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -73,6 +90,8 @@ class StrategyState:
             peak_equity=float(data.get("peak_equity", 0.0)),
             brake_on=bool(data.get("brake_on", False)),
             last_fill_ts=int(data.get("last_fill_ts", 0)),
+            shorts={p: ShortInfo(**v) for p, v in data.get("shorts", {}).items()},
+            short_cooldown_until={p: int(v) for p, v in data.get("short_cooldown_until", {}).items()},
         )
 
 
@@ -192,6 +211,9 @@ class Strategy:
             targets[c.defensive_pair] += core
             reasons.setdefault(c.defensive_pair, CORE)
 
+        if c.short_exposure > 0 or state.shorts:
+            self._shorts(ts, signals, scores, weights, state, targets, reasons, set(keep + entries))
+
         return Decision(ts=ts, risk_on=risk_on, exposure_limit=exposure, drawdown=drawdown,
                         brake_on=state.brake_on, targets=targets, reasons=reasons, scores=scores)
 
@@ -221,6 +243,57 @@ class Strategy:
                     state.cooldown_until[pair] = ts + c.stop_cooldown_hours * HOUR_MS
         for pair in [p for p, until in state.cooldown_until.items() if until <= ts]:
             del state.cooldown_until[pair]
+
+        for pair in c.universe:
+            short = weights.get(pair, 0.0) < -c.min_position_weight
+            if short and pair not in state.shorts:
+                close = signals[pair].close if pair in signals else 0.0
+                state.shorts[pair] = ShortInfo(entry_ts=ts, lowest_close=close if close > 0 else 1e18)
+            elif not short and pair in state.shorts:
+                del state.shorts[pair]
+                if decision is not None and decision.reasons.get(pair) == EXIT_SHORT_STOP:
+                    state.short_cooldown_until[pair] = ts + c.stop_cooldown_hours * HOUR_MS
+        for pair in [p for p, until in state.short_cooldown_until.items() if until <= ts]:
+            del state.short_cooldown_until[pair]
+
+    def _shorts(self, ts: int, signals: Dict[str, Signal], scores: Dict[str, float],
+                weights: Dict[str, float], state: StrategyState, targets: Dict[str, float],
+                reasons: Dict[str, str], longs: set) -> None:
+        """Negative targets for the short sleeve: the most volatile coins, held until their stop."""
+        c = self.cfg
+        stopped = set()
+        for pair, info in state.shorts.items():
+            s = signals.get(pair)
+            if s is None:
+                continue
+            info.lowest_close = min(info.lowest_close, s.close)
+            if s.close > info.lowest_close + c.short_stop_atr_multiple * s.atr:
+                stopped.add(pair)
+                reasons[pair] = EXIT_SHORT_STOP
+        held = [p for p in state.shorts if p in signals and p not in stopped and p not in longs]
+        candidates = [p for p, s in signals.items()
+                      if p not in state.shorts and p not in longs and p != c.defensive_pair
+                      and s.rsi >= c.short_rsi_min and state.short_cooldown_until.get(p, 0) <= ts]
+        order = sorted(held + candidates, key=lambda p: scores[p])  # lowest score: most volatile
+        rank = {p: i for i, p in enumerate(order)}
+        limit = c.max_shorts if c.short_exposure > 0 else 0
+        keep = sorted(held, key=rank.get)[:limit]
+        for pair in order:
+            if len(keep) >= limit:
+                break
+            if pair not in keep:
+                keep.append(pair)
+        for pair in state.shorts:
+            if pair not in signals and pair not in longs:
+                targets[pair] = min(weights.get(pair, 0.0), 0.0)   # no data: leave it as it is
+                reasons[pair] = HOLD_NO_DATA
+            elif pair not in keep and pair not in stopped:
+                reasons[pair] = EXIT_SHORT
+        for pair, weight in self._size(keep, signals, c.short_exposure).items():
+            if state.brake_on:
+                weight *= c.brake_factor
+            targets[pair] = -weight
+            reasons[pair] = SHORT_HOLD if pair in state.shorts else SHORT_ENTRY
 
     def _can_enter(self, pair: str, s: Signal, ts: int, state: StrategyState) -> bool:
         c = self.cfg

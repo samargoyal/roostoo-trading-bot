@@ -4,6 +4,7 @@ import math
 from typing import Dict, List, Optional
 
 from bot.market_data import HOUR_MS, Bar, BinanceError
+from bot.roostoo import RoostooError
 
 NOW = 1_790_000_000_000 // HOUR_MS * HOUR_MS + 60_000  # a minute past an hour
 
@@ -24,6 +25,8 @@ class FakeExchange:
         self.amount_decimals = amount_decimals
         self.now = NOW
         self.placed: List[dict] = []
+        self.shorts: Dict[str, dict] = {}
+        self.short_calls: List[tuple] = []
 
     # clock
     def sync_clock(self) -> int:
@@ -73,6 +76,68 @@ class FakeExchange:
             self._lock(order, -1)
             self._fill(order, order["Price"], self.MAKER_FEE)
         return [copy.deepcopy(order)]
+
+    # shorts, following Roostoo's /v6 collateral rules
+    SHORT_FEE = 0.001
+
+    def short_open(self, pair, collateral, price=None) -> dict:
+        self.short_calls.append(("open", pair, collateral))
+        c = float(collateral)
+        bid = self.ticker()[pair]["MaxBid"]
+        qty = int(c / bid * 10 ** self.amount_decimals) / 10 ** self.amount_decimals
+        fee = qty * bid * self.SHORT_FEE
+        usd = self.wallet["USD"]
+        if usd["Free"] < c + fee:
+            raise RoostooError("POST /v6/short_open: insufficient balance")
+        usd["Free"] -= c + fee
+        usd["ShortCollateral"] = usd.get("ShortCollateral", 0.0) + c
+        old = self.shorts.get(pair)
+        if old:
+            total = old["ShortQty"] + qty
+            old["EntryPrice"] = (old["ShortQty"] * old["EntryPrice"] + qty * bid) / total
+            old["ShortQty"], old["Collateral"] = total, old["Collateral"] + c
+        else:
+            self.shorts[pair] = {"ID": self.next_id, "Pair": pair, "EntryPrice": bid, "ShortQty": qty,
+                                 "Collateral": c}
+            self.next_id += 1
+        pos = self.shorts[pair]
+        return {"Success": True, "ID": pos["ID"], "Pair": pair, "OrderType": "MARKET",
+                "EntryPrice": pos["EntryPrice"], "ShortQty": pos["ShortQty"],
+                "Collateral": pos["Collateral"], "OpenFee": fee, "Status": "OPEN"}
+
+    def short_close(self, pair, close_qty=None) -> dict:
+        self.short_calls.append(("close", pair, close_qty))
+        pos = self.shorts.get(pair)
+        if pos is None:
+            raise RoostooError("POST /v6/short_close: no open short position for this pair")
+        ask = self.ticker()[pair]["MinAsk"]
+        qty = pos["ShortQty"] if close_qty is None else min(float(close_qty), pos["ShortQty"])
+        share = qty / pos["ShortQty"]
+        pnl = qty * (pos["EntryPrice"] - ask)
+        fee = qty * ask * self.SHORT_FEE
+        returned = pos["Collateral"] * share + pnl - fee
+        self.wallet["USD"]["Free"] += returned
+        self.wallet["USD"]["ShortCollateral"] -= pos["Collateral"] * share
+        full = share >= 1 - 1e-12
+        if full:
+            del self.shorts[pair]
+        else:
+            pos["ShortQty"] -= qty
+            pos["Collateral"] *= 1 - share
+        out = {"Success": True, "ClosePrice": ask, "RealizedPNL": pnl, "CloseFee": fee,
+               "ReturnAmount": returned, "ClosedQty": qty, "FullyClosed": full}
+        if not full:
+            out.update(RemainingQty=pos["ShortQty"], RemainingCollateral=pos["Collateral"])
+        return out
+
+    def short_positions(self) -> List[dict]:
+        out = []
+        for pair, pos in self.shorts.items():
+            ask = self.ticker()[pair]["MinAsk"]
+            pnl = pos["ShortQty"] * (pos["EntryPrice"] - ask)
+            out.append(dict(pos, CurrentPrice=ask, UnrealizedPNL=pnl, PositionValue=pos["Collateral"] + pnl,
+                            PositionStatus="OPEN"))
+        return out
 
     def cancel_order(self, order_id=None, pair=None) -> List[int]:
         cancelled = []
@@ -126,13 +191,15 @@ class FakeBinance:
         return bars[-count:]
 
 
-def zigzag(end_ms: int, start_price: float, drift: float, hours: int = 1200) -> List[Bar]:
-    """Hourly bars alternating up and down around a drift, ending with the bar before end_ms."""
+def zigzag(end_ms: int, start_price: float, drift: float, hours: int = 1200,
+           swing: float = 1.0) -> List[Bar]:
+    """Hourly bars alternating up and down around a drift, ending with the bar before end_ms.
+    `swing` scales the up and down moves, so a larger value means a more volatile coin."""
     bars = []
     price = start_price
     first = end_ms // HOUR_MS * HOUR_MS - hours * HOUR_MS
     for i in range(hours):
-        step = (0.006 if i % 2 == 0 else -0.004) + drift
+        step = (0.006 if i % 2 == 0 else -0.004) * swing + drift
         new = price * math.exp(step)
         bars.append(Bar(first + i * HOUR_MS, price, max(price, new) * 1.001,
                         min(price, new) * 0.999, new, 1.0))

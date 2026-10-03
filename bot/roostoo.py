@@ -192,6 +192,30 @@ class RoostooClient:
         body = self._request("POST", "/v3/cancel_order", params, signed=True)
         return body.get("CanceledList") or []
 
+    # ---- shorts (/v6) ----------------------------------------------------------
+    # 1x shorts sized by the USD collateral they lock. Opening and closing each cost 0.1%.
+    # A field whose value is zero is left out of these responses: read it as 0.
+
+    def short_open(self, pair: str, collateral: str, price: Optional[str] = None) -> Dict[str, Any]:
+        """Open or add to a short; a market order fills at the best bid. Never retried."""
+        params: Dict[str, Any] = {"pair": pair, "collateral": collateral}
+        if price is not None:
+            params["order_type"] = "LIMIT"
+            params["price"] = price
+        return self._request("POST", "/v6/short_open", params, signed=True, retry=False)
+
+    def short_close(self, pair: str, close_qty: Optional[str] = None) -> Dict[str, Any]:
+        """Close part (close_qty) or all of a short at the best ask. Never retried."""
+        params: Dict[str, Any] = {"pair": pair}
+        if close_qty is not None:
+            params["close_qty"] = close_qty
+        return self._request("POST", "/v6/short_close", params, signed=True, retry=False)
+
+    def short_positions(self) -> List[Dict[str, Any]]:
+        """Open shorts: Pair, EntryPrice, ShortQty, Collateral, CurrentPrice, UnrealizedPNL, PositionValue."""
+        body = self._request("GET", "/v6/short_positions", signed=True)
+        return body.get("Positions") or []
+
     # ---- transport -----------------------------------------------------------
 
     def _request(self, method: str, path: str, params: Optional[Dict[str, Any]] = None,

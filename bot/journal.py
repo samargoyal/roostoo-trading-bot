@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 
 ORDER_FIELDS = ["time", "pair", "side", "type", "order_id", "status", "role", "quantity",
                 "limit_price", "filled", "avg_price", "fee", "fee_coin", "reason",
-                "current_weight", "target_weight", "error"]
+                "current_weight", "target_weight", "error", "collateral", "realized_pnl"]
 EQUITY_FIELDS = ["time", "equity", "cash", "invested", "drawdown", "peak_equity", "risk_on",
                  "brake_on", "positions"]
 

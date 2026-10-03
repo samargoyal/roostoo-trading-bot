@@ -27,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 from bot.config import Config, load_config
 from bot.market_data import HOUR_MS, Bar, BinanceClient, load_history
 from bot.metrics import summarize
-from bot.planner import SELL, plan_trades
+from bot.planner import BUY, SELL, SHORT, plan_trades
 from bot.roostoo import RoostooClient
 from bot.strategy import Strategy, StrategyState
 from bot.universe import fetch_candidates, select_universe
@@ -58,18 +58,44 @@ class Result:
     stats: Dict[str, float] = field(default_factory=dict)
 
 
+@dataclass
+class ShortPosition:
+    """A short as Roostoo keeps it: quantity, average entry price and locked USD collateral."""
+    qty: float
+    entry: float
+    collateral: float
+
+    def value(self, price: float) -> float:
+        """What closing it would return before the fee: collateral plus profit or loss."""
+        return self.collateral + self.qty * (self.entry - price)
+
+
 def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms: int,
                  fee: float, slippage: float, name: str = "strategy") -> Result:
-    """Replay the strategy hour by hour from start_ms. Bars before start_ms only warm up indicators."""
+    """Replay the strategy hour by hour from start_ms. Bars before start_ms only warm up indicators.
+
+    Shorts follow Roostoo's rules: opening locks the USD collateral (quantity = collateral /
+    price) plus a 0.1% fee out of free cash; closing returns the collateral plus the profit or
+    loss, less 0.1% of the closed value. The short fee is the same for limit and market orders.
+    """
     strategy = Strategy(cfg.strategy)
     state = StrategyState()
     cash = cfg.backtest.initial_cash
+    short_fee = cfg.backtest.short_fee
     holdings: Dict[str, float] = {}
+    shorts: Dict[str, ShortPosition] = {}
     closes: Dict[str, float] = {}
     by_ts: Dict[int, List[Tuple[str, Bar]]] = {}
     for pair, series in bars.items():
         for bar in series:
             by_ts.setdefault(bar.ts, []).append((pair, bar))
+
+    def mark() -> Tuple[float, Dict[str, float]]:
+        values = {p: q * closes[p] for p, q in holdings.items()}
+        equity = cash + sum(values.values()) + sum(sp.value(closes[p]) for p, sp in shorts.items())
+        for p, sp in shorts.items():
+            values[p] = values.get(p, 0.0) - sp.qty * closes[p]
+        return equity, values
 
     curve: List[Tuple[int, float]] = []
     trades: List[Trade] = []
@@ -85,8 +111,8 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
             continue
         now = ts + HOUR_MS  # the decision is made when this bar closes
 
-        equity = cash + sum(q * closes[p] for p, q in holdings.items())
-        weights = {p: q * closes[p] / equity for p, q in holdings.items()}
+        equity, values = mark()
+        weights = {p: v / equity for p, v in values.items()}
         decision = strategy.decide(now, equity, weights, state)
         planned = plan_trades(decision, weights, equity, now, state.last_fill_ts,
                               cfg.execution, cfg.strategy.min_position_weight)
@@ -104,7 +130,7 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
                 paid = proceeds * fee
                 cash += proceeds - paid
                 holdings[t.pair] = held - quantity
-            else:
+            elif t.side == BUY:
                 spend = min(t.usd, cash / (1.0 + fee))
                 if spend < cfg.execution.min_trade_usd:
                     continue
@@ -113,17 +139,47 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
                 paid = spend * fee
                 cash -= spend + paid
                 holdings[t.pair] = holdings.get(t.pair, 0.0) + quantity
+            elif t.side == SHORT:
+                collateral = min(t.usd, cash / (1.0 + short_fee))
+                if collateral < cfg.execution.min_trade_usd:
+                    continue
+                fill = price * (1.0 - slippage)       # a market short fills at the bid
+                quantity = collateral / fill
+                paid = collateral * short_fee
+                cash -= collateral + paid
+                old = shorts.get(t.pair)
+                if old is None:
+                    shorts[t.pair] = ShortPosition(quantity, fill, collateral)
+                else:
+                    total = old.qty + quantity
+                    shorts[t.pair] = ShortPosition(total, (old.qty * old.entry + quantity * fill) / total,
+                                                   old.collateral + collateral)
+            else:  # COVER
+                position = shorts.get(t.pair)
+                if position is None:
+                    continue
+                fill = price * (1.0 + slippage)       # a cover buys back at the ask
+                quantity = position.qty if t.close_position else min(position.qty, t.usd / fill)
+                if quantity <= 0:
+                    continue
+                share = quantity / position.qty
+                pnl = max(quantity * (position.entry - fill), -position.collateral * share)
+                paid = quantity * fill * short_fee
+                cash += position.collateral * share + pnl - paid
+                if share >= 1.0 - 1e-12:
+                    del shorts[t.pair]
+                else:
+                    shorts[t.pair] = ShortPosition(position.qty - quantity, position.entry,
+                                                   position.collateral * (1 - share))
             trades.append(Trade(now, t.pair, t.side, quantity, fill, paid, t.reason))
             state.last_fill_ts = now
 
         holdings = {p: q for p, q in holdings.items() if q > 1e-12}
-        invested = sum(q * closes[p] for p, q in holdings.items())
-        equity = cash + invested
-        strategy.reconcile(now, {p: q * closes[p] / equity for p, q in holdings.items()},
-                           decision, state)
+        equity, values = mark()
+        strategy.reconcile(now, {p: v / equity for p, v in values.items()}, decision, state)
         curve.append((now, equity))
         risk_on_hours += decision.risk_on
-        exposure_sum += invested / equity
+        exposure_sum += sum(abs(v) for v in values.values()) / equity
 
     stats = summarize(curve, cfg.backtest.initial_cash, [(t.ts, t.notional) for t in trades])
     if curve:

@@ -72,9 +72,13 @@ class PriceSampler:
                 if h + HOUR_MS <= now_ms and (after_ts is None or h > after_ts)]
 
 
-def portfolio_value(wallet: Dict[str, Dict[str, float]], quotes: Dict[str, Dict[str, float]]
-                    ) -> Tuple[float, float, Dict[str, float]]:
-    """Equity, cash and the USD value of each coin held, marked at the last price."""
+def portfolio_value(wallet: Dict[str, Dict[str, float]], quotes: Dict[str, Dict[str, float]],
+                    shorts: Sequence[Dict[str, float]] = ()) -> Tuple[float, float, Dict[str, float]]:
+    """Equity, cash and the signed USD exposure of each position, marked at the last price.
+
+    A short counts towards equity by what closing it would return: its collateral plus its
+    unrealised profit or loss. Its exposure is negative: -quantity x price.
+    """
     usd = wallet.get("USD", {})
     cash = float(usd.get("Free") or 0.0) + float(usd.get("Lock") or 0.0)
     values = {}
@@ -89,7 +93,18 @@ def portfolio_value(wallet: Dict[str, Dict[str, float]], quotes: Dict[str, Dict[
             log.warning("no price for %s, leaving it out of equity", coin)
             continue
         values[coin + "/USD"] = amount * float(quote["LastPrice"])
-    return cash + sum(values.values()), cash, values
+    equity = cash + sum(values.values())
+    for position in shorts:
+        pair, qty = position.get("Pair"), float(position.get("ShortQty") or 0.0)
+        quote = quotes.get(pair)
+        if not pair or qty <= 0 or not quote:
+            continue
+        price = float(quote["LastPrice"])
+        entry = float(position.get("EntryPrice") or 0.0)
+        collateral = float(position.get("Collateral") or 0.0)
+        equity += collateral + qty * (entry - price)
+        values[pair] = values.get(pair, 0.0) - qty * price
+    return equity, cash, values
 
 
 class LiveBot:
@@ -174,7 +189,7 @@ class LiveBot:
 
         quotes = self.client.ticker()
         self.sampler.add(quotes, started)
-        equity, cash, values = portfolio_value(self.client.balance(), quotes)
+        equity, cash, values = portfolio_value(self.client.balance(), quotes, self._shorts())
         weights = {p: v / equity for p, v in values.items()} if equity > 0 else {}
 
         now = self.client.now_ms()
@@ -188,12 +203,18 @@ class LiveBot:
             self.state.last_fill_ts = self.client.now_ms()
         if results and not self.dry_run:
             quotes = self.client.ticker()
-            equity, cash, values = portfolio_value(self.client.balance(), quotes)
+            equity, cash, values = portfolio_value(self.client.balance(), quotes, self._shorts())
             weights = {p: v / equity for p, v in values.items()} if equity > 0 else {}
 
         strategy.reconcile(now, weights, decision, self.state)
         self._record_equity(equity, cash, values, decision)
         self.store.save(self.state)
+
+    def _shorts(self) -> List[Dict[str, float]]:
+        """Open shorts, read only when the sleeve is on or the state remembers a short."""
+        if self.cfg.strategy.short_exposure <= 0 and not self.state.shorts:
+            return []
+        return self.client.short_positions()
 
     def _bars(self, pair: str, now_ms: int) -> List[Bar]:
         try:
@@ -249,7 +270,7 @@ class LiveBot:
         self.journal.equity({
             "equity": round(equity, 2),
             "cash": round(cash, 2),
-            "invested": round(sum(values.values()), 2),
+            "invested": round(sum(abs(v) for v in values.values()), 2),
             "drawdown": round(1.0 - equity / peak, 5) if peak > 0 else 0.0,
             "peak_equity": round(peak, 2),
             "risk_on": decision.risk_on,

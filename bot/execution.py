@@ -6,6 +6,10 @@ first rests as a limit order at the touch (the best bid for a buy, the best ask 
 a sell) to pay the 0.05% maker fee. Whatever has not filled after limit_timeout_sec
 is cancelled and sent as a market order (0.1% taker fee). Stop-loss exits go
 straight to market.
+
+Shorts use Roostoo's /v6 endpoints and always trade at market, since the 0.1% fee is the
+same for limit orders: a new short locks its USD collateral (shared with buys out of free
+cash), and a cover closes part or all of the position at the best ask.
 """
 import logging
 import time
@@ -14,7 +18,7 @@ from decimal import ROUND_DOWN, ROUND_UP, Decimal
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from bot.config import ExecutionConfig
-from bot.planner import BUY, SELL, PlannedTrade
+from bot.planner import BUY, COVER, SELL, SHORT, PlannedTrade
 from bot.roostoo import RoostooClient, RoostooError
 from bot.strategy import EXIT_STOP
 
@@ -22,6 +26,9 @@ log = logging.getLogger(__name__)
 
 LIMIT = "LIMIT"
 MARKET = "MARKET"
+SHORT_OPEN = "SHORT_OPEN"
+SHORT_CLOSE = "SHORT_CLOSE"
+SHORT_FEE = 0.001
 DRY_RUN = "DRY_RUN"
 ERROR = "ERROR"
 FINAL_STATUSES = {"FILLED", "CANCELED", "CANCELLED", "REJECTED", "EXPIRED", DRY_RUN, ERROR}
@@ -71,6 +78,26 @@ class OrderResult:
     fee: float = 0.0
     fee_coin: str = ""
     error: str = ""
+    collateral: Optional[Decimal] = None   # USD locked by a new short
+    realized_pnl: float = 0.0               # profit or loss settled by a cover
+
+    def update_short(self, detail: Dict[str, Any]) -> None:
+        """Fill details from a /v6 short_open or short_close response."""
+        self.order_id = detail.get("ID", self.order_id)
+        self.role = "TAKER"
+        self.fee_coin = "USD"
+        if self.order_type == SHORT_CLOSE:
+            self.status = "FILLED"
+            self.filled = float(detail.get("ClosedQty") or 0.0)
+            self.avg_price = float(detail.get("ClosePrice") or 0.0)
+            self.fee = float(detail.get("CloseFee") or 0.0)
+            self.realized_pnl = float(detail.get("RealizedPNL") or 0.0)
+        else:
+            # After adding to a short, ShortQty is the whole position, so record this order's size.
+            self.status = str(detail.get("Status") or "OPEN")
+            self.filled = float(self.quantity) if self.status == "OPEN" else 0.0
+            self.avg_price = float(detail.get("EntryPrice") or 0.0)
+            self.fee = float(detail.get("OpenFee") or 0.0)
 
     def update(self, detail: Dict[str, Any]) -> None:
         self.order_id = detail.get("OrderID", self.order_id)
@@ -95,6 +122,8 @@ class OrderResult:
             "fee_coin": self.fee_coin, "reason": t.reason,
             "current_weight": round(t.current_weight, 5), "target_weight": round(t.target_weight, 5),
             "error": self.error,
+            "collateral": to_str(self.collateral) if self.collateral is not None else "",
+            "realized_pnl": self.realized_pnl if self.order_type == SHORT_CLOSE else "",
         }
 
 
@@ -113,14 +142,22 @@ class Executor:
 
     def execute(self, trades: List[PlannedTrade],
                 quotes: Dict[str, Dict[str, float]]) -> List[OrderResult]:
-        """Sells first, then buys sized to the cash actually available."""
+        """Sells and covers first, then buys and new shorts sized to the cash actually free."""
         results: List[OrderResult] = []
         sells = [t for t in trades if t.side == SELL]
+        covers = [t for t in trades if t.side == COVER]
         buys = [t for t in trades if t.side == BUY]
+        shorts = [t for t in trades if t.side == SHORT]
         if sells:
             results += self._run(self._size_sells(sells, quotes, self.client.balance()), quotes)
-        if buys:
-            results += self._run(self._size_buys(buys, quotes, self.client.balance()), quotes)
+        if covers:
+            results += self._cover(covers, quotes)
+        if buys or shorts:
+            scale = self._cash_scale(buys + shorts, quotes, self.client.balance())
+            if buys:
+                results += self._run(self._size_buys(buys, quotes, scale), quotes)
+            if shorts:
+                results += self._open_shorts(shorts, quotes, scale)
         return results
 
     # ---- sizing --------------------------------------------------------------
@@ -141,15 +178,21 @@ class Executor:
                 sized.append((t, quantity))
         return sized
 
-    def _size_buys(self, trades: List[PlannedTrade], quotes: Dict[str, Dict[str, float]],
-                   wallet: Dict[str, Dict[str, float]]) -> List[Tuple[PlannedTrade, Decimal]]:
+    def _cash_scale(self, trades: List[PlannedTrade], quotes: Dict[str, Dict[str, float]],
+                    wallet: Dict[str, Dict[str, float]]) -> float:
+        """Fraction of the planned buys and new shorts that free cash can pay for."""
         usable = [t for t in trades if t.pair in self.rules and t.pair in quotes]
         cash = float(wallet.get("USD", {}).get("Free") or 0.0) * (1.0 - self.cfg.cash_buffer)
-        wanted = sum(t.usd for t in usable)
+        wanted = sum(t.usd * (1.0 + SHORT_FEE if t.side == SHORT else 1.0) for t in usable)
         scale = min(1.0, cash / wanted) if wanted > 0 else 0.0
         if scale < 1.0:
-            log.warning("free cash %.2f covers %.0f%% of planned buys; scaling them down",
+            log.warning("free cash %.2f covers %.0f%% of planned buys and shorts; scaling them down",
                         cash, scale * 100)
+        return scale
+
+    def _size_buys(self, trades: List[PlannedTrade], quotes: Dict[str, Dict[str, float]],
+                   scale: float) -> List[Tuple[PlannedTrade, Decimal]]:
+        usable = [t for t in trades if t.pair in self.rules and t.pair in quotes]
         sized = []
         for t in usable:
             rules = self.rules[t.pair]
@@ -208,6 +251,69 @@ class Executor:
                     market = self._place(order.trade, MARKET, remainder)
                     self.on_order(market)
                     results.append(market)
+        return results
+
+    def _open_shorts(self, trades: List[PlannedTrade], quotes: Dict[str, Dict[str, float]],
+                     scale: float) -> List[OrderResult]:
+        results = []
+        for t in trades:
+            rules, quote = self.rules.get(t.pair), quotes.get(t.pair)
+            if rules is None or quote is None:
+                log.warning("skipping SHORT %s: no trading rules or price", t.pair)
+                continue
+            bid = float(quote["MaxBid"])
+            collateral = round_down(t.usd * scale, 2)
+            quantity = round_down(float(collateral) / bid, rules.amount_decimals)
+            if not self._large_enough(t, quantity, bid, rules):
+                continue
+            order = OrderResult(t, SHORT_OPEN, quantity, collateral=collateral)
+            log.info("%s SHORT %s %s with %s USD collateral (%s)", "would open" if self.dry_run else "opening",
+                     to_str(quantity), t.pair, to_str(collateral), t.reason)
+            if self.dry_run:
+                order.status = DRY_RUN
+            else:
+                try:
+                    order.update_short(self.client.short_open(t.pair, to_str(collateral)))
+                except RoostooError as exc:
+                    order.status, order.error = ERROR, str(exc)
+                    log.error("short failed: %s: %s", t.pair, exc)
+            self.on_order(order)
+            results.append(order)
+        return results
+
+    def _cover(self, trades: List[PlannedTrade], quotes: Dict[str, Dict[str, float]]) -> List[OrderResult]:
+        try:
+            positions = {p.get("Pair"): p for p in self.client.short_positions()}
+        except RoostooError as exc:
+            log.error("could not read short positions, skipping covers: %s", exc)
+            return []
+        results = []
+        for t in trades:
+            rules, quote, position = self.rules.get(t.pair), quotes.get(t.pair), positions.get(t.pair)
+            if rules is None or quote is None or position is None:
+                log.warning("skipping COVER %s: no trading rules, price or open short", t.pair)
+                continue
+            held = float(position.get("ShortQty") or 0.0)
+            ask = float(quote["MinAsk"])
+            wanted = held if t.close_position else min(held, t.usd / ask)
+            quantity = round_down(wanted, rules.amount_decimals)
+            if quantity <= 0 or float(quantity) * ask < rules.min_order_value:
+                log.info("skipping COVER %s: %s units is below the exchange minimum", t.pair, to_str(quantity))
+                continue
+            order = OrderResult(t, SHORT_CLOSE, quantity)
+            log.info("%s COVER %s %s (%s)", "would close" if self.dry_run else "closing",
+                     "all" if t.close_position else to_str(quantity), t.pair, t.reason)
+            if self.dry_run:
+                order.status = DRY_RUN
+            else:
+                try:
+                    order.update_short(self.client.short_close(
+                        t.pair, None if t.close_position else to_str(quantity)))
+                except RoostooError as exc:
+                    order.status, order.error = ERROR, str(exc)
+                    log.error("cover failed: %s: %s", t.pair, exc)
+            self.on_order(order)
+            results.append(order)
         return results
 
     @staticmethod

@@ -69,6 +69,16 @@ class StrategyConfig:
     # A holding below this fraction of equity counts as no position.
     min_position_weight: float = 0.005
 
+    # Short sleeve, betting against beta: short the most volatile coins in the universe,
+    # whatever their trend, sized by inverse ATR. 0 switches it off. Research (H13) found
+    # 10-20% with an 8-12 ATR stop worked in both years and in the rally that followed;
+    # 0.15 with a 10 ATR stop is the centre of that range. Off by default until Roostoo's
+    # /v6 short endpoints have been tried on the testing account.
+    short_exposure: float = 0.0
+    max_shorts: int = 3
+    short_rsi_min: float = 30.0          # no new shorts into oversold coins
+    short_stop_atr_multiple: float = 10.0  # cover above the lowest close since entry plus this many ATRs
+
 
 @dataclass
 class UniverseConfig:
@@ -124,6 +134,7 @@ class BacktestConfig:
     taker_fee: float = 0.001
     maker_fee: float = 0.0005
     taker_slippage: float = 0.0002      # half-spread paid by a market order
+    short_fee: float = 0.001            # Roostoo charges 0.1% to open and to close a short
     warmup_bars: int = 1000
     data_dir: str = "data"
     # Choose the universe with the universe rule as of the start of the test window, using
