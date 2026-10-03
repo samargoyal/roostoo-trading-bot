@@ -17,10 +17,20 @@ strategy, and every order, decision and hourly equity point is recorded.
 
 ## Strategy
 
-Long-only trend following on hourly bars over the 20 most traded crypto pairs on Roostoo,
-plus PAXG (gold-backed) as a defensive asset. The goal is a steady, positive return with
-shallow drawdowns, because the competition ranks on return and then scores
-`0.4 x Sortino + 0.3 x Sharpe + 0.3 x Calmar`.
+Two books share the account, trading the 20 most traded crypto pairs on Roostoo plus PAXG
+(gold-backed):
+
+- **Momentum rotation, 40% of equity.** Holds the 2 coins with the strongest positive
+  2-week return, re-chosen daily at 00:00 UTC, while BTC's 168-hour EMA is above its
+  672-hour EMA, and leaves at once when it is not. This is the return engine.
+- **Defensive trend book, 60% of equity.** Low-volatility coins in uptrends, with a market
+  regime filter, trailing stops and a drawdown brake. This is the risk engine.
+
+The two books' daily returns are barely correlated (0.18), so together they keep most of the
+rotation's upside with a much smaller drawdown. The competition ranks on return and then
+scores `0.4 x Sortino + 0.3 x Sharpe + 0.3 x Calmar`.
+
+The defensive book's rules:
 
 | Rule | Detail |
 |---|---|
@@ -30,9 +40,9 @@ shallow drawdowns, because the competition ranks on return and then scores
 | Entry timing | No new entry while RSI(14) is above 70, or within 24 hours of a stop-loss exit on that coin. |
 | Sizing | Weights proportional to `price / ATR(14)`, so each position carries similar risk, scaled to the exposure limit and capped at 15% per coin. |
 | Exits | The 50-hour EMA falls below the 200-hour EMA, or the close drops 8 ATR below the highest close since entry. A held coin is never sold just for ranking lower. |
-| Drawdown brake | At 4% below peak equity, trend positions are halved until the drawdown is back under 2%. |
+| Drawdown brake | At 4% below its peak, the defensive book's trend positions are halved until it is back within 2%. The brake follows the defensive book's own value (tracked in the saved state), so swings in the rotation book do not trigger it. |
 | PAXG core | 5% of equity stays in PAXG at all times. |
-| Short sleeve | Optional, off by default: short the 3 most volatile coins (15% of equity in total, inverse-ATR sizing) with a trailing stop 10 ATR above the lowest close since entry. |
+| Short sleeve | Optional, off by default: short the 3 most volatile coins (15% of the defensive book, inverse-ATR sizing) with a trailing stop 10 ATR above the lowest close since entry. Never shorts PAXG or a coin either book holds. |
 | Activity rule | The competition requires trades on at least 8 days. If nothing has filled in the current 8-hour UTC block and less than 2 hours of it remain, the position furthest from its target is rebalanced. This guarantees at least 2 trades in every calendar day, whatever time zone is used. |
 
 Trades are only placed when a holding is more than 4% of equity away from its target
@@ -93,12 +103,17 @@ other stop widths did no better in both years; three risk-off positions did.
 
 ### Known weaknesses
 
+- **It does not reliably beat holding BTC in a strong bull year.** On October 2023 to October
+  2024, a year no research had used, it made 39% while BTC made 135%, with a larger
+  drawdown (41% against 32%). In both bull years tested, BTC was the best broad asset, and
+  with at most 1x exposure nothing beats holding the best asset except perfect timing.
+- It beat holding BTC over the full three years (+275% against +208%) because it lost far
+  less in the falling year, but the 2024–2026 results were the period the strategy was
+  developed on, so they flatter it.
+- The rotation book alone draws down 60–70%; the blend relies on the defensive book and the
+  low correlation between them.
 - Over any 14-day window (the length of the competition) the median backtest return is
-  close to zero: 46% of windows were positive in the falling year and 61% in the rising
-  one. The worst 14-day loss was 6.6%.
-- It gives up upside in strong bull markets. Average exposure is only about 22–25%, so from
-  October 2024 to October 2025 it made 37% while simply holding BTC made 80% (though with
-  a 31% drawdown against the bot's 13%).
+  close to zero; the worst 14-day loss was about 17%.
 - Results move by several points with small changes to the coin list, so treat any single
   backtest figure as rough.
 - The coins are highly correlated, so several positions can behave like one.
@@ -240,8 +255,36 @@ In the bot's own backtester, with Roostoo's collateral rules and market-order fe
 | Two years | +54.9% | **+66.5%** | +31.4% |
 
 The sleeve ships switched off (`short_exposure = 0`) because Roostoo's `/v6` short endpoints
-have not yet been tried on the testing account. Turn it on with
-`--config config/shorts.json` once they have.
+have not yet been tried on the testing account, and because on October 2023 to October 2024,
+which no research had used, the defensive book with the sleeve lost 10.6% as volatile coins
+squeezed higher. Turn it on with `--config config/shorts.json` once the endpoints are tried.
+
+### Beating buy-and-hold
+
+The strategies above beat holding BTC in falling markets but not in rallies: the bot was
+on average only 22–35% invested. A third round asked what could beat holding BTC outright.
+
+**H14. Trend timing on BTC** (`research/h14_trend.py`). Twenty-one rules (EMA crossovers,
+price against an EMA, time-series momentum, breakouts), long/flat and long/short, at full
+exposure. Every rule beat holding in the falling year; none beat it in the rising year. The
+best, a 168/672-hour EMA crossover, kept 65% of BTC's 80% (and 115% of its 135% in
+2023–24) with smaller drawdowns.
+
+**H15. Dual momentum rotation** (`research/h15_rotation.py`). Hold the top 1–5 coins by return
+over 3–30 days, if positive, rebalanced daily or weekly, with or without the BTC slow-trend
+filter: 64 settings. Nine beat holding BTC in all three development periods, all with a
+2- to 4-week lookback and the trend filter, but with drawdowns of 50–70%. Stops, inverse-
+volatility weights and a drawdown brake cut the drawdowns only by cutting the returns
+below BTC's; leaving at once when the trend filter fails helped.
+
+**H16. A blend of books** (`research/h16_blend.py`). Rotation and the defensive book have a
+daily-return correlation of 0.18. With fixed shares rebalanced daily, 40% rotation and 60%
+defensive beat holding BTC in all three development periods, with a smaller drawdown than
+BTC in the two big ones. In the bot's own backtester this needed two more fixes: the coin
+list refreshed monthly (a list frozen on day one cost the rotation 36 points in 2024–25), and
+the brake following the defensive book's own value rather than the whole account's.
+Rotation became the default at 40%, chosen before the October 2023 to October 2024 check,
+where it did not beat holding BTC (see [Known weaknesses](#known-weaknesses)).
 
 ## How it works
 
@@ -266,7 +309,7 @@ tests/             unit tests, plus end-to-end runs against a simulated exchange
 
 Every hour, a minute after the candle closes, the live bot:
 
-1. Fetches the last 1000 closed hourly candles per pair from Binance and rebuilds the
+1. Fetches the last 2500 closed hourly candles per pair from Binance and rebuilds the
    indicators. Roostoo has no history endpoint, but its prices are streamed from Binance.
    If Binance is unreachable, it uses its cached candles plus hourly bars built from
    Roostoo ticker samples taken every 5 minutes.
@@ -300,31 +343,19 @@ order as a taker (0.1% fee plus 0.02% slippage) and every order as a maker (0.05
 costs fall between the two. The coins are chosen by the volume rule as of the first day of
 the window (`--fixed-universe` tests the configured list instead).
 
-$100,000 starting cash. "Basket" holds the same 20 coins plus PAXG in equal weights.
+$100,000 starting cash, market-order fees, the coin list refreshed by the volume rule on the
+first day of every month. October 2023 to October 2024 was never used during development.
 
-| Oct 2025 – Oct 2026 (falling market) | Taker | Maker | Hold BTC | Hold basket |
+| | Oct 2023 – Oct 2024 | Oct 2024 – Oct 2025 | Oct 2025 – Oct 2026 | Three years |
 |---|---|---|---|---|
-| Total return | 12.9% | 19.9% | -26.8% | -34.5% |
-| Max drawdown | 12.3% | 10.3% | 53.7% | 64.9% |
-| Sharpe | 0.98 | 1.34 | -0.46 | -0.42 |
-| Sortino | 1.64 | 2.46 | -0.66 | -0.58 |
-| Calmar | 1.05 | 1.92 | -0.50 | -0.53 |
-| Composite score | 1.26 | 1.96 | -0.55 | -0.52 |
-| 14-day windows: median return / worst | -0.1% / -4.2% | 0.0% / -4.1% | | |
+| **Bot (40% rotation + 60% defensive)** | +39.1%, drawdown 40.9% | **+89.0%**, 32.5% | **+42.7%**, 23.8% | **+275%** |
+| Bot with the short sleeve on | +34.4%, 39.6% | +89.4%, 30.6% | +64.5%, 17.8% | +319% |
+| Defensive book alone | +2.4%, 13.1% | +37.2%, 12.7% | +12.9%, 12.3% | +59% |
+| Hold BTC | **+134.6%**, 32.3% | +79.5%, 30.9% | -26.8%, 53.7% | +208% |
+| Hold the 20 coins and PAXG equally | +128.4%, 62.5% | +38.2%, 61.2% | -34.5%, 64.9% | +88% |
 
-| Oct 2024 – Oct 2025 (rising market) | Taker | Maker | Hold BTC | Hold basket |
-|---|---|---|---|---|
-| Total return | 37.2% | 47.6% | 79.5% | 38.2% |
-| Max drawdown | 12.7% | 11.5% | 30.9% | 61.2% |
-| Sharpe | 2.16 | 2.55 | 1.58 | 0.81 |
-| Sortino | 4.09 | 4.90 | 2.54 | 1.19 |
-| Calmar | 2.92 | 4.16 | 2.57 | 0.62 |
-| Composite score | 3.16 | 3.97 | 2.26 | 0.90 |
-| 14-day windows: median return / worst | +0.5% / -6.6% | +0.8% / -6.1% | | |
-
-The bot traded about 5 times a day, with at least 3 trades on every day, and was on
-average 22–25% invested. With the earlier momentum ranking the same backtests returned
-1.8% and 43.2%, with drawdowns of 15.0% and 14.5%.
+Composite scores: 1.26, 2.63 and 1.78 for the bot in the three years, against 3.07, 2.26 and
+-0.55 for holding BTC. With limit-order (maker) fees the bot made 48.7%, 101.4% and 49.8%.
 
 Sharpe and Sortino use daily returns annualised over 365 days; Calmar is annualised
 return over maximum drawdown. The organisers have not published their exact conventions.
