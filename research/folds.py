@@ -106,6 +106,15 @@ ROUND_9 = [
     ("trend filter 336h/1344h", {"strategy": {"rotation_trend_fast": 336, "rotation_trend_slow": 1344}}),
     ("+ 15% short sleeve", {"strategy": {"short_exposure": 0.15}}),
 ]
+# Round 13: the three signals that passed the H20 screen (estimated spread, Kalman trend, and
+# Amihud illiquidity, which repeats the spread's information), used in the two rankings. Fixed
+# after the screen and before any fold run; same rule.
+ROUND_13 = [
+    ("incumbent", {}),
+    ("C1 book: low vol + narrow spread + Kalman trend", {"strategy": {"ranking": "composite"}}),
+    ("K1 rotation ranked by Kalman trend strength", {"strategy": {"rotation_ranking": "kalman"}}),
+    ("C1 + K1", {"strategy": {"ranking": "composite", "rotation_ranking": "kalman"}}),
+]
 # Round 8: tail-risk control of the rotation sleeve. Same rule.
 CVAR = [
     ("C0 current", {}),
@@ -188,6 +197,8 @@ def main() -> None:
         designs = ROUNDS_7_8
     elif "--round9" in sys.argv:
         designs = ROUND_9
+    elif "--round13" in sys.argv:
+        designs = ROUND_13
     elif "--rotation-weighting" in sys.argv:
         designs = ROTATION_WEIGHTING
     elif "--all" in sys.argv:

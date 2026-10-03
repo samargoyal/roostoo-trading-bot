@@ -6,3 +6,4 @@ cvxpy>=1.4
 arch>=7.0
 hmmlearn>=0.3
 statsmodels>=0.14
+torch>=2.0  # research/h21_learning.py only; CPU build: pip install torch --index-url https://download.pytorch.org/whl/cpu

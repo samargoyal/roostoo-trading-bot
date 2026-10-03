@@ -81,6 +81,35 @@ class RankingTest(unittest.TestCase):
         d = strategy.decide(0, 1.0, {}, StrategyState())
         self.assertEqual([p for p, r in d.reasons.items() if r == ENTRY], ["ETH/USD"])
 
+    def test_composite_ranking_adds_spread_and_kalman_trend_to_low_volatility(self):
+        from bot.indicators import Signal as S
+        def make(vol, spread, trend):
+            return S(0, 110.0, 105.0, 100.0, 90.0, 1.0, 50.0, 0.02, 0.05, vol,
+                     trend_strength=trend, spread=spread)
+        signals = {"BTC/USD": make(0.010, 0.0030, 0.0),     # calmest, but wide spread, no trend
+                   "ETH/USD": make(0.012, 0.0005, 3.0),     # a little busier, tight and trending
+                   "SOL/USD": make(0.030, 0.0040, -1.0)}
+        low_vol = make_strategy(signals, max_positions_risk_on=1, core_weight=0.0)
+        composite = make_strategy(signals, max_positions_risk_on=1, core_weight=0.0, ranking="composite")
+        pick = lambda d: [p for p, r in d.reasons.items() if r == ENTRY]
+        self.assertEqual(pick(low_vol.decide(0, 1.0, {}, StrategyState())), ["BTC/USD"])
+        self.assertEqual(pick(composite.decide(0, 1.0, {}, StrategyState())), ["ETH/USD"])
+
+    def test_external_scores_are_used_only_once_their_day_has_closed(self):
+        day = 24 * HOUR_MS
+        signals = {"BTC/USD": sig(vol=0.01), "ETH/USD": sig(vol=0.02), "PAXG/USD": sig(vol=0.001)}
+        strategy = make_strategy(signals, max_positions_risk_on=2, core_weight=0.0, ranking="external")
+        strategy.external_scores = {9 * day: {"BTC/USD": 1.0, "ETH/USD": 2.0},
+                                    10 * day: {"BTC/USD": 2.0, "ETH/USD": 1.0}}
+        at = lambda ts: strategy._scores(signals, ts)
+        # The 00:00 bar of day 10 closes at 01:00: until then, day 9's scores apply.
+        self.assertGreater(at(10 * day)["ETH/USD"], at(10 * day)["BTC/USD"])
+        self.assertGreater(at(10 * day + HOUR_MS)["BTC/USD"], at(10 * day + HOUR_MS)["ETH/USD"])
+        self.assertGreater(at(10 * day + HOUR_MS)["PAXG/USD"], 2.0)    # the defensive pair stays first
+        entries = [p for p, r in strategy.decide(10 * day + HOUR_MS, 1.0, {}, StrategyState()).reasons.items()
+                   if r == ENTRY]
+        self.assertEqual(sorted(entries), ["BTC/USD", "PAXG/USD"])
+
     def test_momentum_ranking_is_still_available(self):
         signals = {"BTC/USD": sig(vol=0.010), "ETH/USD": sig(vol=0.005, r_short=-0.05),
                    "SOL/USD": sig(vol=0.030, r_short=0.30)}

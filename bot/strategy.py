@@ -46,6 +46,7 @@ momentum did not predict which coin would do better next, while low volatility d
 """
 import math
 from dataclasses import asdict, dataclass, field
+from statistics import NormalDist
 from typing import AbstractSet, Dict, List, Optional
 
 from bot.config import StrategyConfig
@@ -135,10 +136,14 @@ class Decision:
 
 
 class Strategy:
-    def __init__(self, cfg: StrategyConfig, pairs: Optional[List[str]] = None):
+    def __init__(self, cfg: StrategyConfig, pairs: Optional[List[str]] = None,
+                 external_scores: Optional[Dict[int, Dict[str, float]]] = None):
         """`pairs` (default: the universe) are the pairs whose indicators are kept. The backtest
-        tracks every candidate so the universe can change month by month."""
+        tracks every candidate so the universe can change month by month. `external_scores`
+        (research only) maps each day's 00:00 bar time to model scores, for the "external"
+        rankings."""
         self.cfg = cfg
+        self.external_scores = external_scores or {}
         self.indicators = {
             pair: IndicatorSet(cfg.fast_ema, cfg.slow_ema, cfg.regime_ema, cfg.atr_period,
                                cfg.rsi_period, cfg.momentum_short, cfg.momentum_long,
@@ -175,6 +180,31 @@ class Strategy:
         short = s.return_short / (s.volatility * math.sqrt(c.momentum_short))
         long = s.return_long / (s.volatility * math.sqrt(c.momentum_long))
         return c.momentum_short_weight * short + (1.0 - c.momentum_short_weight) * long
+
+    def _external(self, ts: int) -> Dict[str, float]:
+        """The model scores made at the latest 00:00 bar that has closed by ts."""
+        day = (ts - HOUR_MS) // (24 * HOUR_MS) * (24 * HOUR_MS)
+        return self.external_scores.get(day, {})
+
+    def _scores(self, signals: Dict[str, Signal], ts: int = 0) -> Dict[str, float]:
+        """Ranking score of every pair with data. The composite ranking is cross-sectional: the
+        sum of normal scores of each coin's rank by low volatility, narrow spread and Kalman
+        trend strength. The external ranking (research) orders the coins by model score and
+        keeps the defensive pair first, as low volatility does."""
+        if self.cfg.ranking == "external":
+            table = self._external(ts)
+            if table:
+                top = max(table.values()) + 1.0
+                low = min(table.values()) - 1.0
+                return {p: top if p == self.cfg.defensive_pair else table.get(p, low) for p in signals}
+            return {pair: self.score(s) for pair, s in signals.items()}
+        if self.cfg.ranking != "composite" or len(signals) < 2:
+            return {pair: self.score(s) for pair, s in signals.items()}
+        total = {pair: 0.0 for pair in signals}
+        for key in (lambda s: -s.volatility, lambda s: -s.spread, lambda s: s.trend_strength):
+            for pair, z in _normal_scores({p: key(s) for p, s in signals.items()}).items():
+                total[pair] += z
+        return total
 
     def decide(self, ts: int, equity: float, weights: Dict[str, float],
                state: StrategyState, frozen: AbstractSet[str] = frozenset()) -> Decision:
@@ -213,7 +243,7 @@ class Strategy:
                 reasons[pair] = EXIT_STOP
                 exiting.add(pair)
 
-        scores = {pair: self.score(s) for pair, s in signals.items()}
+        scores = self._scores(signals, ts)
         stuck = [p for p in state.positions if p in frozen]
         held = [p for p in state.positions if p not in exiting and p in signals and p not in frozen]
         candidates = [p for p, s in signals.items()
@@ -353,6 +383,11 @@ class Strategy:
                     rising = {p: r for p, r in rising.items() if self._zscore(p) <= c.rotation_max_z}
                 if c.rotation_ranking == "residual":
                     rising = {p: self._residual_return(p, r) for p, r in rising.items()}
+                elif c.rotation_ranking == "kalman":
+                    rising = {p: signals[p].trend_strength for p in rising}
+                elif c.rotation_ranking == "external" and self._external(ts):
+                    table = self._external(ts)
+                    rising = {p: table.get(p, -1e9) for p in rising}
                 picks = sorted(rising, key=rising.get, reverse=True)[:max(c.rotation_top - stuck, 0)]
                 # The picks fill len(picks) of rotation_top slots; how they share it is the
                 # weighting. Unfilled slots go to PAXG or cash below, whatever the weighting.
@@ -578,6 +613,23 @@ class Strategy:
         elif not state.brake_on and brake_drawdown >= c.brake_drawdown:
             state.brake_on = True
         return drawdown
+
+
+def _normal_scores(values: Dict[str, float]) -> Dict[str, float]:
+    """Each value's rank turned into a standard normal score (ties share the average rank)."""
+    n = len(values)
+    order = sorted(values, key=values.get)
+    ranks: Dict[str, float] = {}
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = (i + j) / 2.0 + 1.0
+        i = j + 1
+    dist = NormalDist()
+    return {p: dist.inv_cdf((r - 0.5) / n) for p, r in ranks.items()}
 
 
 def _hold_frozen(targets: Dict[str, float], account: Dict[str, float], frozen: AbstractSet[str],

@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from bot.indicators import ATR, EMA, RSI, IndicatorSet, RollingStd
+from bot.indicators import ATR, EMA, RSI, IndicatorSet, KalmanTrend, RollingStd, SpreadEstimate
 from bot.market_data import HOUR_MS, Bar
 
 
@@ -60,6 +60,44 @@ class RollingStdTest(unittest.TestCase):
         mean = sum(window) / 4
         expected = math.sqrt(sum((x - mean) ** 2 for x in window) / 3)
         self.assertAlmostEqual(value, expected)
+
+
+class KalmanTrendTest(unittest.TestCase):
+    def run_series(self, drift, seed=3, n=3000):
+        import random
+        rng = random.Random(seed)
+        k = KalmanTrend()
+        price = 100.0
+        for _ in range(n):
+            price *= math.exp(drift + rng.gauss(0, 0.01))
+            k.update(price)
+        return k.value
+
+    def test_slope_strength_has_the_sign_of_the_trend(self):
+        self.assertGreater(self.run_series(+0.002), 2.0)
+        self.assertLess(self.run_series(-0.002), -2.0)
+
+    def test_no_value_until_the_variance_window_is_full(self):
+        k = KalmanTrend(var_window=50)
+        for i in range(50):
+            k.update(100.0 + i % 3)
+        self.assertIsNone(k.value)
+
+
+class SpreadEstimateTest(unittest.TestCase):
+    def test_recovers_the_spread_when_only_the_spread_moves_prices(self):
+        est = SpreadEstimate(window=10)
+        for _ in range(11):
+            est.update(100.05, 99.95)              # a 0.1% spread around a still mid
+        self.assertAlmostEqual(est.value, math.log(100.05 / 99.95), places=6)
+
+    def test_volatility_alone_gives_no_spread(self):
+        est = SpreadEstimate(window=20)
+        price = 100.0
+        for i in range(21):                         # bars moving steadily up, range from the move
+            est.update(price * 1.01, price)
+            price *= 1.01
+        self.assertLess(est.value, 0.002)
 
 
 class IndicatorSetTest(unittest.TestCase):

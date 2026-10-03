@@ -75,7 +75,8 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
                  fee: float, slippage: float, name: str = "strategy",
                  monthly_universe: bool = False,
                  slippage_by_pair: Optional[Dict[str, float]] = None,
-                 halts: Optional[Dict[str, List[Tuple[int, int]]]] = None) -> Result:
+                 halts: Optional[Dict[str, List[Tuple[int, int]]]] = None,
+                 external_scores: Optional[Dict[int, Dict[str, float]]] = None) -> Result:
     """Replay the strategy hour by hour from start_ms. Bars before start_ms only warm up indicators.
 
     Shorts follow Roostoo's rules: opening locks the USD collateral (quantity = collateral /
@@ -87,9 +88,11 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
     slippage_by_pair overrides the slippage for given pairs (for example half their spread).
     halts maps a pair to [start, end) times when the exchange refuses its orders. As in the live
     bot, the planner drops their trades, and with strategy.plan_around_halts the strategy is told.
+    external_scores feeds saved model scores to the "external" rankings (research only).
     """
     cfg = copy.deepcopy(cfg)
-    strategy = Strategy(cfg.strategy, pairs=list(bars) if monthly_universe else None)
+    strategy = Strategy(cfg.strategy, pairs=list(bars) if monthly_universe else None,
+                        external_scores=external_scores)
     month = None
     state = StrategyState()
     cash = cfg.backtest.initial_cash

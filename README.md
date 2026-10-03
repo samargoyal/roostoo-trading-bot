@@ -524,6 +524,140 @@ on. (A first run, before the planner was fixed to leave halted pairs out, gave 5
 difference is noise either way.) Even halts hitting a holding every week barely moved the
 results. What matters is that the bot keeps running and trading when a pair is halted.
 
+### Round 12: microstructure, volume surfaces, Bayesian methods and Kalman filters
+
+Ideas from open-source projects on each topic, tested on every coin the bot can trade (the 45
+most traded crypto pairs each month, out of the 54 with spreads of 0.1% or less). The screen
+was fixed before running: a signal earns a strategy test only if its daily rank correlation
+(IC) with the next 24 or 168 hours' returns across the coins has the same sign in at least 5
+of the 6 folds, with a mean of at least 0.02, and keeps the same sign in at least 4 folds once
+the defensive book's low-volatility ranking is partialled out. Binance's hourly candles also
+record quote volume, the number of trades and the volume bought by takers, which the
+microstructure signals need (`research/fullbars.py` fetches them).
+
+`research/h20_screen.py`, daily IC per fold (24 hours / 168 hours ahead):
+
+| Signal | What it measures | 24h IC | 168h IC | Same sign | Passes |
+|---|---|---|---|---|---|
+| Corwin–Schultz spread | bid-ask spread estimated from hourly highs and lows | -0.074 | -0.107 | 6/6, 6/6 | yes |
+| Amihud illiquidity | price move per dollar traded | -0.037 | -0.055 | 6/6, 6/6 | yes |
+| Kalman trend strength | slope of a local linear trend filter on log price, over its standard deviation | +0.014 | +0.028 | 5/6, 5/6 | yes (168h) |
+| Taker flow, 168h | share of the week's volume bought by takers (order-flow imbalance) | +0.006 | +0.027 | 5/6, 6/6 | yes (168h) |
+| Taker flow, 24h | the same over a day | -0.003 | +0.018 | 5/6, 5/6 | no |
+| Trade size | mean dollars per trade against the past month | -0.008 | +0.003 | 6/6, 4/6 | no (too weak) |
+| Abnormal volume | volume against each coin's hour-of-week volume surface | -0.012 | +0.001 | 4/6, 4/6 | no |
+| Bayesian momentum | 2-week return shrunk to the cross-sectional mean (empirical Bayes) | -0.020 | -0.009 | 6/6, 4/6 | no (-0.0199) |
+| Low volatility (the book's ranking) | | +0.073 | +0.101 | 6/6, 6/6 | reference |
+| 2-week return (the rotation's ranking) | | -0.020 | -0.012 | 6/6, 4/6 | reference |
+
+Coins with wide estimated spreads or little trading did worse in every fold, even after
+allowing for their volatility; steady trends (judged against their own noise, as a Kalman
+filter does) and a week of net buying by takers both kept going, a little. A day of order
+flow did not carry over, as several projects found at shorter horizons, and neither did
+volume surprises against the hour-of-week volume surface. Shrinking momentum the Bayesian way
+did not help: like the raw 2-week return it slightly predicts a reversal over the next day
+(the rotation book earns its money from a few large trends, not from the average coin). A
+first run of the screen was made before every coin's candles had finished downloading; on
+complete data the week's taker flow passes and the Kalman trend is weaker (both shown here).
+
+Market timing (`research/h22_regimes.py`), on BTC, whose trend switches the rotation book, and
+on every coin timed by its own filter (1/N each, cash when off), 0.1% per switch:
+
+| Filter | Median composite, BTC | Better than the EMA filter | Median composite, all coins | Better than EMA |
+|---|---|---|---|---|
+| EMA 168h / 672h (the bot's) | 1.19 | | 0.75 | |
+| Bayesian online changepoint detection, drift > 0 | 0.68 | 1/6 | 0.33 | 2/6 |
+| Always in | 1.72 | 2/6 | 0.47 | 0/6 |
+
+Bayesian online changepoint detection (Adams and MacKay, with a normal-inverse-gamma model of
+daily returns) switched four times as often as the EMA filter (54 times a year against 13)
+and did worse. Deribit's implied volatility (DVOL, the 30-day point of BTC's volatility
+surface): the variance risk premium's correlation with BTC's next week had the same sign in
+only 4 of 5 years (mean -0.05), short of the bar.
+
+### Round 13: the signals that passed, in the strategy
+
+The signals that passed the screen were put into the bot (`bot/indicators.py`:
+`KalmanTrend`, `SpreadEstimate`) and used in the two rankings, fixed before any fold run
+(from the first, incomplete screen, so without taker flow, which round 15 tests):
+**C1** ranks the defensive book by the sum of normal scores for low volatility, a narrow
+estimated spread and Kalman trend strength (Amihud illiquidity repeats the spread's
+information, so it was left out); **K1** picks the rotation book's coins by Kalman trend
+strength instead of the 2-week return; and C1 and K1 together. Same rule as rounds 5 to 9.
+Composite per fold, from October 2020:
+
+| Design | 20–21 | 21–22 | 22–23 | 23–24 | 24–25 | 25–26 | Median | Folds better | Worst drawdown |
+|---|---|---|---|---|---|---|---|---|---|
+| **Current (kept)** | 11.32 | -1.91 | 1.33 | 5.65 | 4.30 | 1.44 | **2.87** | – | 42% |
+| C1 composite book ranking | 10.51 | -2.06 | 1.26 | 5.59 | 4.55 | 1.10 | 2.91 | 1/6 | 45% |
+| K1 rotation by Kalman trend | 8.68 | -0.35 | 0.69 | 3.15 | 2.44 | 2.47 | 2.46 | 2/6 | 30% |
+| C1 and K1 | 9.14 | -0.45 | 0.57 | 2.94 | 2.14 | 2.13 | 2.14 | 2/6 | 31% |
+
+None met the rule. C1's higher median is the median-of-six effect again: it was worse in five
+of the six years. K1 is a real trade-off rather than an improvement: choosing the steadiest
+trends instead of the biggest movers cut the worst drawdown from 42% to 30% and the 2021–22
+crash from -39% to -9%, but gave up most of the bull years (2023–24: +76% against +229%), and
+its median 14-day composite was half the current bot's. The competition ranks by return
+first, so that trade is the wrong one here. Predicting the average coin's next day was not
+what the strategy needed: the rotation book earns its money from a few very large moves, and
+the defensive book uses its ranking only to choose new entries. Both rankings stay in the
+code as options (`ranking: "composite"`, `rotation_ranking: "kalman"`), off.
+
+### Round 14: neural networks and deep learning
+
+`research/h21_learning.py` asks whether learned models rank coins better than low volatility
+does. Every day at 00:00 UTC four models score every coin in the month's universe on its next
+24 hours relative to the others, from 24 features (the H1 set and the microstructure signals
+above), each turned into a normal score of its rank; the GRU also reads each coin's last 72
+hourly bars (return, volume surprise, taker flow). All are retrained every quarter on earlier
+days only, walk-forward from June 2020, with a day's gap so no target overlaps.
+[derinteke/crypto-cross-sectional-forecasting](https://github.com/derinteke/crypto-cross-sectional-forecasting)
+found that a GRU and a Transformer added nothing over gradient-boosted trees; the same
+question on these coins:
+
+| Model | Mean daily IC | Same sign | Daily top-8 portfolio, median composite |
+|---|---|---|---|
+| Ridge regression | 0.079 | 6/6 | 0.32 |
+| Gradient-boosted trees | 0.078 | 6/6 | 0.14 |
+| MLP neural network (64-32) | 0.058 | 6/6 | -0.04 |
+| GRU recurrent network | 0.078 | 6/6 | 0.29 |
+| Low volatility alone (the book's ranking) | 0.073 | 6/6 | 0.61 |
+
+All four passed the screen, but they mostly rediscovered the low-volatility effect: the deep
+network only matched the linear model, and no model's daily top 8 beat simply holding the 8
+calmest coins. By the rule they still got a strategy test (`research/h23_ml_strategy.py`):
+ridge (the best IC) and the GRU each ranked the defensive book's coins or the rotation book's,
+using the walk-forward scores (made daily, where the bot's own ranking updates hourly):
+
+| Design | Median composite | Folds better | Worst drawdown |
+|---|---|---|---|
+| **Current (kept)** | **2.87** | – | 42% |
+| Book ranked by ridge | 2.73 | 0/6 | 44% |
+| Book ranked by the GRU | 2.73 | 2/6 | 44% |
+| Rotation ranked by ridge | 1.02 | 1/6 | 34% |
+| Rotation ranked by the GRU | 2.03 | 2/6 | 34% |
+
+None met the rule. As with the Kalman ranking, models that predict the average coin steer the
+rotation book away from the few explosive moves it lives on. (The models exist in research
+only; trading one live would mean putting its weights in the bot.)
+
+### Round 15: order flow in the strategy
+
+On complete data the week's taker flow passed the screen, so it got the same treatment
+(`research/h24_order_flow.py`, with the scores computed once a day from Binance's taker
+volumes, which the bot's candles do not carry):
+
+| Design | Median composite | Folds better | Worst drawdown |
+|---|---|---|---|
+| **Current (kept)** | **2.87** | – | 42% |
+| Book ranked by low volatility and taker flow | 2.69 | 1/6 | 44% |
+| Book ranked by low volatility, spread, Kalman trend and taker flow | 2.71 | 2/6 | 44% |
+
+Neither met the rule. Across rounds 12 to 15, eight signals, two regime filters and four
+models were screened, and nine strategy designs built from the ones that passed were run
+through the six folds. None beat the current bot, so it is unchanged: signals that predict the
+average coin a little were not what this strategy needed.
+
 ## How it works
 
 ```

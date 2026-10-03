@@ -48,7 +48,10 @@ class StrategyConfig:
 
     # Ranking. "low_volatility" (default) prefers the coins with the calmest hourly returns
     # over volatility_window; "momentum" uses the two-horizon volatility-adjusted momentum
-    # below. research/ shows why low volatility won (README: Strategy research).
+    # below; "composite" adds, with equal weight on each coin's normal-score rank, a narrow
+    # estimated spread and a strong Kalman trend (research H20). research/ shows why low
+    # volatility won (README: Strategy research). "external" (research only) ranks by saved
+    # model scores passed to the backtester (research H23).
     ranking: str = "low_volatility"
     momentum_short: int = 72
     momentum_long: int = 168
@@ -110,8 +113,10 @@ class StrategyConfig:
                                           # "erc" (equal risk contribution) or "min_variance"
     rotation_max_weight: float = 1.0      # cap per pick, as a share of the filled sleeve
     rotation_cov_hours: int = 336         # hourly returns behind the covariance for erc / min_variance
-    rotation_ranking: str = "return"      # "return", or "residual": the return left after removing
-                                          # the coin's beta to the regime pair (BTC) over the lookback
+    rotation_ranking: str = "return"      # "return", "residual": the return left after removing
+                                          # the coin's beta to the regime pair (BTC) over the lookback,
+                                          # "kalman": the Kalman trend slope over its standard deviation,
+                                          # or "external" (research only): saved model scores
     rotation_max_z: float = 0.0           # > 0: skip a pick whose close is more than this many standard
                                           # deviations above its mean over rotation_z_hours
     rotation_z_hours: int = 168

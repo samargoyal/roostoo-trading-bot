@@ -152,6 +152,15 @@ class ResidualAndZTest(unittest.TestCase):
         d = strategy.decide(DAY, 1.0, {}, StrategyState())
         self.assertEqual(list(d.rotation), ["SOL/USD"])
 
+    def test_kalman_ranking_picks_the_steadiest_trend_not_the_biggest_return(self):
+        signals = market()
+        signals["SOL/USD"] = sig(0.40)._replace(trend_strength=1.0)    # biggest return, ragged
+        signals["ETH/USD"] = sig(0.20)._replace(trend_strength=4.0)
+        signals["BTC/USD"] = sig(0.05)._replace(trend_strength=3.0)
+        signals["DOGE/USD"] = sig(-0.10, fast=90.0)._replace(trend_strength=9.0)  # falling: excluded
+        d = make(signals, rotation_ranking="kalman").decide(DAY, 1.0, {}, StrategyState())
+        self.assertEqual(d.rotation, {"ETH/USD": 0.5, "BTC/USD": 0.5})
+
     def test_z_guard_skips_an_overextended_pick(self):
         signals = market()
         strategy = make(signals, rotation_max_z=2.0, rotation_top=1)
