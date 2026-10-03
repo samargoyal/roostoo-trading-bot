@@ -57,6 +57,7 @@ class Result:
     curve: List[Tuple[int, float]]
     trades: List[Trade] = field(default_factory=list)
     stats: Dict[str, float] = field(default_factory=dict)
+    exposure: List[Tuple[int, float]] = field(default_factory=list)  # invested share of equity, hourly
 
 
 @dataclass
@@ -113,6 +114,7 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
         return equity, values
 
     curve: List[Tuple[int, float]] = []
+    exposures: List[Tuple[int, float]] = []
     trades: List[Trade] = []
     risk_on_hours = 0
     exposure_sum = 0.0
@@ -207,13 +209,14 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
         curve.append((now, equity))
         risk_on_hours += decision.risk_on
         exposure_sum += sum(abs(v) for v in values.values()) / equity
+        exposures.append((now, sum(abs(v) for v in values.values()) / equity))
 
     stats = summarize(curve, cfg.backtest.initial_cash, [(t.ts, t.notional) for t in trades])
     if curve:
         stats["risk_on_share"] = risk_on_hours / len(curve)
         stats["average_exposure"] = exposure_sum / len(curve)
         stats["fees_paid"] = sum(t.fee for t in trades)
-    return Result(name, curve, trades, stats)
+    return Result(name, curve, trades, stats, exposures)
 
 
 def buy_and_hold(bars: Dict[str, List[Bar]], pairs: Sequence[str], start_ms: int, end_ms: int,

@@ -681,6 +681,30 @@ composite of 0.50 against 2.14 for holding them all, and as a 20% sleeve it was 
 1 of 6 crypto folds (median 2.77). Its edge on the tokenized list is the list itself, so no
 stock sleeve was added.
 
+### Round 17: a separate strategy for the shares
+
+Since the crypto rotation fails on shares (a faithful copy lost 84% over 15 years on the 2011
+top 40: over two weeks, large shares reverse where coins keep going), the shares got their own
+search, from hypotheses to a final strategy. To keep hindsight out, every design was tested on
+the S&P 500 as it was at each date (membership from
+[fja05680/sp500](https://github.com/fja05680/sp500); each month the 50 members with the most
+dollar volume; Yahoo prices for 76% of the 848 tickers that were members since 2010, the
+missing ones mostly long-delisted). Gates fixed before running: beat simply holding those 50
+(median composite, 9 of 15 years, drawdown at most 5 points worse), then improve the crypto bot
+as a 20% sleeve on the usual rule.
+
+| Round | Designs | Result |
+|---|---|---|
+| 1 (`research/h26_stock_strategies.py`) | 12-1 momentum, momentum with a market filter, low volatility, trend per stock, short-term reversal, 52-week-high momentum, volatility management, momentum with low volatility | None beat holding the 50 (median 2.18; the best, volatility management, 2.04). Holding them as a sleeve helped the bot in 2 of 6 folds. |
+| 2 (`research/h27_stock_round2.py`) | The four lowest-drawdown designs straight to the sleeve test; turn of the month, index time-series momentum, volatility-scaled trend | Only momentum with low volatility passed (4 of 6, median 2.91 against 2.87), with one of the four a tie (-1.9145 against -1.9099). Its neighbours (10% or 30% sleeve, 6-month momentum, 3-month volatility) passed 1 of 4, so it was noise. |
+| 3 (`research/h28_cash_overlay.py`) | Only the bot's idle cash (53% on average) in volatility-managed or trend-following shares | Worse: the worst drawdown rose from 41% to 47–51%, as the shares fell with crypto in 2021–22. |
+
+Fourteen designs and a robustness check found no share strategy that improves the bot. Large
+shares were hard to beat by holding them over 2011–2026, and they fall with crypto in a crash,
+so they add little to an account whose returns come from crypto rallies. Searching on until
+something passed would only find a lucky fit, so the search stopped here and the bot trades no
+tokenized shares.
+
 ## How it works
 
 ```
