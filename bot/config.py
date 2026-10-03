@@ -97,6 +97,10 @@ class StrategyConfig:
     rotation_trend_slow: int = 672
     rotation_core_share: float = 0.0      # share of the sleeve kept in the regime pair (BTC) while the
                                           # trend filter is on; the momentum slots share the rest
+    rotation_weighting: str = "equal"     # how the picks share the sleeve: "equal", "inverse_vol",
+                                          # "erc" (equal risk contribution) or "min_variance"
+    rotation_max_weight: float = 1.0      # cap per pick, as a share of the filled sleeve
+    rotation_cov_hours: int = 336         # hourly returns behind the covariance for erc / min_variance
 
 
 @dataclass

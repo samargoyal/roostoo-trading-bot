@@ -59,6 +59,18 @@ WIDTH = [
     ("top 30 crypto, spread <= 0.3%", {"universe": {"size": 30, "max_spread": 0.003}}),
     ("top 60 of all 86, spread <= 0.5%", {"universe": {"size": 60, "asset_type": "any", "max_spread": 0.005}}),
 ]
+# Round 5 (H17): how the rotation sleeve weights its momentum picks, on the 45-coin list.
+# Written down before running, with the rule for adopting one over R0: a higher median
+# composite, a higher composite in at least 4 of the 6 folds, and a worst-fold drawdown no
+# more than 2 points worse.
+ROTATION_WEIGHTING = [
+    ("R0 top 2, equal (current)", {}),
+    ("R1 top 5, equal", {"strategy": {"rotation_top": 5}}),
+    ("R2 top 5, inverse volatility", {"strategy": {"rotation_top": 5, "rotation_weighting": "inverse_vol"}}),
+    ("R3 top 5, equal risk contribution", {"strategy": {"rotation_top": 5, "rotation_weighting": "erc"}}),
+    ("R4 top 5, minimum variance, cap 40%", {"strategy": {"rotation_top": 5, "rotation_weighting": "min_variance",
+                                                          "rotation_max_weight": 0.4}}),
+]
 CANDIDATES = os.path.join("research", "candidates.csv")
 
 
@@ -115,6 +127,8 @@ def run(job):
 def main() -> None:
     if "--universe" in sys.argv:
         designs = WIDTH
+    elif "--rotation-weighting" in sys.argv:
+        designs = ROTATION_WEIGHTING
     elif "--all" in sys.argv:
         designs = DESIGNS + EXTRA[1:]
     elif "--extra" in sys.argv:

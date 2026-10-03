@@ -339,6 +339,27 @@ coins (FLOKI, PENDLE, WLD, SUI, AVAX, SEI and FET each made $17k–$81k on $100k
 ICP and WIF lost $15k–$59k), and no single-hour price move in those coins exceeded 21%, so no
 bad candle drove it. Tokenised stocks did not help.
 
+### Convex optimisation of the rotation book (round 5)
+
+All six folds had now been seen, so the bar for change rose: a design written down in advance
+replaces the current one only with a higher median composite, a higher composite in at least
+4 of the 6 folds, and a worst drawdown no more than 2 points worse. Round 5 asked how the
+rotation book should weight its momentum picks, using plain-Python solvers in `bot/optimize.py`
+(checked against cvxpy to within 0.003%):
+
+| Rotation book | Median composite | Folds improved | Worst drawdown | Six years |
+|---|---|---|---|---|
+| **Top 2, equal weights (kept)** | **2.59** | – | 42% | **+5,871%** |
+| Top 5, equal weights | 2.42 | 2 of 6 | 40% | +4,040% |
+| Top 5, equal risk contribution | 1.92 | 2 of 6 | 39% | +2,858% |
+| Top 5, inverse volatility | 1.89 | 2 of 6 | 38% | +2,874% |
+| Top 5, minimum variance, 40% cap | 1.56 | 2 of 6 | 34% | +2,475% |
+
+The rotation book earns its return by concentrating on the strongest leaders. Spreading it over
+five coins, and above all weighting by risk, trimmed the drawdown but cut returns in four of six
+years: minimum variance favours the calmest of the leaders, which are the weakest movers. None
+met the bar. The options stay in the code, off (`rotation_weighting`, `rotation_max_weight`).
+
 ## How it works
 
 ```

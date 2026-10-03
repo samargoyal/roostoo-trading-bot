@@ -45,6 +45,7 @@ from typing import Dict, List, Optional
 
 from bot.config import StrategyConfig
 from bot.indicators import IndicatorSet, Signal
+from bot.optimize import covariance, erc_weights, min_variance
 from bot.market_data import HOUR_MS, Bar
 
 # Reasons attached to each target, recorded with every decision and order.
@@ -324,8 +325,12 @@ class Strategy:
                 rising = {p: s.return_rotation for p, s in signals.items()
                           if p != c.defensive_pair and s.return_rotation > 0
                           and not (core > 0 and p == c.regime_pair)}
-                for pair in sorted(rising, key=rising.get, reverse=True)[:c.rotation_top]:
-                    plan[pair] = (1.0 - core) / c.rotation_top
+                picks = sorted(rising, key=rising.get, reverse=True)[:c.rotation_top]
+                # The picks fill len(picks) of rotation_top slots; how they share it is the
+                # weighting. Unfilled slots go to PAXG or cash below, whatever the weighting.
+                filled = (1.0 - core) * len(picks) / c.rotation_top
+                for pair, weight in self._rotation_weights(picks, signals).items():
+                    plan[pair] = filled * weight
             empty = 1.0 - sum(plan.values())
             defensive = signals.get(c.defensive_pair)
             if empty > 1e-9 and defensive is not None and defensive.return_rotation > 0:
@@ -337,6 +342,39 @@ class Strategy:
             # Leave at once when the trend filter fails; only the defensive part stays.
             plan = {p: w for p, w in plan.items() if p == c.defensive_pair}
         return plan
+
+    def _rotation_weights(self, picks: List[str], signals: Dict[str, Signal]) -> Dict[str, float]:
+        """Shares of the filled rotation sleeve (summing to 1) for the chosen coins."""
+        c = self.cfg
+        if not picks:
+            return {}
+        weights = {p: 1.0 / len(picks) for p in picks}
+        if len(picks) > 1 and c.rotation_weighting == "inverse_vol":
+            inverse = {p: 1.0 / signals[p].volatility for p in picks if signals[p].volatility > 0}
+            if len(inverse) == len(picks):
+                total = sum(inverse.values())
+                weights = {p: v / total for p, v in inverse.items()}
+        elif len(picks) > 1 and c.rotation_weighting in ("erc", "min_variance"):
+            series = self._recent_returns(picks, c.rotation_cov_hours)
+            if series is not None:
+                cov = covariance(series)
+                if c.rotation_weighting == "erc":
+                    solved = erc_weights(cov)
+                else:
+                    solved = min_variance(cov, c.rotation_max_weight)
+                weights = dict(zip(picks, solved))
+        return _cap_weights(weights, c.rotation_max_weight)
+
+    def _recent_returns(self, pairs: List[str], hours: int) -> Optional[List[List[float]]]:
+        """The last `hours` hourly log returns of each pair, aligned at the latest bar."""
+        out = []
+        for pair in pairs:
+            closes = list(self.indicators[pair].closes)[-(hours + 1):]
+            out.append([math.log(b / a) for a, b in zip(closes, closes[1:]) if a > 0 and b > 0])
+        length = min(len(r) for r in out)
+        if length < 48:
+            return None
+        return [r[-length:] for r in out]
 
     def _defensive_weights(self, weights: Dict[str, float], rotation: Dict[str, float]) -> Dict[str, float]:
         """Holdings as fractions of the non-rotation book: the rotation sleeve's share is taken
@@ -431,3 +469,24 @@ class Strategy:
         elif not state.brake_on and brake_drawdown >= c.brake_drawdown:
             state.brake_on = True
         return drawdown
+
+
+def _cap_weights(weights: Dict[str, float], cap: float) -> Dict[str, float]:
+    """Cap each weight, handing the excess to the uncapped ones in proportion (sum unchanged)."""
+    if cap >= 1.0 or cap * len(weights) < 1.0:
+        return weights
+    w = dict(weights)
+    for _ in range(len(w)):
+        over = [p for p, v in w.items() if v > cap + 1e-12]
+        if not over:
+            break
+        excess = sum(w[p] - cap for p in over)
+        for p in over:
+            w[p] = cap
+        free = {p: v for p, v in w.items() if v < cap - 1e-12}
+        total = sum(free.values())
+        if total <= 0:
+            break
+        for p, v in free.items():
+            w[p] = v + excess * v / total
+    return w

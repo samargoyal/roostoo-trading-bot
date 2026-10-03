@@ -98,3 +98,36 @@ class RotationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RotationWeightingTest(unittest.TestCase):
+    def test_inverse_volatility_shares(self):
+        signals = market()
+        signals["ETH/USD"] = sig(0.20, vol=0.02)
+        signals["SOL/USD"] = sig(0.40, vol=0.01)
+        d = make(signals, rotation_weighting="inverse_vol").decide(DAY, 1.0, {}, StrategyState())
+        self.assertAlmostEqual(d.rotation["SOL/USD"], 2 / 3)
+        self.assertAlmostEqual(d.rotation["ETH/USD"], 1 / 3)
+
+    def test_min_variance_uses_recent_returns_and_respects_the_cap(self):
+        import math
+        signals = market()
+        strategy = make(signals, rotation_top=3, rotation_weighting="min_variance", rotation_max_weight=0.4)
+        swings = {"SOL/USD": 0.001, "ETH/USD": 0.02, "BTC/USD": 0.03}   # SOL by far the calmest
+        for pair, swing in swings.items():
+            closes = strategy.indicators[pair].closes
+            price = 100.0
+            for i in range(200):
+                price *= math.exp(swing if i % 2 == 0 else -swing * 0.9)
+                closes.append(price)
+        d = strategy.decide(DAY, 1.0, {}, StrategyState())
+        self.assertAlmostEqual(sum(d.rotation.values()), 1.0)
+        self.assertAlmostEqual(d.rotation["SOL/USD"], 0.4, places=4)    # capped
+        self.assertGreater(d.rotation["ETH/USD"], d.rotation["BTC/USD"])
+
+    def test_cap_hands_the_excess_to_the_others(self):
+        from bot.strategy import _cap_weights
+        w = _cap_weights({"A": 0.7, "B": 0.2, "C": 0.1}, 0.5)
+        self.assertAlmostEqual(w["A"], 0.5)
+        self.assertAlmostEqual(w["B"], 0.2 + 0.2 * 2 / 3)
+        self.assertAlmostEqual(sum(w.values()), 1.0)
