@@ -34,11 +34,11 @@ The defensive book's rules:
 
 | Rule | Detail |
 |---|---|
-| Regime | BTC above its 200-hour EMA: up to 75% invested in up to 4 positions. Otherwise up to 25% in up to 3, with PAXG first in line. |
+| Regime | BTC above its 200-hour EMA: up to 75% invested in up to 8 positions. Otherwise up to 25% in up to 3, with PAXG first in line. |
 | Trend filter | A coin is eligible while its 50-hour EMA is above its 200-hour EMA and the close is above the 200-hour EMA. |
 | Ranking | Lowest volatility of hourly returns over the last 168 hours first (the low-volatility effect; see [Strategy research](#strategy-research)). Free slots go to the best-ranked eligible coins. |
 | Entry timing | No new entry while RSI(14) is above 70, or within 24 hours of a stop-loss exit on that coin. |
-| Sizing | Weights proportional to `price / ATR(14)`, so each position carries similar risk, scaled to the exposure limit and capped at 15% per coin. |
+| Sizing | Equal risk contribution: weights at which every position adds the same share of the book's variance, given how the coins move together over the last 336 hours. A convex problem, solved in `bot/optimize.py`. Scaled to the exposure limit and capped at 15% per coin. |
 | Exits | The 50-hour EMA falls below the 200-hour EMA, or the close drops 8 ATR below the highest close since entry. A held coin is never sold just for ranking lower. |
 | Drawdown brake | At 4% below its peak, the defensive book's trend positions are halved until it is back within 2%. The brake follows the defensive book's own value (tracked in the saved state), so swings in the rotation book do not trigger it. |
 | PAXG core | 5% of equity stays in PAXG at all times. |
@@ -360,6 +360,57 @@ five coins, and above all weighting by risk, trimmed the drawdown but cut return
 years: minimum variance favours the calmest of the leaders, which are the weakest movers. None
 met the bar. The options stay in the code, off (`rotation_weighting`, `rotation_max_weight`).
 
+### Convex optimisation of the defensive book (round 6)
+
+The defensive book held 4 coins capped at 15% each, so the caps, not any optimiser, set its
+weights. Round 6 let it hold up to 8 and compared optimisers, plus other splits between the
+books. Composite score per fold:
+
+| Design | 20–21 | 21–22 | 22–23 | 23–24 | 24–25 | 25–26 | Median | Folds better |
+|---|---|---|---|---|---|---|---|---|
+| 4 coins, inverse ATR (incumbent) | 9.78 | -1.99 | 1.46 | 5.92 | 3.72 | 1.30 | 2.59 | – |
+| **8 coins, equal risk contribution** | 11.32 | -1.91 | 1.33 | 5.65 | 4.30 | 1.44 | **2.87** | **4/6** |
+| 8 coins, minimum variance | 11.40 | -1.95 | 1.38 | 5.38 | 3.99 | 0.86 | 2.69 | 3/6 |
+| 50% rotation / 50% book | 10.60 | -2.03 | 1.33 | 6.34 | 3.71 | 1.41 | 2.56 | 3/6 |
+| 30% rotation / 70% book | 8.92 | -1.96 | 1.31 | 5.42 | 3.56 | 1.55 | 2.56 | 2/6 |
+
+Equal risk contribution met every condition (higher median, better in 4 of 6 folds, worst
+drawdown unchanged at 42%) and became the default. Minimum variance concentrated in the very
+calmest coins and deepened the worst drawdown to 45%.
+
+### Ideas from VECM-ARB
+
+[VECM-ARB](https://github.com/samargoyal/VECM-ARB) trades cointegrated baskets of bank stocks:
+Johansen tests and a vector error-correction model find the equilibrium spread, z-score
+thresholds trade its reversion, a rolling Johansen test liquidates when the relationship
+breaks, and a cvxpy minimum-variance hedge rebalances it. Its core, a long-short basket
+trading a spread back to equilibrium, is statistical arbitrage, which the competition rules
+forbid, so it is not used as a strategy here. Two of its ideas fit a directional bot and were
+tested on the rotation book: hedging out the common factor before ranking (residual momentum,
+the coin's return net of its beta to BTC), and its z-score entry threshold (skip a pick more
+than 2 standard deviations above its one-week mean, the repo's own `entry_z = 2.0`).
+
+### Rounds 7 and 8: VECM-ARB ideas and tail-risk control
+
+Against the round-6 book, with the same rule (composite per fold, from October 2020):
+
+| Design | 20–21 | 21–22 | 22–23 | 23–24 | 24–25 | 25–26 | Median | Folds better |
+|---|---|---|---|---|---|---|---|---|
+| **8-coin ERC book (kept)** | 11.32 | -1.91 | 1.33 | 5.65 | 4.30 | 1.44 | **2.87** | – |
+| Control: 8 coins, inverse ATR | 11.44 | -1.92 | 1.26 | 5.55 | 4.35 | 0.96 | 2.81 | 2/6 |
+| Residual momentum | 15.43 | -1.79 | 1.54 | 5.06 | 3.99 | 1.18 | 2.77 | 3/6 |
+| Rotation CVaR capped at 5% of equity | 10.46 | -1.91 | 1.19 | 5.43 | 4.26 | 1.45 | 2.86 | 2/6 |
+| Rotation CVaR capped at 3% of equity | 10.15 | -1.97 | 0.96 | 5.14 | 3.95 | 1.51 | 2.73 | 1/6 |
+| Skip picks > 2 sd above their 1-week mean | 7.87 | -1.68 | 0.88 | 4.73 | 3.03 | 1.54 | 2.28 | 2/6 |
+| Residual momentum and the z-score guard | 7.98 | -1.56 | 1.03 | 3.67 | 2.99 | 0.94 | 2.01 | 1/6 |
+
+None met the rule. The control shows the optimiser earns its place: ERC beat inverse-ATR
+sizing with the same 8 coins in 4 of 6 folds. Residual momentum was the near miss, better in
+the three earliest folds (including the 2021–22 crash) and worse in the three latest. The
+z-score guard skipped exactly the leaders the rotation book exists to catch. A 1-day CVaR cap
+on the rotation book (the average loss on its worst 5% of days, from recent hourly returns)
+mostly cut returns. All remain options in the code, off.
+
 ## How it works
 
 ```
@@ -423,12 +474,14 @@ year starting in October.
 
 | | 2020–21 | 2021–22 | 2022–23 | 2023–24 | 2024–25 | 2025–26 | Six years |
 |---|---|---|---|---|---|---|---|
-| **Bot (45 coins, 40% rotation)** | **+537%** (25%) | **-40%** (42%) | **+42%** (30%) | **+236%** (23%) | **+150%** (31%) | **+30%** (22%) | **+5,871%** |
+| **Bot (45 coins, 40% rotation, 8-coin ERC book)** | **+679%** (27%) | **-39%** (42%) | **+39%** (33%) | **+229%** (24%) | **+181%** (31%) | **+36%** (25%) | **+8,228%** |
+| Bot with a 4-coin inverse-ATR book (before round 6) | +537% (25%) | -40% (42%) | +42% (30%) | +236% (23%) | +150% (31%) | +30% (22%) | +5,871% |
 | Bot with 20 coins (the earlier list) | +786% (21%) | -28% (35%) | -1% (30%) | +39% (41%) | +89% (33%) | +43% (24%) | +2,258% |
 | Defensive book alone | +117% (16%) | -10% (16%) | -11% (14%) | +2% (13%) | +30% (14%) | +16% (10%) | +167% |
 | Hold BTC | +306% (55%) | -56% (74%) | +39% (27%) | +135% (32%) | +80% (31%) | -27% (54%) | +674% |
 
-Maximum drawdown in brackets. The bot beat holding BTC in all six years with a smaller
+Maximum drawdown in brackets. The bot beat holding BTC in all six years (in 2022–23 only just:
++39.1% against +39.0%) with a smaller
 drawdown than BTC in five; its median composite score across the years was 2.59. Read the
 [survivorship warning](#known-weaknesses) before trusting the size of these numbers.
 

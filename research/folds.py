@@ -91,6 +91,21 @@ ROUNDS_7_8 = [
     ("C1 rotation CVaR cap 3%", {"strategy": {"rotation_cvar_limit": 0.03}}),
     ("C2 rotation CVaR cap 5%", {"strategy": {"rotation_cvar_limit": 0.05}}),
 ]
+# Round 9: are the rotation engine's settings robust? Each varies one setting either side of
+# the default (chosen on 20 coins and two years); the short sleeve is retried on the new design.
+# Same adoption rule.
+ROUND_9 = [
+    ("incumbent", {}),
+    ("lookback 168h (1 week)", {"strategy": {"rotation_lookback": 168}}),
+    ("lookback 504h (3 weeks)", {"strategy": {"rotation_lookback": 504}}),
+    ("lookback 720h (30 days)", {"strategy": {"rotation_lookback": 720}}),
+    ("top 1", {"strategy": {"rotation_top": 1}}),
+    ("top 3", {"strategy": {"rotation_top": 3}}),
+    ("rebalance every 72h", {"strategy": {"rotation_rebalance_hours": 72}}),
+    ("trend filter 72h/288h", {"strategy": {"rotation_trend_fast": 72, "rotation_trend_slow": 288}}),
+    ("trend filter 336h/1344h", {"strategy": {"rotation_trend_fast": 336, "rotation_trend_slow": 1344}}),
+    ("+ 15% short sleeve", {"strategy": {"short_exposure": 0.15}}),
+]
 # Round 8: tail-risk control of the rotation sleeve. Same rule.
 CVAR = [
     ("C0 current", {}),
@@ -171,6 +186,8 @@ def main() -> None:
         designs = CVAR
     elif "--rounds78" in sys.argv:
         designs = ROUNDS_7_8
+    elif "--round9" in sys.argv:
+        designs = ROUND_9
     elif "--rotation-weighting" in sys.argv:
         designs = ROTATION_WEIGHTING
     elif "--all" in sys.argv:
