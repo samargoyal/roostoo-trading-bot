@@ -17,7 +17,7 @@ strategy, and every order, decision and hourly equity point is recorded.
 
 ## Strategy
 
-Two books share the account, trading the 20 most traded crypto pairs on Roostoo plus PAXG
+Two books share the account, trading the 45 most traded crypto pairs on Roostoo plus PAXG
 (gold-backed):
 
 - **Momentum rotation, 40% of equity.** Holds the 2 coins with the strongest positive
@@ -50,12 +50,16 @@ Trades are only placed when a holding is more than 4% of equity away from its ta
 
 ## Which assets it trades
 
-The bot trades the 20 crypto pairs with the highest USD trading volume over the last 30
+The bot trades the 45 crypto pairs with the highest USD trading volume over the last 30
 days, among Roostoo pairs with a bid-ask spread of at most 0.1% and at least 1000 hours of
 price history, plus PAXG. As of 2 October 2026 that is:
 
-> BTC, ETH, ZEC, SOL, XRP, NEAR, BNB, SUI, DOGE, UNI, ENA, AVAX, WLD, LINK, ADA, ARB, TAO,
-> PUMP, LTC, TRX, and PAXG
+> BTC, ETH, ZEC, SOL, XRP, NEAR, BNB, SUI, DOGE, UNI, ENA, AVAX, WLD, LINK, ADA, TAO, ARB,
+> PUMP, LTC, TRX, ONDO, XLM, TRUMP, HBAR, AAVE, FIL, XPL, FET, ASTER, PENGU, DOT, APT, ICP,
+> POL, CAKE, SEI, ZEN, TUT, VIRTUAL, PENDLE, CRV, FORM, EIGEN, WIF, PLUME, and PAXG
+
+The list was 20 coins until a six-year test (see [Out-of-sample validation](#out-of-sample-validation-across-six-years))
+showed the rotation book needs a wider net to catch the market's leaders.
 
 The list lives in `bot/config.py`. `python -m bot.universe` ranks every candidate by the
 rule and prints a new list. Tokenised stocks are left out: their history is short and their
@@ -103,13 +107,15 @@ other stop widths did no better in both years; three risk-off positions did.
 
 ### Known weaknesses
 
-- **It does not reliably beat holding BTC in a strong bull year.** On October 2023 to October
-  2024, a year no research had used, it made 39% while BTC made 135%, with a larger
-  drawdown (41% against 32%). In both bull years tested, BTC was the best broad asset, and
-  with at most 1x exposure nothing beats holding the best asset except perfect timing.
-- It beat holding BTC over the full three years (+275% against +208%) because it lost far
-  less in the falling year, but the 2024–2026 results were the period the strategy was
-  developed on, so they flatter it.
+- **Survivorship bias.** Backtests can only use coins Roostoo lists today, which over-represents
+  coins that did well. A coin the rotation bought in 2021 or 2023 that later collapsed and was
+  delisted is missing, and the wider the coin list, the more such coins are missing. The
+  six-year results therefore overstate what to expect, the early years most.
+- It still loses money in a crash: -40% in October 2021 to October 2022 (BTC -56%). The
+  worst drawdown in six years was 42%.
+- With 20 coins it lagged BTC in BTC-led rallies (October 2022 to October 2024); with 45 it beat
+  BTC in every year tested, but that came from the wider coin list, chosen after seeing those
+  years, so treat it as promising rather than proven.
 - The rotation book alone draws down 60–70%; the blend relies on the defensive book and the
   low correlation between them.
 - Over any 14-day window (the length of the competition) the median backtest return is
@@ -284,7 +290,54 @@ BTC in the two big ones. In the bot's own backtester this needed two more fixes:
 list refreshed monthly (a list frozen on day one cost the rotation 36 points in 2024–25), and
 the brake following the defensive book's own value rather than the whole account's.
 Rotation became the default at 40%, chosen before the October 2023 to October 2024 check,
-where it did not beat holding BTC (see [Known weaknesses](#known-weaknesses)).
+where, with 20 coins, it did not beat holding BTC.
+
+### Out-of-sample validation across six years
+
+Tuning until the one unused year looked good would only have overfitted to it. Instead,
+`research/folds.py` runs whole designs, fixed in advance, through the bot's own backtester on
+six one-year folds from October 2020 to October 2026: the 2020–21 bull run, the 2022 crash,
+the 2023 recovery, the 2023–24 and 2024–25 rallies and the 2025–26 decline. The first three
+were never used by any earlier research. The rule for choosing was fixed before running:
+highest median composite score across the folds, ties to the smaller worst drawdown. The
+candidate coins and their spreads are frozen in `research/candidates.csv` so the study
+gives the same answer every time.
+
+Eight designs on the 20-coin list (return per fold, from October 2020):
+
+| Design | 20–21 | 21–22 | 22–23 | 23–24 | 24–25 | 25–26 | Median composite |
+|---|---|---|---|---|---|---|---|
+| 40% rotation + book + short sleeve | +722% | -28% | +6% | +34% | +89% | +64% | 2.02 |
+| 60% rotation + book | +1515% | -35% | -1% | +62% | +104% | +66% | 1.73 |
+| Rotation only | +3946% | -50% | -10% | +78% | +153% | +94% | 1.65 |
+| 40% rotation + book (the default) | +787% | -28% | -1% | +39% | +89% | +47% | 1.60 |
+| 40% rotation + momentum-ranked book | +733% | -29% | +1% | +44% | +68% | +42% | 1.50 |
+| 20% rotation + book | +359% | -17% | -5% | +25% | +60% | +27% | 1.44 |
+| Low-volatility book only | +117% | -10% | -11% | +2% | +30% | +16% | 0.89 |
+| Momentum-ranked book only | +105% | -15% | -8% | +7% | +19% | +13% | 0.88 |
+
+The pattern held across all six years, which is what a strategy that is not overfitted looks
+like: it beat holding BTC when the market fell or when altcoins boomed, and lagged when BTC
+alone led a steady rally (2022–24). Keeping part of the rotation book in BTC did not fix that
+(it improved one weak year and hurt others).
+
+The fix came from the coin list. The rotation book had only 20 coins to choose leaders from.
+A second set of designs, also fixed before running, varied how wide the net is, charging
+coins with wide spreads half their spread on every trade:
+
+| Coins to choose from | 20–21 | 21–22 | 22–23 | 23–24 | 24–25 | 25–26 | Median composite | Beats BTC |
+|---|---|---|---|---|---|---|---|---|
+| **Top 45 crypto, spread at most 0.1%** | +537% | -40% | +42% | +236% | +150% | +30% | **2.59** | **6/6** |
+| Top 30 crypto, spread at most 0.1% | +537% | -40% | +42% | +226% | +127% | +45% | 2.45 | 6/6 |
+| Top 60 of all 86, spread at most 0.5% | +539% | -27% | +39% | +299% | +115% | +0% | 2.19 | 6/6 |
+| Top 30 crypto, spread at most 0.3% | +539% | -27% | +43% | +244% | +97% | +31% | 2.06 | 6/6 |
+| Top 20 crypto (the earlier list) | +786% | -28% | -1% | +39% | +89% | +43% | 1.51 | 4/6 |
+| Top 20 crypto and tokenised stocks | +786% | -28% | -1% | +39% | +89% | +27% | 1.24 | 4/6 |
+
+The top 45 won under the rule and became the list. Its 2023–24 profit was spread across many
+coins (FLOKI, PENDLE, WLD, SUI, AVAX, SEI and FET each made $17k–$81k on $100k, while ENA, TAO,
+ICP and WIF lost $15k–$59k), and no single-hour price move in those coins exceeded 21%, so no
+bad candle drove it. Tokenised stocks did not help.
 
 ## How it works
 
@@ -343,19 +396,20 @@ order as a taker (0.1% fee plus 0.02% slippage) and every order as a maker (0.05
 costs fall between the two. The coins are chosen by the volume rule as of the first day of
 the window (`--fixed-universe` tests the configured list instead).
 
-$100,000 starting cash, market-order fees, the coin list refreshed by the volume rule on the
-first day of every month. October 2023 to October 2024 was never used during development.
+$100,000 starting cash, market-order fees (plus half the spread on coins with wide spreads),
+the coin list refreshed by the volume rule on the first day of every month. Each column is a
+year starting in October.
 
-| | Oct 2023 – Oct 2024 | Oct 2024 – Oct 2025 | Oct 2025 – Oct 2026 | Three years |
-|---|---|---|---|---|
-| **Bot (40% rotation + 60% defensive)** | +39.1%, drawdown 40.9% | **+89.0%**, 32.5% | **+42.7%**, 23.8% | **+275%** |
-| Bot with the short sleeve on | +34.4%, 39.6% | +89.4%, 30.6% | +64.5%, 17.8% | +319% |
-| Defensive book alone | +2.4%, 13.1% | +37.2%, 12.7% | +12.9%, 12.3% | +59% |
-| Hold BTC | **+134.6%**, 32.3% | +79.5%, 30.9% | -26.8%, 53.7% | +208% |
-| Hold the 20 coins and PAXG equally | +128.4%, 62.5% | +38.2%, 61.2% | -34.5%, 64.9% | +88% |
+| | 2020–21 | 2021–22 | 2022–23 | 2023–24 | 2024–25 | 2025–26 | Six years |
+|---|---|---|---|---|---|---|---|
+| **Bot (45 coins, 40% rotation)** | **+537%** (25%) | **-40%** (42%) | **+42%** (30%) | **+236%** (23%) | **+150%** (31%) | **+30%** (22%) | **+5,871%** |
+| Bot with 20 coins (the earlier list) | +786% (21%) | -28% (35%) | -1% (30%) | +39% (41%) | +89% (33%) | +43% (24%) | +2,258% |
+| Defensive book alone | +117% (16%) | -10% (16%) | -11% (14%) | +2% (13%) | +30% (14%) | +16% (10%) | +167% |
+| Hold BTC | +306% (55%) | -56% (74%) | +39% (27%) | +135% (32%) | +80% (31%) | -27% (54%) | +674% |
 
-Composite scores: 1.26, 2.63 and 1.78 for the bot in the three years, against 3.07, 2.26 and
--0.55 for holding BTC. With limit-order (maker) fees the bot made 48.7%, 101.4% and 49.8%.
+Maximum drawdown in brackets. The bot beat holding BTC in all six years with a smaller
+drawdown than BTC in five; its median composite score across the years was 2.59. Read the
+[survivorship warning](#known-weaknesses) before trusting the size of these numbers.
 
 Sharpe and Sortino use daily returns annualised over 365 days; Calmar is annualised
 return over maximum drawdown. The organisers have not published their exact conventions.
