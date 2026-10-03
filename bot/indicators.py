@@ -234,13 +234,16 @@ class IndicatorSet:
         self.momentum_long = momentum_long
         self.rotation_lookback = rotation_lookback
         self.closes: Deque[float] = deque(maxlen=max(momentum_short, momentum_long, rotation_lookback) + 1)
+        self.returns: Deque[float] = deque(maxlen=2200)   # hourly log returns, for volatility forecasts
         self.last_ts: Optional[int] = None
 
     def update(self, bar: Bar) -> None:
         if self.last_ts is not None and bar.ts <= self.last_ts:
             return  # already seen
         if self.closes:
-            self.volatility.update(math.log(bar.close / self.closes[-1]))
+            r = math.log(bar.close / self.closes[-1])
+            self.volatility.update(r)
+            self.returns.append(r)
         self.closes.append(bar.close)
         self.fast.update(bar.close)
         self.slow.update(bar.close)

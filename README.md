@@ -724,6 +724,27 @@ the folds (`research/h30_funding_strategy.py`):
 None met the rule. F2 shows why: the coins the rotation makes its money on are the crowded
 ones, and skipping them cut 2023–24 from +229% to +98%. The hooks stay in the code, off.
 
+### Round 19: shorts in bear markets, and volatility forecasts
+
+When BTC's trend filter is off, the rotation's 40% sits in PAXG or cash (PAXG 25% of the time,
+cash 22%). Two ways to use it, and two ways to size the rotation by forecast volatility, fixed
+before running (`research/folds.py --round19`):
+
+| Design | 20–21 | 21–22 | 22–23 | 23–24 | 24–25 | 25–26 | Median | Folds better | Worst drawdown |
+|---|---|---|---|---|---|---|---|---|---|
+| **Current (kept)** | 11.32 | -1.91 | 1.33 | 5.65 | 4.30 | 1.44 | **2.87** | – | 42% |
+| A1 short the 2 weakest coins while the filter is off | 5.29 | -1.29 | 0.49 | 2.29 | 2.45 | 1.22 | 1.76 | 1/6 | 50% |
+| A2 short the 2 most volatile coins while the filter is off | 8.09 | -0.41 | -0.18 | 3.10 | 2.52 | 1.08 | 1.80 | 1/6 | 46% |
+| B1 rotation scaled by a HAR volatility forecast of BTC | 9.07 | -1.88 | 0.84 | 5.41 | 4.02 | 1.09 | 2.55 | 1/6 | 41% |
+| B2 rotation scaled by an EWMA volatility forecast of BTC | 10.85 | -1.89 | 1.06 | 5.28 | 4.34 | 1.39 | 2.86 | 2/6 | 42% |
+
+None met the rule. The shorts open after the trend filter has turned, which is after much of
+the fall, and bear-market rallies then squeeze them: A2 halved the 2021–22 loss (-18% against
+-39%) but turned 2022–23 from +39% into -16%. Scaling the rotation down when BTC is forecast to
+be volatile (HAR: the mean of the last day's, week's and month's realised variance; EWMA:
+RiskMetrics) mostly cut it out of the sharp rallies it earns from. All four stay as options,
+off.
+
 ## How it works
 
 ```

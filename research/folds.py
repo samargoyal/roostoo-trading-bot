@@ -115,6 +115,16 @@ ROUND_13 = [
     ("K1 rotation ranked by Kalman trend strength", {"strategy": {"rotation_ranking": "kalman"}}),
     ("C1 + K1", {"strategy": {"ranking": "composite", "rotation_ranking": "kalman"}}),
 ]
+# Round 19: the rotation's idle capital in a BTC downtrend backs shorts (the user's hypothesis),
+# and volatility forecasts scale the rotation. Fixed before running; same rule.
+ROUND_19 = [
+    ("incumbent", {}),
+    ("A1 bear market: short the 2 weakest coins", {"strategy": {"rotation_shorts": 2}}),
+    ("A2 bear market: short the 2 wildest coins", {"strategy": {"rotation_shorts": 2,
+                                                                 "rotation_short_ranking": "volatility"}}),
+    ("B1 rotation scaled by a HAR volatility forecast", {"strategy": {"rotation_vol_forecast": "har"}}),
+    ("B2 rotation scaled by an EWMA volatility forecast", {"strategy": {"rotation_vol_forecast": "ewma"}}),
+]
 # Round 8: tail-risk control of the rotation sleeve. Same rule.
 CVAR = [
     ("C0 current", {}),
@@ -199,6 +209,8 @@ def main() -> None:
         designs = ROUND_9
     elif "--round13" in sys.argv:
         designs = ROUND_13
+    elif "--round19" in sys.argv:
+        designs = ROUND_19
     elif "--rotation-weighting" in sys.argv:
         designs = ROTATION_WEIGHTING
     elif "--all" in sys.argv:

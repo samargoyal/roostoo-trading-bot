@@ -397,7 +397,18 @@ class Strategy:
                 filled = (1.0 - core) * len(picks) / c.rotation_top
                 for pair, weight in self._rotation_weights(picks, signals).items():
                     plan[pair] = filled * weight
-            empty = 1.0 - sum(plan.values())
+            elif c.rotation_shorts > 0:
+                # Bear market: the sleeve's capital backs shorts on the weakest (or wildest) coins.
+                pool = {p: s for p, s in signals.items()
+                        if p != c.defensive_pair and p not in frozen and p not in state.positions}
+                if c.rotation_short_ranking == "volatility":
+                    order = sorted(pool, key=lambda p: pool[p].volatility, reverse=True)
+                else:
+                    order = sorted((p for p, s in pool.items() if s.return_rotation < 0),
+                                   key=lambda p: pool[p].return_rotation)
+                for pair in order[:c.rotation_shorts]:
+                    plan[pair] = -1.0 / c.rotation_shorts
+            empty = 1.0 - sum(abs(w) for w in plan.values())
             defensive = signals.get(c.defensive_pair)
             if (empty > 1e-9 and defensive is not None and defensive.return_rotation > 0
                     and c.defensive_pair not in frozen):
@@ -413,9 +424,38 @@ class Strategy:
         plan = dict(state.rotation_plan)
         if not trend_on:
             # Leave at once when the trend filter fails; only the defensive part (and any
-            # halted coin, which cannot be sold) stays.
-            plan = {p: w for p, w in plan.items() if p == c.defensive_pair or p in frozen}
+            # halted coin, which cannot be sold) stays, and any bear-market shorts.
+            plan = {p: w for p, w in plan.items() if p == c.defensive_pair or p in frozen or w < 0}
+        else:
+            plan = {p: w for p, w in plan.items() if w > 0 or p in frozen}   # cover shorts at once
+        if c.rotation_vol_forecast and plan:
+            scale = self._vol_scale(c.rotation_vol_forecast)
+            plan = {p: w * scale for p, w in plan.items()}
         return plan
+
+    def _vol_scale(self, method: str) -> float:
+        """min(1, typical / forecast) for BTC's daily volatility: the forecast from the last 30
+        days of hourly returns (HAR: the mean of the last day's, week's and month's realised
+        variance; EWMA: RiskMetrics, lambda 0.94, on daily realised variance), the typical
+        level the median of the same forecast at each of the last 60 day-ends."""
+        ind = self.indicators.get(self.cfg.regime_pair)
+        if ind is None or len(ind.returns) < 24 * 90:
+            return 1.0
+        r = list(ind.returns)
+        days = [sum(x * x for x in r[len(r) - 24 * (i + 1):len(r) - 24 * i]) for i in range(90)][::-1]
+
+        def forecast(k: int) -> float:          # using day blocks up to index k (inclusive)
+            if method == "ewma":
+                var = days[k - 29]
+                for d in days[k - 28:k + 1]:
+                    var = 0.94 * var + 0.06 * d
+                return var
+            return (days[k] + sum(days[k - 6:k + 1]) / 7 + sum(days[k - 29:k + 1]) / 30) / 3
+
+        now = forecast(89)
+        history = sorted(forecast(k) for k in range(30, 90))
+        typical = history[len(history) // 2]
+        return min(1.0, math.sqrt(typical / now)) if now > 0 else 1.0
 
     def _rotation_weights(self, picks: List[str], signals: Dict[str, Signal]) -> Dict[str, float]:
         """Shares of the filled rotation sleeve (summing to 1) for the chosen coins."""

@@ -119,6 +119,11 @@ class StrategyConfig:
                                           # or "external" (research only): saved model scores
     rotation_exclude_external: bool = False  # research only: skip coins whose saved external score is
                                           # negative (research H30, funding-rate crowding)
+    rotation_shorts: int = 0              # > 0: while the trend filter is off, the sleeve shorts this many
+                                          # coins instead (research H31; off: Roostoo /v6 untested)
+    rotation_short_ranking: str = "return"  # "return": the weakest 2-week returns; "volatility": the wildest
+    rotation_vol_forecast: str = ""       # "har" or "ewma": scale the sleeve down when BTC's forecast daily
+                                          # volatility is above its 60-day median (research H31)
     rotation_max_z: float = 0.0           # > 0: skip a pick whose close is more than this many standard
                                           # deviations above its mean over rotation_z_hours
     rotation_z_hours: int = 168

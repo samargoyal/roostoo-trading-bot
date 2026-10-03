@@ -241,7 +241,8 @@ class LiveBot:
 
     def _shorts(self) -> List[Dict[str, float]]:
         """Open shorts, read only when the sleeve is on or the state remembers a short."""
-        if self.cfg.strategy.short_exposure <= 0 and not self.state.shorts:
+        s = self.cfg.strategy
+        if s.short_exposure <= 0 and s.rotation_shorts <= 0 and not self.state.shorts:
             return []
         return self.client.short_positions()
 

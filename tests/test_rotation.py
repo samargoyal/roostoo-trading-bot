@@ -161,6 +161,31 @@ class ResidualAndZTest(unittest.TestCase):
         d = make(signals, rotation_ranking="kalman").decide(DAY, 1.0, {}, StrategyState())
         self.assertEqual(d.rotation, {"ETH/USD": 0.5, "BTC/USD": 0.5})
 
+    def test_bear_market_shorts_the_weakest_coins_and_covers_when_the_trend_returns(self):
+        signals = market(trend_up=False)
+        signals["DOGE/USD"] = sig(-0.30, trend_up=False, fast=90.0)
+        signals["SOL/USD"] = sig(-0.10, trend_up=False)
+        state = StrategyState()
+        d = make(signals, rotation_shorts=2).decide(DAY, 1.0, {}, state)
+        self.assertEqual(d.rotation, {"DOGE/USD": -0.5, "SOL/USD": -0.5})
+        self.assertAlmostEqual(d.targets["DOGE/USD"], -0.2)
+        up = make(market(trend_up=True), rotation_shorts=2).decide(DAY + HOUR_MS, 1.0, {}, state)
+        self.assertTrue(all(w >= 0 for w in up.rotation.values()))
+
+    def test_volatility_forecast_shrinks_the_sleeve_when_btc_is_wild(self):
+        import math, random
+        strategy = make(market(), rotation_vol_forecast="har")
+        rng = random.Random(4)
+        returns = strategy.indicators["BTC/USD"].returns
+        for i in range(2200):
+            returns.append(rng.gauss(0, 0.004 if i < 2200 - 48 else 0.03))   # calm, then two wild days
+        d = strategy.decide(DAY, 1.0, {}, StrategyState())
+        self.assertLess(sum(d.rotation.values()), 0.7)
+        calm = make(market(), rotation_vol_forecast="har")
+        for _ in range(2200):
+            calm.indicators["BTC/USD"].returns.append(rng.gauss(0, 0.004))
+        self.assertAlmostEqual(sum(calm.decide(DAY, 1.0, {}, StrategyState()).rotation.values()), 1.0, delta=0.15)
+
     def test_z_guard_skips_an_overextended_pick(self):
         signals = market()
         strategy = make(signals, rotation_max_z=2.0, rotation_top=1)
