@@ -705,6 +705,25 @@ so they add little to an account whose returns come from crypto rallies. Searchi
 something passed would only find a lucky fit, so the search stopped here and the bot trades no
 tokenized shares.
 
+### Round 18: funding rates
+
+Binance's perpetual futures charge a funding rate every 8 hours; when longs pay a lot, the
+long side is crowded. The history is public, so it was screened with the H20 rule
+(`research/h29_funding.py`) and passed: coins with high 7-day funding did worse over the next
+week (IC -0.038, every fold, though near zero in 2024–26), and high BTC funding preceded weaker
+weeks for BTC (correlation -0.071, every fold). Three designs were then fixed and run through
+the folds (`research/h30_funding_strategy.py`):
+
+| Design | Median composite | Folds better | Worst drawdown |
+|---|---|---|---|
+| **Current (kept)** | **2.87** | – | 42% |
+| F1 book ranked by low volatility and low funding | 3.03 | 3/6 | 44% |
+| F2 rotation skips the most crowded fifth of coins | 2.12 | 4/6 | 37% |
+| F3 rotation out while BTC's funding is in its top fifth | 1.43 | 0/6 | 42% |
+
+None met the rule. F2 shows why: the coins the rotation makes its money on are the crowded
+ones, and skipping them cut 2023–24 from +229% to +98%. The hooks stay in the code, off.
+
 ## How it works
 
 ```

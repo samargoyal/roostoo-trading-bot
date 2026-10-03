@@ -117,6 +117,8 @@ class StrategyConfig:
                                           # the coin's beta to the regime pair (BTC) over the lookback,
                                           # "kalman": the Kalman trend slope over its standard deviation,
                                           # or "external" (research only): saved model scores
+    rotation_exclude_external: bool = False  # research only: skip coins whose saved external score is
+                                          # negative (research H30, funding-rate crowding)
     rotation_max_z: float = 0.0           # > 0: skip a pick whose close is more than this many standard
                                           # deviations above its mean over rotation_z_hours
     rotation_z_hours: int = 168

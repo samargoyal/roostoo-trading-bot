@@ -379,6 +379,9 @@ class Strategy:
                 rising = {p: s.return_rotation for p, s in signals.items()
                           if p != c.defensive_pair and s.return_rotation > 0 and p not in frozen
                           and not (core > 0 and p == c.regime_pair)}
+                if c.rotation_exclude_external and self.external_scores:
+                    table = self._external(ts)
+                    rising = {p: r for p, r in rising.items() if table.get(p, 1.0) >= 0}
                 if c.rotation_max_z > 0:
                     rising = {p: r for p, r in rising.items() if self._zscore(p) <= c.rotation_max_z}
                 if c.rotation_ranking == "residual":
