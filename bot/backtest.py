@@ -73,7 +73,8 @@ class ShortPosition:
 
 def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms: int,
                  fee: float, slippage: float, name: str = "strategy",
-                 monthly_universe: bool = False) -> Result:
+                 monthly_universe: bool = False,
+                 slippage_by_pair: Optional[Dict[str, float]] = None) -> Result:
     """Replay the strategy hour by hour from start_ms. Bars before start_ms only warm up indicators.
 
     Shorts follow Roostoo's rules: opening locks the USD collateral (quantity = collateral /
@@ -82,6 +83,7 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
 
     With monthly_universe, `bars` holds every candidate and the universe rule is re-applied on
     the first day of each month with data available then, as the live list would be refreshed.
+    slippage_by_pair overrides the slippage for given pairs (for example half their spread).
     """
     cfg = copy.deepcopy(cfg)
     strategy = Strategy(cfg.strategy, pairs=list(bars) if monthly_universe else None)
@@ -136,12 +138,13 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
             price = closes.get(t.pair)
             if not price:
                 continue
+            slip = slippage if slippage_by_pair is None else slippage_by_pair.get(t.pair, slippage)
             if t.side == SELL:
                 held = holdings.get(t.pair, 0.0)
                 quantity = held if t.close_position else min(held, t.usd / price)
                 if quantity <= 0:
                     continue
-                fill = price * (1.0 - slippage)
+                fill = price * (1.0 - slip)
                 proceeds = quantity * fill
                 paid = proceeds * fee
                 cash += proceeds - paid
@@ -150,7 +153,7 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
                 spend = min(t.usd, cash / (1.0 + fee))
                 if spend < cfg.execution.min_trade_usd:
                     continue
-                fill = price * (1.0 + slippage)
+                fill = price * (1.0 + slip)
                 quantity = spend / fill
                 paid = spend * fee
                 cash -= spend + paid
@@ -159,7 +162,7 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
                 collateral = min(t.usd, cash / (1.0 + short_fee))
                 if collateral < cfg.execution.min_trade_usd:
                     continue
-                fill = price * (1.0 - slippage)       # a market short fills at the bid
+                fill = price * (1.0 - slip)       # a market short fills at the bid
                 quantity = collateral / fill
                 paid = collateral * short_fee
                 cash -= collateral + paid
@@ -174,7 +177,7 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
                 position = shorts.get(t.pair)
                 if position is None:
                     continue
-                fill = price * (1.0 + slippage)       # a cover buys back at the ask
+                fill = price * (1.0 + slip)       # a cover buys back at the ask
                 quantity = position.qty if t.close_position else min(position.qty, t.usd / fill)
                 if quantity <= 0:
                     continue

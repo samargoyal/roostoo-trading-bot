@@ -11,13 +11,17 @@ import json
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from typing import Any, Dict, List, Optional
 
-# The 20 most traded crypto pairs on Roostoo over the 30 days to 2 October 2026, plus PAXG
-# as the defensive asset. Chosen by the rule in universe.py; regenerate with
-# `python -m bot.universe`.
+# The 45 most traded crypto pairs on Roostoo over the 30 days to 3 October 2026 (spread at most
+# 0.1%, 1000+ hours of history), plus PAXG as the defensive asset. Chosen by the rule in
+# universe.py; regenerate with `python -m bot.universe`. Six-year tests found the rotation
+# sleeve needs this wide a net to catch the leaders (research/folds.py --universe).
 DEFAULT_UNIVERSE = [
-    "BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "NEAR/USD", "BNB/USD",
-    "SUI/USD", "DOGE/USD", "UNI/USD", "ENA/USD", "AVAX/USD", "WLD/USD", "LINK/USD",
-    "ADA/USD", "ARB/USD", "TAO/USD", "PUMP/USD", "LTC/USD", "TRX/USD",
+    "BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "NEAR/USD", "BNB/USD", "SUI/USD",
+    "DOGE/USD", "UNI/USD", "ENA/USD", "AVAX/USD", "WLD/USD", "LINK/USD", "ADA/USD", "TAO/USD",
+    "ARB/USD", "PUMP/USD", "LTC/USD", "TRX/USD", "ONDO/USD", "XLM/USD", "TRUMP/USD", "HBAR/USD",
+    "AAVE/USD", "FIL/USD", "XPL/USD", "FET/USD", "ASTER/USD", "PENGU/USD", "DOT/USD", "APT/USD",
+    "ICP/USD", "POL/USD", "CAKE/USD", "SEI/USD", "ZEN/USD", "TUT/USD", "VIRTUAL/USD",
+    "PENDLE/USD", "CRV/USD", "FORM/USD", "EIGEN/USD", "WIF/USD", "PLUME/USD",
     "PAXG/USD",
 ]
 
@@ -91,16 +95,18 @@ class StrategyConfig:
     rotation_rebalance_hours: int = 24
     rotation_trend_fast: int = 168
     rotation_trend_slow: int = 672
+    rotation_core_share: float = 0.0      # share of the sleeve kept in the regime pair (BTC) while the
+                                          # trend filter is on; the momentum slots share the rest
 
 
 @dataclass
 class UniverseConfig:
     """How `python -m bot.universe` and the backtest choose the pairs to trade (see universe.py)."""
-    size: int = 20                      # pairs picked by trading volume; the defensive pair is added
+    size: int = 45                      # pairs picked by trading volume; the defensive pair is added
     volume_days: int = 30               # trading volume is measured over this many days
     max_spread: float = 0.001           # skip pairs whose bid-ask spread is wider (coarse tick sizes)
     min_history_bars: int = 1000        # hourly candles needed to warm up the indicators
-    asset_type: str = "crypto"          # Roostoo's AssetType; tokenised stocks are excluded
+    asset_type: str = "crypto"          # Roostoo's AssetType ("any" for all); tokenised stocks are excluded
 
 
 @dataclass

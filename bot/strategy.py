@@ -318,10 +318,14 @@ class Strategy:
         if due:
             plan: Dict[str, float] = {}
             if trend_on:
+                core = c.rotation_core_share if c.regime_pair in signals else 0.0
+                if core > 0:
+                    plan[c.regime_pair] = core
                 rising = {p: s.return_rotation for p, s in signals.items()
-                          if p != c.defensive_pair and s.return_rotation > 0}
+                          if p != c.defensive_pair and s.return_rotation > 0
+                          and not (core > 0 and p == c.regime_pair)}
                 for pair in sorted(rising, key=rising.get, reverse=True)[:c.rotation_top]:
-                    plan[pair] = 1.0 / c.rotation_top
+                    plan[pair] = (1.0 - core) / c.rotation_top
             empty = 1.0 - sum(plan.values())
             defensive = signals.get(c.defensive_pair)
             if empty > 1e-9 and defensive is not None and defensive.return_rotation > 0:

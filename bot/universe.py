@@ -32,7 +32,9 @@ def candidate_pairs(exchange_info: Dict, quotes: Dict[str, Dict[str, float]],
     out = {}
     for pair, info in exchange_info.get("TradePairs", {}).items():
         quote = quotes.get(pair)
-        if not quote or not info.get("CanTrade", True) or info.get("AssetType") != cfg.asset_type:
+        if not quote or not info.get("CanTrade", True):
+            continue
+        if cfg.asset_type != "any" and info.get("AssetType") != cfg.asset_type:
             continue
         bid, ask = float(quote.get("MaxBid") or 0), float(quote.get("MinAsk") or 0)
         if bid <= 0 or ask <= 0:

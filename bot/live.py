@@ -21,6 +21,7 @@ open, and it always works from the real wallet, so it never assumes it starts fl
 """
 import argparse
 import json
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import re
@@ -179,8 +180,12 @@ class LiveBot:
 
         started = self.client.now_ms()
         strategy = Strategy(self.cfg.strategy)
-        for pair in self.cfg.strategy.universe:
-            for bar in self._bars(pair, started):
+        universe = self.cfg.strategy.universe
+        # Binance candles for ~46 pairs, a few pages each: fetched six at a time.
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            history = dict(zip(universe, pool.map(lambda p: self._bars(p, started), universe)))
+        for pair in universe:
+            for bar in history[pair]:
                 strategy.update(pair, bar)
         signals = strategy.signals()
         missing = [p for p in self.cfg.strategy.universe if p not in signals]
