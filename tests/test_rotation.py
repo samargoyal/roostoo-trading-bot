@@ -131,3 +131,50 @@ class RotationWeightingTest(unittest.TestCase):
         self.assertAlmostEqual(w["A"], 0.5)
         self.assertAlmostEqual(w["B"], 0.2 + 0.2 * 2 / 3)
         self.assertAlmostEqual(sum(w.values()), 1.0)
+
+
+class ResidualAndZTest(unittest.TestCase):
+    def fill(self, strategy, pair, steps):
+        price = 100.0
+        for step in steps:
+            price *= 1 + step
+            strategy.indicators[pair].closes.append(price)
+
+    def test_residual_momentum_prefers_the_coin_that_did_not_just_ride_btc(self):
+        signals = market()
+        signals["ETH/USD"] = sig(0.30)
+        signals["SOL/USD"] = sig(0.30)
+        strategy = make(signals, rotation_ranking="residual", rotation_top=1)
+        btc = [0.01 if i % 2 == 0 else -0.008 for i in range(400)]
+        self.fill(strategy, "BTC/USD", btc)
+        self.fill(strategy, "ETH/USD", [2.0 * x for x in btc])                               # pure beta
+        self.fill(strategy, "SOL/USD", [0.003 if i % 3 == 0 else -0.0005 for i in range(400)])  # own move
+        d = strategy.decide(DAY, 1.0, {}, StrategyState())
+        self.assertEqual(list(d.rotation), ["SOL/USD"])
+
+    def test_z_guard_skips_an_overextended_pick(self):
+        signals = market()
+        strategy = make(signals, rotation_max_z=2.0, rotation_top=1)
+        self.fill(strategy, "SOL/USD", [0.0001 * (1 if i % 2 else -1) for i in range(200)] + [0.2])  # spike
+        d = strategy.decide(DAY, 1.0, {}, StrategyState())
+        self.assertNotIn("SOL/USD", d.rotation)
+        self.assertIn("ETH/USD", d.rotation)
+
+
+class CvarCapTest(unittest.TestCase):
+    def test_wild_picks_are_scaled_down_to_the_cvar_limit(self):
+        signals = market()
+        capped = make(signals, rotation_cvar_limit=0.02)
+        free = make(signals)
+        for strategy in (capped, free):
+            for pair, swing in (("SOL/USD", 0.03), ("ETH/USD", 0.03)):
+                price = 100.0
+                for i in range(400):
+                    price *= 1 + (swing if i % 3 else -2.2 * swing)
+                    strategy.indicators[pair].closes.append(price)
+        d_free = free.decide(DAY, 1.0, {}, StrategyState())
+        d_cap = capped.decide(DAY, 1.0, {}, StrategyState())
+        self.assertAlmostEqual(sum(d_free.rotation.values()), 1.0)
+        self.assertLess(sum(d_cap.rotation.values()), 1.0)
+        cvar = capped._daily_cvar(d_cap.rotation)
+        self.assertAlmostEqual(cvar * 0.4, 0.02, places=6)

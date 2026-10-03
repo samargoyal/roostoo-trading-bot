@@ -22,7 +22,8 @@ UNIVERSE = ["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD", "PEPE/USD", "PAXG/USD"]
 
 
 def make_strategy(signals, **overrides):
-    cfg = StrategyConfig(universe=list(UNIVERSE), **dict({"short_exposure": 0.15, "rotation_weight": 0.0}, **overrides))
+    base = {"short_exposure": 0.15, "rotation_weight": 0.0, "max_positions_risk_on": 4, "sizing": "inverse_atr"}
+    cfg = StrategyConfig(universe=list(UNIVERSE), **dict(base, **overrides))
     strategy = Strategy(cfg)
     strategy.signals = lambda: signals
     return strategy

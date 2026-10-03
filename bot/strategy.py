@@ -325,6 +325,10 @@ class Strategy:
                 rising = {p: s.return_rotation for p, s in signals.items()
                           if p != c.defensive_pair and s.return_rotation > 0
                           and not (core > 0 and p == c.regime_pair)}
+                if c.rotation_max_z > 0:
+                    rising = {p: r for p, r in rising.items() if self._zscore(p) <= c.rotation_max_z}
+                if c.rotation_ranking == "residual":
+                    rising = {p: self._residual_return(p, r) for p, r in rising.items()}
                 picks = sorted(rising, key=rising.get, reverse=True)[:c.rotation_top]
                 # The picks fill len(picks) of rotation_top slots; how they share it is the
                 # weighting. Unfilled slots go to PAXG or cash below, whatever the weighting.
@@ -335,6 +339,12 @@ class Strategy:
             defensive = signals.get(c.defensive_pair)
             if empty > 1e-9 and defensive is not None and defensive.return_rotation > 0:
                 plan[c.defensive_pair] = plan.get(c.defensive_pair, 0.0) + empty
+            if c.rotation_cvar_limit > 0 and plan:
+                # Tail cap: shrink the whole sleeve, leaving the difference in cash.
+                cvar = self._daily_cvar(plan)
+                if cvar * c.rotation_weight > c.rotation_cvar_limit:
+                    scale = c.rotation_cvar_limit / (cvar * c.rotation_weight)
+                    plan = {p: w * scale for p, w in plan.items()}
             state.rotation_plan = plan
             state.rotation_plan_ts = ts
         plan = dict(state.rotation_plan)
@@ -364,6 +374,44 @@ class Strategy:
                     solved = min_variance(cov, c.rotation_max_weight)
                 weights = dict(zip(picks, solved))
         return _cap_weights(weights, c.rotation_max_weight)
+
+    def _residual_return(self, pair: str, raw: float) -> float:
+        """The lookback return left after removing the part explained by the coin's beta to the
+        regime pair: log(1 + r) - beta * log(1 + r_btc), with beta from the same hourly window."""
+        c = self.cfg
+        if pair == c.regime_pair or c.regime_pair not in self.indicators:
+            return math.log1p(raw)
+        series = self._recent_returns([pair, c.regime_pair], c.rotation_lookback)
+        if series is None:
+            return math.log1p(raw)
+        coin, btc = series
+        n = len(btc)
+        mean_c, mean_b = sum(coin) / n, sum(btc) / n
+        var_b = sum((x - mean_b) ** 2 for x in btc)
+        beta = sum((x - mean_c) * (y - mean_b) for x, y in zip(coin, btc)) / var_b if var_b > 0 else 1.0
+        return sum(coin) - beta * sum(btc)
+
+    def _daily_cvar(self, weights: Dict[str, float], level: float = 0.95) -> float:
+        """Historical 1-day CVaR of the given holdings: the average loss over the worst
+        (1 - level) of overlapping 24-hour windows in the last rotation_cov_hours."""
+        pairs = list(weights)
+        series = self._recent_returns(pairs, self.cfg.rotation_cov_hours)
+        if series is None:
+            return 0.0
+        hourly = [sum(weights[p] * series[i][t] for i, p in enumerate(pairs)) for t in range(len(series[0]))]
+        daily = sorted(sum(hourly[t:t + 24]) for t in range(len(hourly) - 23))
+        tail = daily[:max(1, int(len(daily) * (1 - level)))]
+        return max(0.0, -sum(tail) / len(tail))
+
+    def _zscore(self, pair: str) -> float:
+        """How many standard deviations the latest close is above its mean over rotation_z_hours."""
+        closes = list(self.indicators[pair].closes)[-self.cfg.rotation_z_hours:]
+        n = len(closes)
+        if n < 24:
+            return 0.0
+        mean = sum(closes) / n
+        sd = math.sqrt(sum((x - mean) ** 2 for x in closes) / (n - 1))
+        return (closes[-1] - mean) / sd if sd > 0 else 0.0
 
     def _recent_returns(self, pairs: List[str], hours: int) -> Optional[List[List[float]]]:
         """The last `hours` hourly log returns of each pair, aligned at the latest bar."""
@@ -434,16 +482,28 @@ class Strategy:
                 and state.cooldown_until.get(pair, 0) <= ts)
 
     def _size(self, pairs: List[str], signals: Dict[str, Signal], budget: float) -> Dict[str, float]:
-        """Inverse-ATR weights scaled to the budget, each capped at max_weight."""
+        """Weights for the chosen coins scaled to the budget, each capped at max_weight: inverse
+        ATR by default, or a minimum-variance or equal-risk-contribution portfolio."""
         c = self.cfg
         inverse_risk = {p: signals[p].close / signals[p].atr for p in pairs if signals[p].atr > 0}
         total = sum(inverse_risk.values())
         if total <= 0:
             return {}
+        shares = {p: x / total for p, x in inverse_risk.items()}
+        if c.sizing in ("min_variance", "erc") and len(shares) > 1 and budget > 0:
+            chosen = list(shares)
+            series = self._recent_returns(chosen, c.rotation_cov_hours)
+            if series is not None:
+                cov = covariance(series)
+                if c.sizing == "erc":
+                    solved = erc_weights(cov)
+                else:
+                    solved = min_variance(cov, min(1.0, c.max_weight / budget))
+                shares = dict(zip(chosen, solved))
         weights = {}
-        for pair, x in inverse_risk.items():
+        for pair, share in shares.items():
             cap = c.max_weight - (c.core_weight if pair == c.defensive_pair else 0.0)
-            weights[pair] = min(budget * x / total, max(cap, 0.0))
+            weights[pair] = min(budget * share, max(cap, 0.0))
         return weights
 
     def _update_brake(self, equity: float, state: StrategyState,

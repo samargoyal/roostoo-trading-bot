@@ -17,7 +17,8 @@ def sig(close=110.0, fast=105.0, slow=100.0, regime=90.0, atr=1.0, rsi=50.0,
 
 def make_strategy(signals, **overrides):
     """The strategy on its own: the rotation sleeve is off unless a test turns it on."""
-    cfg = StrategyConfig(universe=list(UNIVERSE), **dict({"rotation_weight": 0.0}, **overrides))
+    base = {"rotation_weight": 0.0, "max_positions_risk_on": 4, "sizing": "inverse_atr"}
+    cfg = StrategyConfig(universe=list(UNIVERSE), **dict(base, **overrides))
     strategy = Strategy(cfg)
     strategy.signals = lambda: signals
     return strategy

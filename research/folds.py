@@ -18,6 +18,7 @@ missing, which flatters the earlier years slightly).
 """
 import copy
 import csv
+import json
 import os
 import sys
 from concurrent.futures import ProcessPoolExecutor
@@ -63,6 +64,39 @@ WIDTH = [
 # Written down before running, with the rule for adopting one over R0: a higher median
 # composite, a higher composite in at least 4 of the 6 folds, and a worst-fold drawdown no
 # more than 2 points worse.
+# Round 6: convex optimisation in the defensive book (up to 8 coins so the optimiser, not the
+# 15% cap, sets the weights), and the split between the books. Same adoption rule as round 5.
+DEFENSIVE = [
+    ("T0 current", {}),
+    ("T1 book: 8 coins, minimum variance", {"strategy": {"max_positions_risk_on": 8, "sizing": "min_variance"}}),
+    ("T2 book: 8 coins, equal risk contribution", {"strategy": {"max_positions_risk_on": 8, "sizing": "erc"}}),
+    ("T3 50% rotation / 50% book", {"strategy": {"rotation_weight": 0.5}}),
+    ("T4 30% rotation / 70% book", {"strategy": {"rotation_weight": 0.3}}),
+]
+# Round 7: ideas from VECM-ARB, applied to the rotation sleeve's choice of coins. Same rule.
+VECM_IDEAS = [
+    ("V0 current", {}),
+    ("V1 residual momentum (BTC beta removed)", {"strategy": {"rotation_ranking": "residual"}}),
+    ("V2 skip picks more than 2 sd above their 1-week mean", {"strategy": {"rotation_max_z": 2.0}}),
+    ("V3 both", {"strategy": {"rotation_ranking": "residual", "rotation_max_z": 2.0}}),
+]
+# Rounds 7 and 8 run against the round-6 winner (8-coin ERC book), with a control that keeps
+# 8 coins but the old inverse-ATR sizing, to see what the optimiser itself adds.
+ROUNDS_7_8 = [
+    ("incumbent: 8-coin ERC book", {}),
+    ("control: 8 coins, inverse-ATR sizing", {"strategy": {"sizing": "inverse_atr"}}),
+    ("V1 residual momentum", {"strategy": {"rotation_ranking": "residual"}}),
+    ("V2 skip picks > 2 sd above 1-week mean", {"strategy": {"rotation_max_z": 2.0}}),
+    ("V3 residual + z guard", {"strategy": {"rotation_ranking": "residual", "rotation_max_z": 2.0}}),
+    ("C1 rotation CVaR cap 3%", {"strategy": {"rotation_cvar_limit": 0.03}}),
+    ("C2 rotation CVaR cap 5%", {"strategy": {"rotation_cvar_limit": 0.05}}),
+]
+# Round 8: tail-risk control of the rotation sleeve. Same rule.
+CVAR = [
+    ("C0 current", {}),
+    ("C1 rotation 1-day CVaR capped at 3% of equity", {"strategy": {"rotation_cvar_limit": 0.03}}),
+    ("C2 rotation 1-day CVaR capped at 5% of equity", {"strategy": {"rotation_cvar_limit": 0.05}}),
+]
 ROTATION_WEIGHTING = [
     ("R0 top 2, equal (current)", {}),
     ("R1 top 5, equal", {"strategy": {"rotation_top": 5}}),
@@ -121,12 +155,22 @@ def run(job):
         worst = max(worst, 1 - price / peak)
     st = result.stats
     return name, start, {"ret": st["total_return"], "mdd": st["max_drawdown"], "comp": st["composite"],
+                         "w14_pos": st.get("window_positive_share", 0.0),
+                         "w14_comp": st.get("window_composite_median", 0.0),
                          "btc": btc[-1] / btc[0] - 1, "btc_mdd": worst}
 
 
 def main() -> None:
     if "--universe" in sys.argv:
         designs = WIDTH
+    elif "--defensive" in sys.argv:
+        designs = DEFENSIVE
+    elif "--vecm" in sys.argv:
+        designs = VECM_IDEAS
+    elif "--cvar" in sys.argv:
+        designs = CVAR
+    elif "--rounds78" in sys.argv:
+        designs = ROUNDS_7_8
     elif "--rotation-weighting" in sys.argv:
         designs = ROTATION_WEIGHTING
     elif "--all" in sys.argv:
@@ -145,6 +189,23 @@ def main() -> None:
         table.setdefault(name, {})[start[:4]] = r
         btc[start[:4]] = (r["btc"], r["btc_mdd"])
     years = [f[0][:4] for f in FOLDS]
+    flag = next((a for a in sys.argv[1:] if a.startswith("--")), "--designs")[2:]
+    with open(os.path.join("runs", "research", "folds_%s.json" % flag), "w") as f:
+        json.dump(table, f, indent=1)
+    # Composite score per fold, and how many folds each design beats the first one (the
+    # incumbent) in: the adoption rule needs at least 4 of 6.
+    base = designs[0][0]
+    print("Composite score per fold")
+    for name, by_year in table.items():
+        better = sum(by_year[y]["comp"] > table[base][y]["comp"] for y in years)
+        print("  %-42s %s   better than %s in %d/6" % (
+            name, "  ".join("%6.2f" % by_year[y]["comp"] for y in years), base[:12], better))
+    # The competition is one 14-day window: for information, the share of positive 14-day
+    # windows and the median 14-day composite, each averaged over the folds.
+    print("14-day windows (information only): share positive, median composite")
+    for name, by_year in table.items():
+        print("  %-42s %5.1f%%  %6.2f" % (name, sum(by_year[y].get("w14_pos", 0) for y in years) / 6 * 100,
+                                          sum(by_year[y].get("w14_comp", 0) for y in years) / 6))
     rows = []
     for name, by_year in table.items():
         row = {"design": name}

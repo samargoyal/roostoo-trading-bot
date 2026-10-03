@@ -35,7 +35,7 @@ class StrategyConfig:
     regime_ema: int = 200
     risk_on_exposure: float = 0.75       # max fraction of equity invested when risk-on
     risk_off_exposure: float = 0.25      # ... and when risk-off
-    max_positions_risk_on: int = 4
+    max_positions_risk_on: int = 8
     max_positions_risk_off: int = 3
 
     # Defensive asset: always held as a small core, and first in line when risk-off.
@@ -62,6 +62,9 @@ class StrategyConfig:
     # Sizing and trailing stop.
     atr_period: int = 14
     max_weight: float = 0.15            # per-coin cap; for the defensive pair it includes the core
+    sizing: str = "erc"                 # "erc" (equal risk contribution), "min_variance" or "inverse_atr";
+                                        # the first two use rotation_cov_hours of returns, all capped at
+                                        # max_weight. Six-year folds: erc with 8 positions (round 6)
     stop_atr_multiple: float = 8.0      # exit below the highest close since entry minus this many ATRs
     stop_cooldown_hours: int = 24       # no re-entry into a coin for this long after a stop
 
@@ -101,6 +104,14 @@ class StrategyConfig:
                                           # "erc" (equal risk contribution) or "min_variance"
     rotation_max_weight: float = 1.0      # cap per pick, as a share of the filled sleeve
     rotation_cov_hours: int = 336         # hourly returns behind the covariance for erc / min_variance
+    rotation_ranking: str = "return"      # "return", or "residual": the return left after removing
+                                          # the coin's beta to the regime pair (BTC) over the lookback
+    rotation_max_z: float = 0.0           # > 0: skip a pick whose close is more than this many standard
+                                          # deviations above its mean over rotation_z_hours
+    rotation_z_hours: int = 168
+    rotation_cvar_limit: float = 0.0      # > 0: at each rebalance, scale the sleeve down so its 1-day
+                                          # 95% CVaR (from the picks' last rotation_cov_hours of hourly
+                                          # returns) is at most this share of total equity
 
 
 @dataclass
