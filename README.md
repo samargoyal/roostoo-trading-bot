@@ -32,6 +32,7 @@ shallow drawdowns, because the competition ranks on return and then scores
 | Exits | The 50-hour EMA falls below the 200-hour EMA, or the close drops 8 ATR below the highest close since entry. A held coin is never sold just for ranking lower. |
 | Drawdown brake | At 4% below peak equity, trend positions are halved until the drawdown is back under 2%. |
 | PAXG core | 5% of equity stays in PAXG at all times. |
+| Short sleeve | Optional, off by default: short the 3 most volatile coins (15% of equity in total, inverse-ATR sizing) with a trailing stop 10 ATR above the lowest close since entry. |
 | Activity rule | The competition requires trades on at least 8 days. If nothing has filled in the current 8-hour UTC block and less than 2 hours of it remain, the position furthest from its target is rebalanced. This guarantees at least 2 trades in every calendar day, whatever time zone is used. |
 
 Trades are only placed when a holding is more than 4% of equity away from its target
@@ -181,6 +182,66 @@ edge. Not adopted.
 
 Low volatility tied momentum on the composite score in the rally while giving lower
 drawdowns and more positive 14-day windows in all three periods, so it became the ranking.
+
+### Time-series models and advanced portfolio construction
+
+A second round tested econometric and portfolio-theory ideas, again chosen on the
+development period only.
+
+**H6–H7. Volatility forecasting** (`research/h6_volatility.py`). Each model forecast the next
+24 hours' realised variance for every coin, refitted monthly:
+
+| Model | QLIKE (lower is better) | Rank IC of low forecast vol, next 24h |
+|---|---|---|
+| 168h rolling variance (the bot) | 0.353 / 0.423 / 0.429 | 0.077 / 0.094 / 0.069 |
+| EWMA, 24h half-life | 0.329 / 0.406 / 0.383 | 0.082 / 0.093 / 0.072 |
+| GARCH(1,1), Student-t | 0.336 / 0.434 / 0.368 | 0.084 / 0.101 / 0.056 |
+| GJR-GARCH(1,1,1) | 0.337 / 0.438 / 0.366 | 0.085 / 0.098 / 0.057 |
+| HAR-RV (day, week, month) | **0.290 / 0.363 / 0.347** | **0.086 / 0.100 / 0.073** |
+
+(Oct 24 – Sep 25 / Oct 25 – Jun 26 / Jul – Sep 26.) GARCH was not reliably better than the
+simple estimate; HAR-RV forecast best every time. But ranking or sizing by the HAR forecast
+did not improve the simulated strategy, because every model agrees on which coins are calm.
+
+**H8. Regime switching** (`research/h8_regimes.py`). A 2-state Gaussian hidden Markov model
+on BTC's 4-hour returns, filtered forward from past data only, switched 1,015 times against
+689 for the 200-hour EMA rule, with no better timing. Neither switch predicts the next 1–3
+days' return; the EMA rule earns its place by cutting exposure in volatile, falling spells.
+
+**H9. Return prediction over time.** Pooled AR(7) and ARIMA(1,0,1) models had out-of-sample
+R-squared between -0.02 and +0.006 and called the next day's direction 48–54% of the time.
+
+**H10–H12. Portfolio construction** (`research/sim.py`):
+- Volatility-managed exposure, in the spirit of Merton's optimal fraction `(mu - r) /
+  (gamma sigma^2)` with unpredictable `mu`: invest up to 95% when forecast portfolio volatility
+  is low. It lowered returns (+13% to +29% against +34% in the rising year) and deepened
+  drawdowns (16–22%): in crypto, calm spells often come just before crashes.
+- Equal risk contribution weights (Spinu's convex formulation, cyclical coordinate descent):
+  better in one year, worse in the other.
+- No-trade bands from transaction-cost theory (Janecek–Shreve asymptotics of the
+  Davis–Norman problem, about 2.5% for a 15% position): better in one year, worse in the other.
+
+**H13. Betting against beta: a short sleeve.** Low-volatility coins beat high-volatility
+ones, so the same effect can be earned from the other side: short the three most volatile
+coins whatever their trend, sized by inverse ATR, with a trailing stop above the lowest close
+since entry. A grid over the size (10–25%) and stop (6–12 ATR) showed a clear safe zone:
+13 of 20 settings beat the long-only strategy on the composite score in both development
+years, and every setting cut the drawdown. Tight 6 ATR stops and 25% sizes failed. The
+centre of the safe zone, 15% with a 10 ATR stop, was chosen before looking at July to
+September 2026, where it returned 28.1% against 30.8% for long-only during a 43% BTC rally,
+with more positive 14-day windows (80% against 75%).
+
+In the bot's own backtester, with Roostoo's collateral rules and market-order fees:
+
+| | Long only (default) | Long + 15% short sleeve | Hold BTC |
+|---|---|---|---|
+| Oct 2024 – Oct 2025 | +37.2%, drawdown 12.7%, composite 3.16 | **+35.8%, 8.5%, 3.66** | +79.5%, 30.9% |
+| Oct 2025 – Oct 2026 | +12.9%, drawdown 12.3%, composite 1.26 | **+22.6%, 8.4%, 2.51** | -26.8%, 53.7% |
+| Two years | +54.9% | **+66.5%** | +31.4% |
+
+The sleeve ships switched off (`short_exposure = 0`) because Roostoo's `/v6` short endpoints
+have not yet been tried on the testing account. Turn it on with
+`--config config/shorts.json` once they have.
 
 ## How it works
 
@@ -346,6 +407,16 @@ python -m bot.live --account test --config my_settings.json
 ```
 
 Unknown keys are rejected, so a typo cannot silently fall back to a default.
+
+`config/shorts.json` turns on the short sleeve (see [Strategy research](#strategy-research)):
+
+```
+scripts/run_bot.sh comp --config config/shorts.json
+```
+
+With the sleeve on, the bot reads `/v6/short_positions` every cycle, values each short at its
+collateral plus unrealised profit, opens shorts with `/v6/short_open` (market, collateral
+taken from free cash alongside buys) and covers with `/v6/short_close`.
 
 ## Records for judging
 
