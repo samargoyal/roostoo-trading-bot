@@ -17,7 +17,10 @@ Every hour, a minute after the candle closes, the bot:
   5. reconciles the strategy state with the new wallet and records everything.
 
 On start-up, and at the start of every cycle, it cancels any order a previous run left
-open, and it always works from the real wallet, so it never assumes it starts flat.
+open, and it always works from the real wallet, so it never assumes it starts flat. It
+re-reads Roostoo's trading rules every cycle and sends no orders in a pair that is halted (or
+delisted), instead of failing, and the strategy plans the rest of the portfolio around it
+(strategy.plan_around_halts).
 """
 import argparse
 import json
@@ -28,10 +31,10 @@ import re
 import signal
 import sys
 import time
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from bot.config import Config, load_config
-from bot.execution import Executor, OrderResult, parse_rules
+from bot.execution import Executor, OrderResult, halted_pairs, parse_rules
 from bot.indicators import Signal
 from bot.journal import Journal, StateStore, setup_logging, utc_iso
 from bot.market_data import HOUR_MS, Bar, BinanceClient, BinanceError, binance_symbol
@@ -126,17 +129,19 @@ class LiveBot:
         self.sleep = sleep
         self.state = StrategyState()
         self.executor: Optional[Executor] = None
+        self.frozen: Set[str] = set()   # pairs Roostoo is not trading, as of the last check
 
     # ---- lifecycle -------------------------------------------------------------
 
     def start(self) -> None:
         self.client.sync_clock()
-        rules = parse_rules(self.client.exchange_info())
-        missing = [p for p in self.cfg.strategy.universe if p not in rules]
-        if missing:
-            raise ValueError("not tradable on Roostoo: %s" % ", ".join(missing))
-        self.executor = Executor(self.client, rules, self.cfg.execution, self._record_order,
+        info = self.client.exchange_info()
+        self.executor = Executor(self.client, parse_rules(info), self.cfg.execution, self._record_order,
                                  dry_run=self.dry_run, sleep=self.sleep)
+        self.frozen = halted_pairs(info, self.cfg.strategy.universe)
+        if self.frozen:
+            log.warning("not tradable on Roostoo now (no orders until they are): %s",
+                        ", ".join(sorted(self.frozen)))
         self.state = self.store.load() or StrategyState()
         self.state.peak_equity = max(self.state.peak_equity, self.journal.peak_equity())
         wallet = self.client.balance()
@@ -197,10 +202,12 @@ class LiveBot:
         equity, cash, values = portfolio_value(self.client.balance(), quotes, self._shorts())
         weights = {p: v / equity for p, v in values.items()} if equity > 0 else {}
 
+        frozen = self._refresh_rules(set(universe) | set(weights))
         now = self.client.now_ms()
-        decision = strategy.decide(now, equity, weights, self.state)
+        decision = strategy.decide(now, equity, weights, self.state,
+                                   frozen if self.cfg.strategy.plan_around_halts else frozenset())
         trades = plan_trades(decision, weights, equity, now, self.state.last_fill_ts,
-                             self.cfg.execution, self.cfg.strategy.min_position_weight)
+                             self.cfg.execution, self.cfg.strategy.min_position_weight, frozen)
         self._record_decision(now, decision, equity, weights, trades, signals)
 
         results = self.executor.execute(trades, quotes) if trades else []
@@ -214,6 +221,23 @@ class LiveBot:
         strategy.reconcile(now, weights, decision, self.state)
         self._record_equity(equity, cash, values, decision)
         self.store.save(self.state)
+
+    def _refresh_rules(self, pairs: Iterable[str]) -> Set[str]:
+        """Re-read Roostoo's trading rules; returns the given pairs it is not trading now."""
+        try:
+            info = self.client.exchange_info()
+        except RoostooError as exc:
+            log.warning("exchange info unavailable (%s); keeping the last trading rules", exc)
+            return self.frozen
+        if not info.get("TradePairs"):
+            log.warning("exchange info lists no pairs; keeping the last trading rules")
+            return self.frozen
+        self.executor.rules = parse_rules(info)
+        frozen = halted_pairs(info, pairs)
+        if frozen != self.frozen:
+            log.warning("not tradable on Roostoo now: %s", ", ".join(sorted(frozen)) or "none")
+        self.frozen = frozen
+        return frozen
 
     def _shorts(self) -> List[Dict[str, float]]:
         """Open shorts, read only when the sleeve is on or the state remembers a short."""
@@ -259,6 +283,7 @@ class LiveBot:
             "weights": {p: round(w, 5) for p, w in weights.items()},
             "targets": targets,
             "reasons": decision.reasons,
+            "halted": sorted(self.frozen),
             "scores": {p: round(s, 4) for p, s in decision.scores.items()},
             "signals": {p: {"bar": utc_iso(s.ts), "close": s.close, "ema_fast": round(s.ema_fast, 6),
                             "ema_slow": round(s.ema_slow, 6), "ema_regime": round(s.ema_regime, 6),

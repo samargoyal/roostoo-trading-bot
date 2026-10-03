@@ -5,11 +5,14 @@
                    variance. Solved as the strictly convex problem
                    min 1/2 y'Cy - (1/n) sum(log y_i), then y normalised (Spinu, 2013),
                    by cyclical coordinate descent.
+  erc_weights_fixed  the same when some weights are fixed (coins whose trading is halted):
+                   the free weights share the remaining budget with equal risk contributions,
+                   counting their covariance with the fixed holdings.
   min_variance     minimum variance with weights summing to 1 and 0 <= w_i <= cap, by
                    projected gradient descent with an exact projection onto that set.
 """
 import math
-from typing import List, Sequence
+from typing import Dict, List, Sequence
 
 Matrix = List[List[float]]
 
@@ -49,6 +52,53 @@ def erc_weights(cov: Matrix, iters: int = 1000, tol: float = 1e-12) -> List[floa
             break
     total = sum(y)
     return [v / total for v in y]
+
+
+def erc_weights_fixed(cov: Matrix, fixed: Dict[int, float], budget: float,
+                      iters: int = 1000, tol: float = 1e-12) -> List[float]:
+    """Weights for every asset: the `fixed` ones (index -> weight) as given, the free ones
+    summing to `budget` with equal risk contributions w_i (Cw)_i, Cw including the fixed ones.
+
+    For a risk budget b the free weights solve the strictly convex problem
+        min 1/2 y'C_ff y + y'C_fx x - b sum(log y_i)        (x: the fixed weights)
+    whose optimum has y_i (Cw)_i = b for every free asset; b is then set by bisection so
+    that the free weights sum to the budget (their sum rises with b).
+    """
+    n = len(cov)
+    free = [i for i in range(n) if i not in fixed]
+    w = [fixed.get(i, 0.0) for i in range(n)]
+    if not free or budget <= 0:
+        return w
+    for i in free:
+        w[i] = budget / len(free)
+
+    def total(b: float) -> float:
+        for _ in range(iters):
+            change = 0.0
+            for i in free:
+                c = sum(cov[i][k] * w[k] for k in range(n)) - cov[i][i] * w[i]
+                new = (-c + math.sqrt(c * c + 4.0 * cov[i][i] * b)) / (2.0 * cov[i][i])
+                change = max(change, abs(new - w[i]))
+                w[i] = new
+            if change < tol * budget:
+                break
+        return sum(w[i] for i in free)
+
+    lo, hi = 0.0, budget * budget * max(cov[i][i] for i in free)
+    while total(hi) < budget:
+        lo, hi = hi, hi * 4.0
+    for _ in range(100):
+        mid = (lo + hi) / 2.0
+        if total(mid) < budget:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo <= 1e-15 * hi:
+            break
+    scale = budget / total(hi)
+    for i in free:
+        w[i] *= scale
+    return w
 
 
 def project_capped_simplex(v: Sequence[float], cap: float) -> List[float]:

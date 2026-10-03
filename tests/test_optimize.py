@@ -2,8 +2,8 @@ import itertools
 import random
 import unittest
 
-from bot.optimize import (covariance, erc_weights, min_variance, project_capped_simplex,
-                          risk_contributions)
+from bot.optimize import (covariance, erc_weights, erc_weights_fixed, min_variance,
+                          project_capped_simplex, risk_contributions)
 
 
 def random_cov(n, seed):
@@ -50,6 +50,31 @@ class OptimizeTest(unittest.TestCase):
             c = 1.0 - a - b
             if 0 <= c <= 0.6 and a <= 0.6 and b <= 0.6:
                 self.assertLessEqual(best, variance(cov, [a, b, c]) + 1e-12)
+
+    def test_erc_fixed_without_fixed_weights_is_plain_erc_scaled_to_the_budget(self):
+        cov = random_cov(4, 3)
+        for a, b in zip(erc_weights_fixed(cov, {}, 0.6), erc_weights(cov)):
+            self.assertAlmostEqual(a, 0.6 * b, places=9)
+
+    def test_erc_fixed_gives_the_free_assets_equal_risk_and_the_budget(self):
+        for seed in range(5):
+            cov = random_cov(5, seed)
+            w = erc_weights_fixed(cov, {4: 0.2}, 0.5)
+            self.assertEqual(w[4], 0.2)
+            self.assertAlmostEqual(sum(w[:4]), 0.5)
+            cw = [sum(cov[i][k] * w[k] for k in range(5)) for i in range(5)]
+            contributions = [w[i] * cw[i] for i in range(4)]
+            for rc in contributions:
+                self.assertAlmostEqual(rc / contributions[0], 1.0, places=6)
+
+    def test_erc_fixed_gives_less_to_the_asset_that_moves_with_the_fixed_one(self):
+        # Assets 0 and 1 alike, except that 0 moves with asset 2 (held fixed) and 1 does not.
+        cov = [[1e-4, 0.0, 0.9e-4], [0.0, 1e-4, 0.0], [0.9e-4, 0.0, 1e-4]]
+        w = erc_weights_fixed(cov, {2: 0.3}, 0.4)
+        self.assertLess(w[0], w[1])
+        self.assertAlmostEqual(w[0] + w[1], 0.4)
+        plain = erc_weights([row[:2] for row in cov[:2]])
+        self.assertAlmostEqual(plain[0], plain[1])
 
     def test_min_variance_respects_the_cap(self):
         cov = [[0.01, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]  # asset 0 far calmer

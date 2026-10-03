@@ -44,6 +44,7 @@ The defensive book's rules:
 | PAXG core | 5% of equity stays in PAXG at all times. |
 | Short sleeve | Optional, off by default: short the 3 most volatile coins (15% of the defensive book, inverse-ATR sizing) with a trailing stop 10 ATR above the lowest close since entry. Never shorts PAXG or a coin either book holds. |
 | Activity rule | The competition requires trades on at least 8 days. If nothing has filled in the current 8-hour UTC block and less than 2 hours of it remain, the position furthest from its target is rebalanced. This guarantees at least 2 trades in every calendar day, whatever time zone is used. |
+| Halted pairs | A pair Roostoo stops trading gets no orders. It is held as it is and never bought, and the defensive book is re-solved around it: equal risk contributions with its weight fixed, counting how it moves with the other coins. See round 11. |
 
 Trades are only placed when a holding is more than 4% of equity away from its target
 (entries and exits always go through), which keeps fees down.
@@ -384,8 +385,9 @@ calmest coins and deepened the worst drawdown to 45%.
 Johansen tests and a vector error-correction model find the equilibrium spread, z-score
 thresholds trade its reversion, a rolling Johansen test liquidates when the relationship
 breaks, and a cvxpy minimum-variance hedge rebalances it. Its core, a long-short basket
-trading a spread back to equilibrium, is statistical arbitrage, which the competition rules
-forbid, so it is not used as a strategy here. Two of its ideas fit a directional bot and were
+trading a spread back to equilibrium, is a form of statistical arbitrage; the competition bans
+"arbitrage", and whether that covers spread trading has not been confirmed. Round 10 tested
+the whole design on crypto anyway. First, two of its ideas that fit a directional bot were
 tested on the rotation book: hedging out the common factor before ranking (residual momentum,
 the coin's return net of its beta to BTC), and its z-score entry threshold (skip a pick more
 than 2 standard deviations above its one-week mean, the repo's own `entry_z = 2.0`).
@@ -436,6 +438,92 @@ its neighbours score around 1.8–2.1. Every variant still beat holding BTC in f
 the six years, so the design holds up, but expect live results nearer the neighbours than
 the defaults' 2.87.
 
+### Round 10: VECM-ARB's three engines, tested on crypto
+
+`research/h18_vecm.py` ports the whole of VECM-ARB:
+
+1. **N-dimensional alpha engine.** At each re-fit, a Johansen trace test on the log prices of
+   the 6 most traded coins gives the cointegration rank r, and a VECM at that rank gives the
+   hedge ratios (β) and the speeds of adjustment (α). The spread β′ log p is traded on its
+   z-score with VECM-ARB's own rules: enter at |z| ≥ 2, take profit at |z| ≤ 0.5, and leave
+   early if the spread's slow mean drifts against the position.
+2. **Cointegration breakdown protocol.** At every re-fit the Johansen test is re-run on the
+   traded basket's trailing window; rank 0 liquidates the spread.
+3. **Dynamic hedging.** If a leg cannot be traded when the spread is entered (halted, or not
+   borrowable for a short), a minimum-variance hedge is re-solved on the other N−1 coins,
+   keeping each one's side and a $0.5 long / $0.5 short book (cvxpy, as in VECM-ARB's phase 4).
+
+VECM-ARB's tear sheet (Sharpe 1.02) estimates β on all of 2020–2026 and backtests on the same
+data, so it is in-sample. Here each β is estimated only from data before it trades. Every leg
+pays the taker fee and half its spread both ways, and shorts are 1x as on Roostoo. Three
+designs were fixed before running: **A**, VECM-ARB's own settings on daily closes (a 500-day
+window re-fitted every 30 days, z-score over 25 days); **B**, the same logic on hourly closes
+(a 30-day window re-fitted weekly, z-score over 72 hours); **C**, B entering only when α and
+β give the spread a half-life under a week.
+
+The spread trader alone (return per fold, maximum drawdown in brackets):
+
+| Design | 20–21 | 21–22 | 22–23 | 23–24 | 24–25 | 25–26 | Cointegrated re-fits | Trades |
+|---|---|---|---|---|---|---|---|---|
+| A: daily, VECM-ARB settings | -4% (9%) | -18% (26%) | +0% (0%) | -9% (10%) | -7% (12%) | +2% (5%) | 34 of 78 | 66 |
+| B: hourly | -2% (7%) | -28% (29%) | -38% (38%) | -9% (15%) | -16% (20%) | -15% (15%) | 106 of 318 | 642 |
+| C: hourly, half-life under a week | -2% (6%) | -21% (24%) | -35% (35%) | -9% (15%) | -16% (20%) | -15% (15%) | 106 of 318 | 608 |
+| A with no costs at all | -3% | -16% | +0% | -9% | -5% | +5% | | |
+| B with no costs at all | +4% | -14% | -26% | +1% | -6% | -0% | | |
+
+As a 20% sleeve beside the current bot, all three lowered the median composite (A 2.75,
+better in 2 of 6 folds; B and C 2.58, better in none; the bot alone 2.87). What the test
+shows:
+
+- **Cointegration is there but does not last.** A third to almost half of the re-fits found
+  rank 1 or more, far more than the 5% a 95% test finds by chance. But the relationships did
+  not hold over the following days and weeks: the spreads drifted rather than reverted. Even
+  with no fees at all every design lost money on average (A -4.6% a year, B -7.1%, C -5.8%);
+  fees turn that into -6% to -18%.
+- **The breakdown protocol works, but cannot save it.** With it switched off, design B loses
+  -18.9% a year instead of -18.0%; it helped most in 2023–24 (-9% instead of -15%).
+- **The N−1 re-hedge works.** With the largest short leg frozen at every entry, simply
+  dropping that leg pushed the open position's volatility from 25% to 45% a year, while the
+  re-hedge held it at 28%. There was just no profit to protect.
+
+The spread trader is not used. VECM-ARB's re-hedging idea is, in the form that suits this
+bot: when Roostoo halts a coin, the bot plans around it (round 11).
+
+### Round 11: halted coins (VECM-ARB's dynamic risk engine, adapted)
+
+Roostoo can stop trading a pair (`CanTrade` false in its exchange info). Until now the bot
+refused to start if any of its 46 pairs was halted (under `run_bot.sh` it would have restarted
+and failed indefinitely), and mid-run it would have kept sending orders the exchange refused.
+Worse, a refused sell could starve the activity rule, which only steps in when nothing else
+is planned. Now the bot re-reads the rules every hour (one extra call), and the planner leaves
+halted pairs out before the activity rule looks for a trade.
+
+VECM-ARB's answer to a frozen leg is to re-optimise the rest of the book around it. The bot's
+version (`strategy.plan_around_halts`) holds a halted coin as it is, never buys it, gives its
+slot to the next-best coin, and re-solves the defensive book around it: equal risk
+contributions with the halted weight fixed, counting its covariance with the other coins
+(`erc_weights_fixed` in `bot/optimize.py`, a strictly convex problem whose risk budget is found
+by bisection), so a coin that moves with the halted one gets less.
+
+`research/h19_halts.py` compared that with leaving the strategy untold, under harsh halts aimed
+at holdings: every week a coin the bot had just bought stops trading for 3 days, 53 halts a
+year. Two schedules (the week's first purchase, or its last) show how much is luck. The rule,
+set after the first schedule and before the second: tell the strategy only if that is better
+in at least 6 of the 12 runs. Composite per fold, from October 2020:
+
+| Run | 20–21 | 21–22 | 22–23 | 23–24 | 24–25 | 25–26 | Median | Better than not told |
+|---|---|---|---|---|---|---|---|---|
+| No halts | 11.32 | -1.91 | 1.33 | 5.65 | 4.30 | 1.44 | 2.87 | |
+| Schedule 1, not told | 11.76 | -2.05 | 1.21 | 5.48 | 4.00 | 1.02 | 2.60 | |
+| Schedule 1, re-solved | 10.03 | -2.16 | 1.22 | 4.68 | 4.55 | 0.75 | 2.88 | 2/6 |
+| Schedule 2, not told | 12.01 | -1.98 | 1.41 | 5.81 | 4.22 | 1.49 | 2.85 | |
+| Schedule 2, re-solved | 11.58 | -1.87 | 1.43 | 4.96 | 4.48 | 1.60 | 3.04 | 4/6 |
+
+Better in 6 of 12 with a higher median in both schedules: a tie, which met the rule, so it is
+on. (A first run, before the planner was fixed to leave halted pairs out, gave 5 of 12; the
+difference is noise either way.) Even halts hitting a holding every week barely moved the
+results. What matters is that the bot keeps running and trading when a pair is halted.
+
 ## How it works
 
 ```
@@ -472,7 +560,11 @@ Every hour, a minute after the candle closes, the live bot:
    its state.
 
 The bot never assumes it starts flat. On start-up and before each cycle it cancels any
-order left open by a crashed run, and it rebuilds positions from the real wallet. Trailing
+order left open by a crashed run, and it rebuilds positions from the real wallet. It also
+re-reads Roostoo's trading rules every cycle: a pair Roostoo has halted (`CanTrade` false) or
+delisted gets no orders and is held as it is until it trades again. (It used to refuse to
+start if any of its pairs was halted, which under `run_bot.sh` would have meant restarting
+and failing indefinitely.) Trailing
 stops, cooldowns and the drawdown brake survive restarts through `state.json`; the peak
 equity is also recovered from the equity journal.
 
@@ -609,7 +701,7 @@ Each account keeps these under `runs/<account>/`:
 | File | Contents |
 |---|---|
 | `journal/orders.csv` | Every order: pair, side, type, quantity, limit price, status, filled quantity, average price, fee, and the strategy reason (`entry`, `exit_trend`, `exit_stop`, `rebalance`, `activity`, ...) with the current and target weight that triggered it. |
-| `journal/decisions.jsonl` | One line per hour: the signals for every pair, ranking scores, regime, brake state, target weights and planned trades. |
+| `journal/decisions.jsonl` | One line per hour: the signals for every pair, ranking scores, regime, brake state, pairs Roostoo is not trading, target weights and planned trades. |
 | `journal/equity.csv` | Portfolio value, cash, positions and drawdown after every hourly cycle. |
 | `logs/bot.log` | What the bot did and why. Rotated. |
 | `logs/api.log` | Every API request and response, without keys. Rotated. |
@@ -627,4 +719,4 @@ The tests cover request signing (against the example in the Roostoo docs), the r
 limiter, response handling, rounding to each pair's precision, position sizing, every
 strategy rule, the activity rule and the metrics. End-to-end tests drive the live loop
 against a simulated exchange: a dry run, real fills, a restart after a crash with an order
-left open, and a Binance outage.
+left open, a Binance outage, and a pair halted at start-up and resumed later.

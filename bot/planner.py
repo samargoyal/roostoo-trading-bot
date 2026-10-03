@@ -12,12 +12,12 @@ trading costs and compliance in balance:
              there is always a position to adjust.
 """
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import AbstractSet, Dict, List, Optional
 
 from bot.config import ExecutionConfig
 from bot.market_data import HOUR_MS
 from bot.strategy import (EXIT_REGIME, EXIT_SHORT, EXIT_SHORT_STOP, EXIT_STOP, EXIT_TREND,
-                          SHORT_ENTRY, Decision)
+                          HOLD_HALTED, SHORT_ENTRY, Decision)
 
 BUY = "BUY"        # open or add to a long
 SELL = "SELL"      # reduce or close a long
@@ -41,13 +41,15 @@ class PlannedTrade:
 
 
 def plan_trades(decision: Decision, weights: Dict[str, float], equity: float, ts: int,
-                last_fill_ts: int, cfg: ExecutionConfig,
-                min_position_weight: float) -> List[PlannedTrade]:
+                last_fill_ts: int, cfg: ExecutionConfig, min_position_weight: float,
+                frozen: AbstractSet[str] = frozenset()) -> List[PlannedTrade]:
     """Trades that move the portfolio towards the targets. Sells and covers come first, so
-    their proceeds are free before buys and new shorts. Holdings outside the universe are closed."""
+    their proceeds are free before buys and new shorts. Holdings outside the universe are closed.
+    Pairs in `frozen` (halted on the exchange) get no trades, so the activity rule still finds a
+    pair it can trade."""
     trades: List[PlannedTrade] = []
     pairs = list(decision.targets) + [p for p in weights if p not in decision.targets]
-    for pair in pairs:
+    for pair in [p for p in pairs if p not in frozen]:
         target = decision.targets.get(pair, 0.0)
         current = weights.get(pair, 0.0)
         if pair not in decision.targets:
@@ -66,7 +68,7 @@ def plan_trades(decision: Decision, weights: Dict[str, float], equity: float, ts
             trades.append(trade)
 
     if not trades and activity_due(ts, last_fill_ts, cfg):
-        trade = activity_trade(decision, weights, equity, cfg)
+        trade = activity_trade(decision, weights, equity, cfg, frozen)
         if trade is not None:
             trades.append(trade)
 
@@ -108,9 +110,12 @@ def activity_due(ts: int, last_fill_ts: int, cfg: ExecutionConfig) -> bool:
 
 
 def activity_trade(decision: Decision, weights: Dict[str, float], equity: float,
-                   cfg: ExecutionConfig) -> Optional[PlannedTrade]:
-    """Rebalance the long position furthest from its target, by at least activity_min_usd."""
-    pairs = [p for p, target in decision.targets.items() if target > 0 or weights.get(p, 0.0) > 0]
+                   cfg: ExecutionConfig, frozen: AbstractSet[str] = frozenset()) -> Optional[PlannedTrade]:
+    """Rebalance the long position furthest from its target, by at least activity_min_usd.
+    Halted pairs are skipped: the exchange would refuse the order."""
+    pairs = [p for p, target in decision.targets.items()
+             if (target > 0 or weights.get(p, 0.0) > 0) and p not in frozen
+             and decision.reasons.get(p) != HOLD_HALTED]
     if not pairs or equity <= 0:
         return None
     pair = max(pairs, key=lambda p: abs(decision.targets[p] - weights.get(p, 0.0)))

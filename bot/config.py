@@ -76,6 +76,12 @@ class StrategyConfig:
     # A holding below this fraction of equity counts as no position.
     min_position_weight: float = 0.005
 
+    # Pairs Roostoo halts are never traded (the planner drops their trades). True also tells
+    # the strategy, which then holds them as they are, never buys them and re-solves the book
+    # around them (equal risk contributions with their weights fixed). Round 11, with heavy
+    # halts: better than not telling it in 6 of 12 runs, a tie that met the rule set beforehand.
+    plan_around_halts: bool = True
+
     # Short sleeve, betting against beta: short the most volatile coins in the universe,
     # whatever their trend, sized by inverse ATR. 0 switches it off. Research (H13) found
     # 10-20% with an 8-12 ATR stop worked in both years and in the rally that followed;

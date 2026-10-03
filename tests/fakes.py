@@ -27,6 +27,8 @@ class FakeExchange:
         self.placed: List[dict] = []
         self.shorts: Dict[str, dict] = {}
         self.short_calls: List[tuple] = []
+        self.halted: set = set()      # pairs listed with CanTrade false; orders in them fail
+        self.info_calls = 0
 
     # clock
     def sync_clock(self) -> int:
@@ -37,8 +39,9 @@ class FakeExchange:
 
     # public
     def exchange_info(self) -> dict:
+        self.info_calls += 1
         return {"TradePairs": {p: {"PricePrecision": 2, "AmountPrecision": self.amount_decimals,
-                                   "MiniOrder": 1, "CanTrade": True} for p in self.prices}}
+                                   "MiniOrder": 1, "CanTrade": p not in self.halted} for p in self.prices}}
 
     def ticker(self, pair: Optional[str] = None) -> dict:
         return {p: {"MaxBid": round(px * 0.9999, 2), "MinAsk": round(px * 1.0001, 2), "LastPrice": px}
@@ -52,6 +55,8 @@ class FakeExchange:
         return sum(1 for o in self.orders.values() if o["Status"] == "PENDING")
 
     def place_order(self, pair, side, quantity, order_type="MARKET", price=None) -> dict:
+        if pair in self.halted:
+            raise RoostooError("pair %s is not tradable" % pair)
         qty = float(quantity)
         order = {"OrderID": self.next_id, "Pair": pair, "Side": side, "Type": order_type,
                  "Quantity": qty, "Price": float(price) if price else 0.0, "Status": "PENDING",

@@ -74,7 +74,8 @@ class ShortPosition:
 def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms: int,
                  fee: float, slippage: float, name: str = "strategy",
                  monthly_universe: bool = False,
-                 slippage_by_pair: Optional[Dict[str, float]] = None) -> Result:
+                 slippage_by_pair: Optional[Dict[str, float]] = None,
+                 halts: Optional[Dict[str, List[Tuple[int, int]]]] = None) -> Result:
     """Replay the strategy hour by hour from start_ms. Bars before start_ms only warm up indicators.
 
     Shorts follow Roostoo's rules: opening locks the USD collateral (quantity = collateral /
@@ -84,6 +85,8 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
     With monthly_universe, `bars` holds every candidate and the universe rule is re-applied on
     the first day of each month with data available then, as the live list would be refreshed.
     slippage_by_pair overrides the slippage for given pairs (for example half their spread).
+    halts maps a pair to [start, end) times when the exchange refuses its orders. As in the live
+    bot, the planner drops their trades, and with strategy.plan_around_halts the strategy is told.
     """
     cfg = copy.deepcopy(cfg)
     strategy = Strategy(cfg.strategy, pairs=list(bars) if monthly_universe else None)
@@ -131,9 +134,11 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
 
         equity, values = mark()
         weights = {p: v / equity for p, v in values.items()}
-        decision = strategy.decide(now, equity, weights, state)
+        frozen = {p for p, spans in (halts or {}).items() if any(a <= now < b for a, b in spans)}
+        decision = strategy.decide(now, equity, weights, state,
+                                   frozen if cfg.strategy.plan_around_halts else frozenset())
         planned = plan_trades(decision, weights, equity, now, state.last_fill_ts,
-                              cfg.execution, cfg.strategy.min_position_weight)
+                              cfg.execution, cfg.strategy.min_position_weight, frozen)
         for t in planned:
             price = closes.get(t.pair)
             if not price:

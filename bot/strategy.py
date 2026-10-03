@@ -4,15 +4,16 @@ The same Strategy object drives the backtest and the live bot. It turns the late
 closed bars and the current portfolio into target weights; it never talks to the
 exchange. Every number below is a field of StrategyConfig.
 
-  Regime   BTC above its 200-hour EMA: up to 75% invested and 4 positions.
-           Otherwise up to 25% and 2 positions, with PAXG first in line.
+  Regime   BTC above its 200-hour EMA: up to 75% invested and 8 positions.
+           Otherwise up to 25% and 3 positions, with PAXG first in line.
   Trend    a coin is eligible while EMA50 > EMA200 and its close is above EMA200.
   Ranking  the lowest volatility of hourly returns over the last 168 hours first.
            Free slots go to the best-ranked eligible coins. (Optionally: 0.5 x 72h
            + 0.5 x 168h volatility-adjusted momentum, the earlier default.)
   Entry    only into eligible coins with RSI(14) <= 70, not cooling down after a stop.
-  Sizing   weights proportional to 1 / (ATR / price), so each position carries a
-           similar amount of risk, scaled to the exposure limit and capped at 15%.
+  Sizing   equal risk contribution from the last 336 hours' covariance (each position
+           adds the same share of the book's variance), scaled to the exposure limit and
+           capped at 15%. (Optionally 1 / (ATR / price), the earlier default.)
   Exits    EMA50 falls below EMA200, or the close drops 8 ATR below the highest
            close since entry (then no re-entry into that coin for 24 hours).
            A held coin is never sold just for ranking lower; only when risk-off
@@ -31,6 +32,10 @@ exchange. Every number below is a field of StrategyConfig.
            the lowest close since entry. Low-volatility coins have tended to beat
            high-volatility ones, so this sleeve earns the same effect from the other side
            and hedges the long book (research H13).
+  Halts    a pair Roostoo will not trade (decide()'s `frozen`, when plan_around_halts is on)
+           is held exactly as it is and never entered, and the book's other coins are
+           re-solved around it: equal risk contributions with its weight fixed, counting its
+           covariance with them. Either way the planner sends no orders in it.
 
 The baseline in the project brief used EMA 20/100, 24h/72h momentum and a 2.5 ATR
 stop, and also re-ranked held coins every hour. Backtests on two separate years
@@ -41,11 +46,11 @@ momentum did not predict which coin would do better next, while low volatility d
 """
 import math
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional
+from typing import AbstractSet, Dict, List, Optional
 
 from bot.config import StrategyConfig
 from bot.indicators import IndicatorSet, Signal
-from bot.optimize import covariance, erc_weights, min_variance
+from bot.optimize import covariance, erc_weights, erc_weights_fixed, min_variance
 from bot.market_data import HOUR_MS, Bar
 
 # Reasons attached to each target, recorded with every decision and order.
@@ -56,6 +61,7 @@ EXIT_TREND = "exit_trend"
 EXIT_STOP = "exit_stop"
 EXIT_REGIME = "exit_regime"
 HOLD_NO_DATA = "hold_no_data"
+HOLD_HALTED = "hold_halted"   # Roostoo is not trading the pair: hold it as it is
 SHORT_ENTRY = "short_entry"
 SHORT_HOLD = "short_hold"
 EXIT_SHORT_STOP = "exit_short_stop"
@@ -171,16 +177,19 @@ class Strategy:
         return c.momentum_short_weight * short + (1.0 - c.momentum_short_weight) * long
 
     def decide(self, ts: int, equity: float, weights: Dict[str, float],
-               state: StrategyState) -> Decision:
+               state: StrategyState, frozen: AbstractSet[str] = frozenset()) -> Decision:
         """Target weights for every pair, given current holdings as fractions of equity.
 
         Updates the drawdown brake and the trailing-stop highs in `state`. Entries and
         exits are recorded later by reconcile(), once we know what actually traded.
+        `frozen` pairs cannot be traded now (halted on the exchange): they keep their
+        current weight, and the rest of the portfolio is planned around them.
         """
         c = self.cfg
+        account = weights
         signals = self.signals()
         drawdown = self._update_brake(equity, state, signals)
-        rotation = self._rotation(ts, signals, state)
+        rotation = self._rotation(ts, signals, state, frozen)
         weights = self._defensive_weights(weights, rotation)
 
         regime = signals.get(c.regime_pair)
@@ -195,6 +204,8 @@ class Strategy:
             if s is None:
                 continue
             position.highest_close = max(position.highest_close, s.close)
+            if pair in frozen:
+                continue                      # halted: it cannot be sold, whatever the signal
             if s.ema_fast < s.ema_slow:
                 reasons[pair] = EXIT_TREND
                 exiting.add(pair)
@@ -203,9 +214,10 @@ class Strategy:
                 exiting.add(pair)
 
         scores = {pair: self.score(s) for pair, s in signals.items()}
-        held = [p for p in state.positions if p not in exiting and p in signals]
+        stuck = [p for p in state.positions if p in frozen]
+        held = [p for p in state.positions if p not in exiting and p in signals and p not in frozen]
         candidates = [p for p, s in signals.items()
-                      if p not in state.positions and self._can_enter(p, s, ts, state)]
+                      if p not in state.positions and p not in frozen and self._can_enter(p, s, ts, state)]
 
         ranked = sorted(held + candidates, key=lambda p: scores[p], reverse=True)
         if not risk_on and c.defensive_pair in ranked:
@@ -214,24 +226,31 @@ class Strategy:
         rank = {p: i for i, p in enumerate(ranked)}
 
         # Held coins stay until an exit rule fires; only a smaller risk-off limit cuts them.
-        keep = sorted(held, key=rank.get)[:max_positions]
+        # Halted ones fill their slots first, since they cannot be sold.
+        limit = max(max_positions - len(stuck), 0)
+        keep = sorted(held, key=rank.get)[:limit]
         for pair in held:
             if pair not in keep:
                 reasons[pair] = EXIT_REGIME
-        slots = max_positions - len(keep)
-        entries = [p for p in ranked if p in candidates and rank[p] < max_positions][:max(slots, 0)]
+        slots = limit - len(keep)
+        entries = [p for p in ranked if p in candidates and rank[p] < limit][:max(slots, 0)]
 
         targets = {pair: 0.0 for pair in c.universe}
         core = c.core_weight if c.defensive_pair in targets else 0.0
-        sized = self._size(keep + entries, signals, max(exposure - core, 0.0))
+        fixed = {p: max(weights.get(p, 0.0) - (core if p == c.defensive_pair else 0.0), 0.0)
+                 for p in stuck}
+        sized = self._size(keep + entries, signals, max(exposure - core, 0.0), fixed)
         for pair, weight in sized.items():
             if state.brake_on:
                 weight *= c.brake_factor
             targets[pair] = weight
             reasons[pair] = HOLD if pair in keep else ENTRY
+        for pair, weight in fixed.items():
+            targets[pair] = weight
+            reasons[pair] = HOLD_HALTED
 
         for pair in state.positions:
-            if pair not in signals and pair in targets:
+            if pair not in signals and pair in targets and pair not in frozen:
                 # No data to judge it by: leave the position as it is (the core is added below).
                 held_core = core if pair == c.defensive_pair else 0.0
                 targets[pair] = max(weights.get(pair, 0.0) - held_core, 0.0)
@@ -243,7 +262,7 @@ class Strategy:
 
         if c.short_exposure > 0 or state.shorts:
             self._shorts(ts, signals, scores, weights, state, targets, reasons,
-                         set(keep + entries) | set(rotation))
+                         set(keep + entries) | set(rotation), frozen)
 
         if c.rotation_weight > 0:
             state.book_weights = {p: t for p, t in targets.items() if t != 0.0}
@@ -255,6 +274,8 @@ class Strategy:
                     reasons[pair] = ROTATION
                 targets[pair] = targets.get(pair, 0.0) + c.rotation_weight * weight
 
+        if frozen:
+            targets = _hold_frozen(targets, account, frozen, reasons)
         return Decision(ts=ts, risk_on=risk_on, exposure_limit=exposure, drawdown=drawdown,
                         brake_on=state.brake_on, targets=targets, reasons=reasons, scores=scores,
                         rotation=rotation)
@@ -305,8 +326,10 @@ class Strategy:
         for pair in [p for p, until in state.short_cooldown_until.items() if until <= ts]:
             del state.short_cooldown_until[pair]
 
-    def _rotation(self, ts: int, signals: Dict[str, Signal], state: StrategyState) -> Dict[str, float]:
-        """The rotation sleeve's weights (summing to at most 1), chosen afresh at each rebalance."""
+    def _rotation(self, ts: int, signals: Dict[str, Signal], state: StrategyState,
+                  frozen: AbstractSet[str] = frozenset()) -> Dict[str, float]:
+        """The rotation sleeve's weights (summing to at most 1), chosen afresh at each rebalance.
+        Halted coins are not picked, and one already held keeps its weight and slot."""
         c = self.cfg
         if c.rotation_weight <= 0:
             return {}
@@ -317,19 +340,20 @@ class Strategy:
         due = (state.rotation_plan_ts == 0 or hour - last >= c.rotation_rebalance_hours
                or (hour % c.rotation_rebalance_hours == 0 and hour != last))
         if due:
-            plan: Dict[str, float] = {}
+            plan = {p: w for p, w in state.rotation_plan.items() if p in frozen}
+            stuck = len([p for p in plan if p != c.defensive_pair])
             if trend_on:
                 core = c.rotation_core_share if c.regime_pair in signals else 0.0
                 if core > 0:
                     plan[c.regime_pair] = core
                 rising = {p: s.return_rotation for p, s in signals.items()
-                          if p != c.defensive_pair and s.return_rotation > 0
+                          if p != c.defensive_pair and s.return_rotation > 0 and p not in frozen
                           and not (core > 0 and p == c.regime_pair)}
                 if c.rotation_max_z > 0:
                     rising = {p: r for p, r in rising.items() if self._zscore(p) <= c.rotation_max_z}
                 if c.rotation_ranking == "residual":
                     rising = {p: self._residual_return(p, r) for p, r in rising.items()}
-                picks = sorted(rising, key=rising.get, reverse=True)[:c.rotation_top]
+                picks = sorted(rising, key=rising.get, reverse=True)[:max(c.rotation_top - stuck, 0)]
                 # The picks fill len(picks) of rotation_top slots; how they share it is the
                 # weighting. Unfilled slots go to PAXG or cash below, whatever the weighting.
                 filled = (1.0 - core) * len(picks) / c.rotation_top
@@ -337,7 +361,8 @@ class Strategy:
                     plan[pair] = filled * weight
             empty = 1.0 - sum(plan.values())
             defensive = signals.get(c.defensive_pair)
-            if empty > 1e-9 and defensive is not None and defensive.return_rotation > 0:
+            if (empty > 1e-9 and defensive is not None and defensive.return_rotation > 0
+                    and c.defensive_pair not in frozen):
                 plan[c.defensive_pair] = plan.get(c.defensive_pair, 0.0) + empty
             if c.rotation_cvar_limit > 0 and plan:
                 # Tail cap: shrink the whole sleeve, leaving the difference in cash.
@@ -349,8 +374,9 @@ class Strategy:
             state.rotation_plan_ts = ts
         plan = dict(state.rotation_plan)
         if not trend_on:
-            # Leave at once when the trend filter fails; only the defensive part stays.
-            plan = {p: w for p, w in plan.items() if p == c.defensive_pair}
+            # Leave at once when the trend filter fails; only the defensive part (and any
+            # halted coin, which cannot be sold) stays.
+            plan = {p: w for p, w in plan.items() if p == c.defensive_pair or p in frozen}
         return plan
 
     def _rotation_weights(self, picks: List[str], signals: Dict[str, Signal]) -> Dict[str, float]:
@@ -435,7 +461,8 @@ class Strategy:
 
     def _shorts(self, ts: int, signals: Dict[str, Signal], scores: Dict[str, float],
                 weights: Dict[str, float], state: StrategyState, targets: Dict[str, float],
-                reasons: Dict[str, str], longs: set) -> None:
+                reasons: Dict[str, str], longs: set,
+                frozen: AbstractSet[str] = frozenset()) -> None:
         """Negative targets for the short sleeve: the most volatile coins, held until their stop."""
         c = self.cfg
         stopped = set()
@@ -444,16 +471,21 @@ class Strategy:
             if s is None:
                 continue
             info.lowest_close = min(info.lowest_close, s.close)
+            if pair in frozen:
+                continue
             if s.close > info.lowest_close + c.short_stop_atr_multiple * s.atr:
                 stopped.add(pair)
                 reasons[pair] = EXIT_SHORT_STOP
-        held = [p for p in state.shorts if p in signals and p not in stopped and p not in longs]
+        stuck = {p: max(-weights.get(p, 0.0), 0.0) for p in state.shorts if p in frozen}
+        held = [p for p in state.shorts if p in signals and p not in stopped and p not in longs
+                and p not in frozen]
         candidates = [p for p, s in signals.items()
                       if p not in state.shorts and p not in longs and p != c.defensive_pair
+                      and p not in frozen
                       and s.rsi >= c.short_rsi_min and state.short_cooldown_until.get(p, 0) <= ts]
         order = sorted(held + candidates, key=lambda p: scores[p])  # lowest score: most volatile
         rank = {p: i for i, p in enumerate(order)}
-        limit = c.max_shorts if c.short_exposure > 0 else 0
+        limit = max(c.max_shorts - len(stuck), 0) if c.short_exposure > 0 else 0
         keep = sorted(held, key=rank.get)[:limit]
         for pair in order:
             if len(keep) >= limit:
@@ -463,12 +495,15 @@ class Strategy:
         for pair in state.shorts:
             if pair not in targets:
                 continue                                    # left the universe: the planner covers it
-            if pair not in signals and pair not in longs:
+            if pair in stuck:
+                targets[pair] = -stuck[pair]                # halted: hold it as it is
+                reasons[pair] = HOLD_HALTED
+            elif pair not in signals and pair not in longs:
                 targets[pair] = min(weights.get(pair, 0.0), 0.0)   # no data: leave it as it is
                 reasons[pair] = HOLD_NO_DATA
             elif pair not in keep and pair not in stopped:
                 reasons[pair] = EXIT_SHORT
-        for pair, weight in self._size(keep, signals, c.short_exposure).items():
+        for pair, weight in self._size(keep, signals, c.short_exposure, stuck).items():
             if state.brake_on:
                 weight *= c.brake_factor
             targets[pair] = -weight
@@ -481,25 +516,39 @@ class Strategy:
                 and s.rsi <= c.rsi_max_entry
                 and state.cooldown_until.get(pair, 0) <= ts)
 
-    def _size(self, pairs: List[str], signals: Dict[str, Signal], budget: float) -> Dict[str, float]:
+    def _size(self, pairs: List[str], signals: Dict[str, Signal], budget: float,
+              fixed: Optional[Dict[str, float]] = None) -> Dict[str, float]:
         """Weights for the chosen coins scaled to the budget, each capped at max_weight: inverse
-        ATR by default, or a minimum-variance or equal-risk-contribution portfolio."""
+        ATR by default, or a minimum-variance or equal-risk-contribution portfolio.
+
+        `fixed` holdings (halted coins, which cannot be resized) use up part of the budget.
+        With ERC sizing the chosen coins are re-solved around them: equal risk contributions
+        with the fixed weights in the covariance, so a coin that moves with a halted one gets
+        less."""
         c = self.cfg
+        fixed = {p: w for p, w in (fixed or {}).items() if w > 0}
+        budget = max(budget - sum(fixed.values()), 0.0)
         inverse_risk = {p: signals[p].close / signals[p].atr for p in pairs if signals[p].atr > 0}
         total = sum(inverse_risk.values())
         if total <= 0:
             return {}
         shares = {p: x / total for p, x in inverse_risk.items()}
-        if c.sizing in ("min_variance", "erc") and len(shares) > 1 and budget > 0:
+        if c.sizing in ("min_variance", "erc") and (len(shares) > 1 or fixed) and budget > 0:
             chosen = list(shares)
-            series = self._recent_returns(chosen, c.rotation_cov_hours)
+            stuck = [p for p in fixed if p in self.indicators] if c.sizing == "erc" else []
+            series = self._recent_returns(chosen + stuck, c.rotation_cov_hours)
             if series is not None:
                 cov = covariance(series)
-                if c.sizing == "erc":
-                    solved = erc_weights(cov)
-                else:
-                    solved = min_variance(cov, min(1.0, c.max_weight / budget))
-                shares = dict(zip(chosen, solved))
+                if stuck:
+                    held = {len(chosen) + k: fixed[p] for k, p in enumerate(stuck)}
+                    solved = erc_weights_fixed(cov, held, budget)[:len(chosen)]
+                    shares = {p: w / budget for p, w in zip(chosen, solved)}
+                elif len(chosen) > 1:
+                    if c.sizing == "erc":
+                        solved = erc_weights(cov)
+                    else:
+                        solved = min_variance(cov, min(1.0, c.max_weight / budget))
+                    shares = dict(zip(chosen, solved))
         weights = {}
         for pair, share in shares.items():
             cap = c.max_weight - (c.core_weight if pair == c.defensive_pair else 0.0)
@@ -529,6 +578,26 @@ class Strategy:
         elif not state.brake_on and brake_drawdown >= c.brake_drawdown:
             state.brake_on = True
         return drawdown
+
+
+def _hold_frozen(targets: Dict[str, float], account: Dict[str, float], frozen: AbstractSet[str],
+                 reasons: Dict[str, str]) -> Dict[str, float]:
+    """Halted pairs keep exactly their current weight, so no order is sent for them. If that
+    leaves more invested than planned, the other long targets give way in proportion."""
+    planned = sum(t for t in targets.values() if t > 0)
+    out = dict(targets)
+    for pair in frozen:
+        current = account.get(pair, 0.0)
+        if pair in out or current != 0.0:
+            if current != 0.0 or out.get(pair, 0.0) != current:
+                reasons[pair] = HOLD_HALTED
+            out[pair] = current
+    stuck = sum(max(out[p], 0.0) for p in frozen if p in out)
+    free = sum(t for p, t in out.items() if t > 0 and p not in frozen)
+    if free > 0 and stuck + free > planned + 1e-12:
+        scale = max(planned - stuck, 0.0) / free
+        out = {p: t * scale if t > 0 and p not in frozen else t for p, t in out.items()}
+    return out
 
 
 def _cap_weights(weights: Dict[str, float], cap: float) -> Dict[str, float]:

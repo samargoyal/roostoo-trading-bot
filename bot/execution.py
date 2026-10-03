@@ -15,7 +15,7 @@ import logging
 import time
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_UP, Decimal
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from bot.config import ExecutionConfig
 from bot.planner import BUY, COVER, SELL, SHORT, PlannedTrade
@@ -39,6 +39,12 @@ class PairRules:
     price_decimals: int
     amount_decimals: int
     min_order_value: float  # MiniOrder: price x quantity must reach this many USD
+
+
+def halted_pairs(exchange_info: Dict[str, Any], pairs: Iterable[str]) -> Set[str]:
+    """The given pairs Roostoo will not trade now: listed with CanTrade false, or not listed."""
+    listed = exchange_info.get("TradePairs", {})
+    return {p for p in pairs if p not in listed or not listed[p].get("CanTrade", True)}
 
 
 def parse_rules(exchange_info: Dict[str, Any]) -> Dict[str, PairRules]:
