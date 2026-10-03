@@ -186,6 +186,39 @@ class ResidualAndZTest(unittest.TestCase):
             calm.indicators["BTC/USD"].returns.append(rng.gauss(0, 0.004))
         self.assertAlmostEqual(sum(calm.decide(DAY, 1.0, {}, StrategyState()).rotation.values()), 1.0, delta=0.15)
 
+    def test_trailing_stop_drops_a_pick_and_bars_it_until_the_cooldown_ends(self):
+        state = StrategyState()
+        make(market(), rotation_stop_atr=8.0).decide(DAY, 1.0, {}, state)
+        self.assertIn("SOL/USD", state.rotation_plan)
+        crashed = market()
+        crashed["SOL/USD"] = sig(0.40)._replace(close=110.0 - 9.0)      # 9 ATR below its high
+        d = make(crashed, rotation_stop_atr=8.0).decide(DAY + HOUR_MS, 1.0, {}, state)
+        self.assertNotIn("SOL/USD", d.rotation)
+        self.assertIn("ETH/USD", d.rotation)
+        nxt = make(crashed, rotation_stop_atr=8.0).decide(2 * DAY, 1.0, {}, state)  # next rebalance
+        self.assertNotIn("SOL/USD", nxt.rotation)
+        later = make(market(), rotation_stop_atr=8.0).decide(3 * DAY, 1.0, {}, state)
+        self.assertIn("SOL/USD", later.rotation)
+
+    def test_picks_must_beat_btc_and_btc_fills_the_rest(self):
+        signals = market()
+        signals["BTC/USD"] = sig(0.25)                      # only SOL (0.40) beats BTC
+        d = make(signals, rotation_vs_btc="btc").decide(DAY, 1.0, {}, StrategyState())
+        self.assertEqual(d.rotation, {"SOL/USD": 0.5, "BTC/USD": 0.5})
+        d = make(signals, rotation_vs_btc="cash").decide(DAY, 1.0, {}, StrategyState())
+        self.assertEqual(d.rotation, {"SOL/USD": 0.5, "PAXG/USD": 0.5})
+
+    def test_hold_buffer_keeps_a_pick_that_slips_to_third(self):
+        state = StrategyState()
+        make(market(), rotation_buffer=4).decide(DAY, 1.0, {}, state)
+        self.assertEqual(set(state.rotation_plan), {"SOL/USD", "ETH/USD"})
+        shifted = market()
+        shifted["DOGE/USD"] = sig(0.30)                     # DOGE now ranks second, ETH third
+        d = make(shifted, rotation_buffer=4).decide(2 * DAY, 1.0, {}, state)
+        self.assertEqual(set(d.rotation), {"SOL/USD", "ETH/USD"})
+        d = make(shifted).decide(2 * DAY, 1.0, {}, StrategyState())
+        self.assertEqual(set(d.rotation), {"SOL/USD", "DOGE/USD"})
+
     def test_z_guard_skips_an_overextended_pick(self):
         signals = market()
         strategy = make(signals, rotation_max_z=2.0, rotation_top=1)

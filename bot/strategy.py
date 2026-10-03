@@ -94,6 +94,12 @@ class StrategyState:
     short_cooldown_until: Dict[str, int] = field(default_factory=dict)
     rotation_plan: Dict[str, float] = field(default_factory=dict)      # the sleeve's weights
     rotation_plan_ts: int = 0                                          # when they were chosen
+    rotation_highs: Dict[str, float] = field(default_factory=dict)     # each pick's high since picked
+    rotation_entry: Dict[str, int] = field(default_factory=dict)       # when each pick was first picked
+    rotation_brake_on: bool = False
+    rotation_on_since: int = 0                                          # when the sleeve's filter last turned on
+    equity_history: List[float] = field(default_factory=list)          # hourly account values (recent)
+    rotation_cooldown: Dict[str, int] = field(default_factory=dict)    # stopped picks barred until (ms)
     # The non-rotation book's own value, so its drawdown brake ignores the rotation sleeve.
     book_nav: float = 1.0
     book_peak: float = 1.0
@@ -115,6 +121,12 @@ class StrategyState:
             short_cooldown_until={p: int(v) for p, v in data.get("short_cooldown_until", {}).items()},
             rotation_plan={p: float(v) for p, v in data.get("rotation_plan", {}).items()},
             rotation_plan_ts=int(data.get("rotation_plan_ts", 0)),
+            rotation_highs={p: float(v) for p, v in data.get("rotation_highs", {}).items()},
+            rotation_entry={p: int(v) for p, v in data.get("rotation_entry", {}).items()},
+            rotation_brake_on=bool(data.get("rotation_brake_on", False)),
+            rotation_on_since=int(data.get("rotation_on_since", 0)),
+            equity_history=[float(v) for v in data.get("equity_history", [])],
+            rotation_cooldown={p: int(v) for p, v in data.get("rotation_cooldown", {}).items()},
             book_nav=float(data.get("book_nav", 1.0)),
             book_peak=float(data.get("book_peak", 1.0)),
             book_weights={p: float(v) for p, v in data.get("book_weights", {}).items()},
@@ -220,10 +232,14 @@ class Strategy:
         signals = self.signals()
         drawdown = self._update_brake(equity, state, signals)
         rotation = self._rotation(ts, signals, state, frozen)
+        if c.rotation_brake_drawdown > 0 or c.rotation_equity_ma_hours > 0:
+            rotation = self._rotation_risk(rotation, equity, state, frozen)
         weights = self._defensive_weights(weights, rotation)
 
         regime = signals.get(c.regime_pair)
         risk_on = regime is not None and regime.close > regime.ema_regime
+        if c.regime_breadth > 0:
+            risk_on = _breadth(signals, c.defensive_pair) >= c.regime_breadth
         exposure = c.risk_on_exposure if risk_on else c.risk_off_exposure
         max_positions = c.max_positions_risk_on if risk_on else c.max_positions_risk_off
 
@@ -365,6 +381,17 @@ class Strategy:
             return {}
         regime = signals.get(c.regime_pair)
         trend_on = regime is not None and regime.ema_trend_fast > regime.ema_trend_slow
+        if c.rotation_breadth > 0:
+            wide = _breadth(signals, c.defensive_pair) >= c.rotation_breadth
+            trend_on = (trend_on and wide) if c.rotation_breadth_mode == "and" else wide
+        if c.rotation_exit_sma > 0 and trend_on:
+            trend_on = self._above_sma(c.regime_pair, c.rotation_exit_sma)
+        if c.rotation_reentry_hours > 0:
+            if not trend_on:
+                state.rotation_on_since = 0
+            elif state.rotation_on_since == 0:
+                state.rotation_on_since = ts
+            trend_on = trend_on and ts - state.rotation_on_since >= c.rotation_reentry_hours * HOUR_MS
         hour = ts // HOUR_MS
         last = state.rotation_plan_ts // HOUR_MS
         due = (state.rotation_plan_ts == 0 or hour - last >= c.rotation_rebalance_hours
@@ -378,7 +405,19 @@ class Strategy:
                     plan[c.regime_pair] = core
                 rising = {p: s.return_rotation for p, s in signals.items()
                           if p != c.defensive_pair and s.return_rotation > 0 and p not in frozen
-                          and not (core > 0 and p == c.regime_pair)}
+                          and not (core > 0 and p == c.regime_pair)
+                          and state.rotation_cooldown.get(p, 0) <= ts}
+                alts = None
+                if c.rotation_vs_btc and regime is not None:
+                    floor = regime.return_rotation + c.rotation_btc_margin
+                    rising = {p: r for p, r in rising.items() if p != c.regime_pair and r > floor}
+                    alts = True
+                if c.rotation_pick_trend:
+                    def own_trend(s: Signal) -> bool:
+                        above = s.close > s.ema_slow
+                        rising_ema = s.ema_fast > s.ema_slow
+                        return {"close": above, "ema": rising_ema}.get(c.rotation_pick_trend, above and rising_ema)
+                    rising = {p: r for p, r in rising.items() if own_trend(signals[p])}
                 if c.rotation_exclude_external and self.external_scores:
                     table = self._external(ts)
                     rising = {p: r for p, r in rising.items() if table.get(p, 1.0) >= 0}
@@ -388,15 +427,41 @@ class Strategy:
                     rising = {p: self._residual_return(p, r) for p, r in rising.items()}
                 elif c.rotation_ranking == "kalman":
                     rising = {p: signals[p].trend_strength for p in rising}
+                elif c.rotation_ranking == "multi" and len(rising) > 1:
+                    rising = self._multi_horizon(list(rising))
                 elif c.rotation_ranking == "external" and self._external(ts):
                     table = self._external(ts)
                     rising = {p: table.get(p, -1e9) for p in rising}
-                picks = sorted(rising, key=rising.get, reverse=True)[:max(c.rotation_top - stuck, 0)]
+                ranked = sorted(rising, key=rising.get, reverse=True)
+                picks = ranked[:max(c.rotation_top - stuck, 0)]
+                if (c.rotation_concentrate > 0 and len(ranked) >= 2 and stuck == 0
+                        and signals[ranked[1]].return_rotation > 0
+                        and signals[ranked[0]].return_rotation >= c.rotation_concentrate * signals[ranked[1]].return_rotation):
+                    picks = ranked[:1]
+                    concentrated = True
+                else:
+                    concentrated = False
+                if c.rotation_buffer > c.rotation_top or c.rotation_min_hold_hours > 0:
+                    held = [p for p, w in state.rotation_plan.items()
+                            if w > 0 and p != c.defensive_pair and p in rising]
+                    keep = [p for p in held
+                            if (c.rotation_buffer > c.rotation_top and p in ranked[:c.rotation_buffer])
+                            or (c.rotation_min_hold_hours > 0
+                                and ts - state.rotation_entry.get(p, ts) < c.rotation_min_hold_hours * HOUR_MS)]
+                    keep = sorted(keep, key=ranked.index)[:max(c.rotation_top - stuck, 0)]
+                    picks = keep + [p for p in ranked if p not in keep][:max(c.rotation_top - stuck - len(keep), 0)]
+                state.rotation_entry = {p: state.rotation_entry.get(p, ts) if p in state.rotation_plan else ts
+                                        for p in picks}
                 # The picks fill len(picks) of rotation_top slots; how they share it is the
                 # weighting. Unfilled slots go to PAXG or cash below, whatever the weighting.
-                filled = (1.0 - core) * len(picks) / c.rotation_top
+                filled = (1.0 - core) * (1.0 if concentrated else len(picks) / c.rotation_top)
                 for pair, weight in self._rotation_weights(picks, signals).items():
                     plan[pair] = filled * weight
+                slots = max(c.rotation_top - stuck, 0)
+                if (alts and c.rotation_vs_btc == "btc" and len(picks) < slots
+                        and regime.return_rotation > 0 and c.regime_pair not in frozen):
+                    # No coin beat BTC: BTC itself fills the empty slots.
+                    plan[c.regime_pair] = plan.get(c.regime_pair, 0.0) + (slots - len(picks)) / c.rotation_top
             elif c.rotation_shorts > 0:
                 # Bear market: the sleeve's capital backs shorts on the weakest (or wildest) coins.
                 pool = {p: s for p, s in signals.items()
@@ -421,6 +486,8 @@ class Strategy:
                     plan = {p: w * scale for p, w in plan.items()}
             state.rotation_plan = plan
             state.rotation_plan_ts = ts
+        if c.rotation_stop_atr > 0 or c.rotation_stop_pct > 0:
+            self._rotation_stops(ts, signals, state, frozen)
         plan = dict(state.rotation_plan)
         if not trend_on:
             # Leave at once when the trend filter fails; only the defensive part (and any
@@ -428,10 +495,81 @@ class Strategy:
             plan = {p: w for p, w in plan.items() if p == c.defensive_pair or p in frozen or w < 0}
         else:
             plan = {p: w for p, w in plan.items() if w > 0 or p in frozen}   # cover shorts at once
+        if c.rotation_euphoria > 0 and regime is not None and regime.return_rotation > c.rotation_euphoria:
+            plan = {p: w if p in frozen else w * 0.5 for p, w in plan.items()}
         if c.rotation_vol_forecast and plan:
             scale = self._vol_scale(c.rotation_vol_forecast)
             plan = {p: w * scale for p, w in plan.items()}
         return plan
+
+    def _rotation_risk(self, plan: Dict[str, float], equity: float, state: StrategyState,
+                       frozen: AbstractSet[str]) -> Dict[str, float]:
+        """Account-level controls on the sleeve: a brake on the account's drawdown, and a filter
+        on the account's own equity curve (out while below its moving average)."""
+        c = self.cfg
+        if c.rotation_equity_ma_hours > 0:
+            state.equity_history = (state.equity_history + [equity])[-c.rotation_equity_ma_hours:]
+            if (len(state.equity_history) >= c.rotation_equity_ma_hours
+                    and equity < sum(state.equity_history) / len(state.equity_history)):
+                plan = {p: w for p, w in plan.items() if p == c.defensive_pair or p in frozen}
+        if c.rotation_brake_drawdown > 0 and state.peak_equity > 0:
+            drawdown = 1.0 - equity / state.peak_equity
+            if state.rotation_brake_on and drawdown <= c.rotation_brake_release:
+                state.rotation_brake_on = False
+            elif not state.rotation_brake_on and drawdown >= c.rotation_brake_drawdown:
+                state.rotation_brake_on = True
+            if state.rotation_brake_on:
+                plan = {p: w if p in frozen else w * 0.5 for p, w in plan.items()}
+        return plan
+
+    def _above_sma(self, pair: str, hours: int) -> bool:
+        """True while the pair's close is at or above its simple average over `hours` closes
+        (closes rebuilt from the hourly log returns)."""
+        ind = self.indicators.get(pair)
+        if ind is None or len(ind.returns) < hours:
+            return True
+        r = list(ind.returns)[-(hours - 1):] if hours > 1 else []
+        level, total = 0.0, 1.0                 # closes relative to the latest one
+        for x in reversed(r):
+            level -= x
+            total += math.exp(level)
+        return total / hours <= 1.0
+
+    def _multi_horizon(self, pairs: List[str]) -> Dict[str, float]:
+        """Sum of the normal scores of each coin's rank by return over each horizon in
+        rotation_horizons (from its hourly log returns)."""
+        total = {p: 0.0 for p in pairs}
+        for h in self.cfg.rotation_horizons:
+            values = {}
+            for p in pairs:
+                r = self.indicators[p].returns
+                values[p] = sum(list(r)[-h:]) if len(r) >= h else 0.0
+            for p, z in _normal_scores(values).items():
+                total[p] += z
+        return total
+
+    def _rotation_stops(self, ts: int, signals: Dict[str, Signal], state: StrategyState,
+                        frozen: AbstractSet[str]) -> None:
+        """Trailing stops on the rotation's picks: a pick that closes too far below its highest
+        close since it was picked leaves the plan (its slot stays in cash until the next
+        rebalance) and cannot be picked again for stop_cooldown_hours."""
+        c = self.cfg
+        for pair in [p for p in state.rotation_highs if state.rotation_plan.get(p, 0.0) <= 0]:
+            del state.rotation_highs[pair]
+        for pair, weight in list(state.rotation_plan.items()):
+            s = signals.get(pair)
+            if weight <= 0 or pair == c.defensive_pair or s is None or pair in frozen:
+                continue
+            high = max(state.rotation_highs.get(pair, s.close), s.close)
+            state.rotation_highs[pair] = high
+            hit = ((c.rotation_stop_atr > 0 and s.close < high - c.rotation_stop_atr * s.atr)
+                   or (c.rotation_stop_pct > 0 and s.close < high * (1.0 - c.rotation_stop_pct)))
+            if hit:
+                del state.rotation_plan[pair]
+                del state.rotation_highs[pair]
+                state.rotation_cooldown[pair] = ts + c.stop_cooldown_hours * HOUR_MS
+        for pair in [p for p, until in state.rotation_cooldown.items() if until <= ts]:
+            del state.rotation_cooldown[pair]
 
     def _vol_scale(self, method: str) -> float:
         """min(1, typical / forecast) for BTC's daily volatility: the forecast from the last 30
@@ -656,6 +794,12 @@ class Strategy:
         elif not state.brake_on and brake_drawdown >= c.brake_drawdown:
             state.brake_on = True
         return drawdown
+
+
+def _breadth(signals: Dict[str, Signal], defensive_pair: str) -> float:
+    """Share of the universe's coins (not the defensive pair) whose fast EMA is above the slow."""
+    coins = [s for p, s in signals.items() if p != defensive_pair]
+    return sum(1 for s in coins if s.ema_fast > s.ema_slow) / len(coins) if coins else 0.0
 
 
 def _normal_scores(values: Dict[str, float]) -> Dict[str, float]:

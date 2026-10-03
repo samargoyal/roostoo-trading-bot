@@ -745,6 +745,46 @@ be volatile (HAR: the mean of the last day's, week's and month's realised varian
 RiskMetrics) mostly cut it out of the sharp rallies it earns from. All four stay as options,
 off.
 
+### Rounds 20 to 30: hypotheses aimed at the bot's weak spots, under a stricter rule
+
+By round 19 about 50 designs had been tried, and a design with no real edge passes the old rule
+(higher median, better in 4 of 6 folds) about one time in five. So from round 20
+(`research/rounds.py`) a design is adopted only if it has a higher median composite, is better
+in at least 5 of 6 folds, has a worst drawdown at most 2 points worse, and its neighbours (its
+setting nudged both ways) pass the old rule. Each round was fixed before it ran, in the light
+of the one before. Composite median (incumbent 2.87), folds better, worst drawdown (incumbent
+42%):
+
+| Round | Aimed at | Design | Median | Better | Worst DD |
+|---|---|---|---|---|---|
+| 20 | the rotation has no stop | trailing stop on each pick: 8 ATR / 5 ATR / 15% | 2.79 / 2.51 / 2.46 | 2 / 1 / 0 | 46 / 46 / 44% |
+| 21 | what gets picked | must beat BTC, else BTC / else PAXG or cash | 2.87 / 2.87 | 2 / 1 | 42 / 43% |
+| | | **ranked by 1-, 2- and 3-week momentum together** | 2.62 | **5** | **37%** |
+| 22 | daily swaps | keep picks in the top 4 / keep picks 3 days | 3.27 / 2.86 | 4 / 4 | 37 / 38% |
+| 23 | the account's drawdown | halve the rotation 15% below the peak / only above the 30-day average | 2.63 / 3.54 | 2 / 2 | 33 / 28% |
+| 24 | a regime from all coins | breadth and BTC / breadth alone / breadth for the book | 2.32 / 1.97 / 2.52 | 2 / 1 / 3 | 39 / 55 / 42% |
+| 25 | the filter's lag | also out below BTC's 200-hour average / re-enter after 24h | 2.54 / 2.86 | 1 / 3 | 37 / 42% |
+| 26 | the near misses together | multi-horizon + top-4 buffer / + 3-day hold | 2.61 / 2.51 | 4 / 4 | 37 / 39% |
+| 27 | conviction | one pick when it doubles the second | 3.22 | 3 | 48% |
+| 28 | euphoria | halve the rotation when BTC is up 25% in 2 weeks | 2.78 | 1 | 42% |
+| 29 | bounces in downtrends | picks must be in their own uptrend | 2.00 | 0 | 44% |
+| 30 | idle capital in good times | the book 100% invested in up to 10 coins | 2.83 | 2 | 44% |
+
+Nothing met the rule, so the bot is unchanged. One pattern is worth recording. The designs
+that make the rotation less dependent on its single 2-week lookback (multi-horizon ranking,
+letting winners stay) cut drawdowns, raised the 14-day composite and won most years, but all
+lost 2024–25, one of the two years the rotation's settings were developed on (rounds 3 and 4).
+Ranking by 1-, 2- and 3-week momentum together won all four folds that played no part in
+designing the rotation, as well as 2025–26: over six years +12,518% against +8,228%, worst
+drawdown 37% against 42%, median 14-day composite 3.38 against 2.53. It lost 2024–25 (3.25
+against 4.30), which lowered its median (2.62 against 2.87), and of its neighbours one also won
+5 of 6 folds while the other won 3. Under the rule it is not adopted; it is the one alternative
+the evidence supports, one setting away:
+
+```
+{"strategy": {"rotation_ranking": "multi", "rotation_horizons": [168, 336, 504]}}
+```
+
 ## How it works
 
 ```

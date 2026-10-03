@@ -119,6 +119,35 @@ class StrategyConfig:
                                           # or "external" (research only): saved model scores
     rotation_exclude_external: bool = False  # research only: skip coins whose saved external score is
                                           # negative (research H30, funding-rate crowding)
+    rotation_vs_btc: str = ""             # "btc" or "cash": a pick must beat BTC's return over the lookback
+                                          # by rotation_btc_margin; empty slots go to BTC ("btc") or as
+                                          # usual to PAXG or cash ("cash") (research round 21)
+    rotation_btc_margin: float = 0.0
+    rotation_horizons: List[int] = field(default_factory=list)  # rotation_ranking "multi": the
+                                          # horizons (hours) whose return ranks are averaged
+    rotation_concentrate: float = 0.0     # > 0: one pick takes the whole sleeve when its return is at least
+                                          # this multiple of the second's (research round 27)
+    rotation_euphoria: float = 0.0        # > 0: halve the sleeve while BTC's lookback return is above this
+                                          # (research round 28)
+    rotation_pick_trend: str = ""         # "both", "close" or "ema": picks must be in their own uptrend
+                                          # (close above, and/or fast EMA above, the slow EMA; round 29)
+    rotation_exit_sma: int = 0            # > 0: the sleeve is also out while BTC closes below its simple
+                                          # average over this many hours (research round 25)
+    rotation_reentry_hours: int = 0       # > 0: the filter must have been on this long to re-enter (round 25)
+    rotation_breadth: float = 0.0         # > 0: market breadth (share of coins with EMA fast > slow) needed
+    rotation_breadth_mode: str = "and"    # for the sleeve: "and" with BTC's filter, or "only" (round 24)
+    regime_breadth: float = 0.0           # > 0: the book is risk-on while breadth is at least this (round 24)
+    rotation_brake_drawdown: float = 0.0  # > 0: halve the sleeve while the account is this far below its
+    rotation_brake_release: float = 0.0   # peak, until it is back within the release (research round 23)
+    rotation_equity_ma_hours: int = 0     # > 0: sleeve only while the account is above its average over
+                                          # this many hours (research round 23)
+    rotation_buffer: int = 0              # > rotation_top: keep a held pick while it ranks in this many
+                                          # (research round 22)
+    rotation_min_hold_hours: int = 0      # > 0: keep a pick at least this long unless its return turns
+                                          # negative or the filter exits (research round 22)
+    rotation_stop_atr: float = 0.0        # > 0: drop a pick that closes this many ATRs below its highest
+                                          # close since it was picked (research round 20)
+    rotation_stop_pct: float = 0.0        # > 0: drop a pick that falls this fraction below that high
     rotation_shorts: int = 0              # > 0: while the trend filter is off, the sleeve shorts this many
                                           # coins instead (research H31; off: Roostoo /v6 untested)
     rotation_short_ranking: str = "return"  # "return": the weakest 2-week returns; "volatility": the wildest
