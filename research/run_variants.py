@@ -25,6 +25,7 @@ from research.panel import cached_pairs, features, load_panel, monthly_universe
 from research.sim import SimConfig, simulate, with_fees
 
 PERIODS = {"Y0": ("2024-10-01", "2025-10-01"), "Y1": ("2025-10-01", HOLD_OUT_START)}
+VOL_FORECASTS = os.path.join("runs", "research", "vol_forecasts.pkl")
 _CACHE = {}
 
 
@@ -33,6 +34,9 @@ def data(universe_size: int = 20):
         pairs = cached_pairs()
         panel = load_panel(pairs)
         _CACHE.update(pairs=pairs, panel=panel, feats=features(panel), masks={})
+        if os.path.exists(VOL_FORECASTS):
+            with open(VOL_FORECASTS, "rb") as fh:
+                _CACHE["har"] = pickle.load(fh)["forecasts"]["har"]
     masks = _CACHE["masks"]
     if universe_size not in masks:
         masks[universe_size] = monthly_universe(_CACHE["panel"], UniverseConfig(size=universe_size),
@@ -51,6 +55,8 @@ def score(name: str) -> pd.DataFrame:
         return (rank(-f["vol_168"]) + rank(f["liquidity"]) + rank(f["drawdown_168"]) + rank(f["mom_336"])) / 4
     if name == "low_vol":
         return (-f["vol_168"]).where(mask)
+    if name == "low_vol_har":  # ranked by the HAR-RV volatility forecast instead
+        return (-c["har"]).where(mask)
     if name == "low_vol+mom336":
         return (rank(-f["vol_168"]) + rank(f["mom_336"])) / 2
     if name == "low_vol+near_high":
@@ -76,7 +82,7 @@ def run(job):
     cfg = with_fees(replace(SimConfig(), **overrides), maker)
     start, end = PERIODS[period]
     stats, _ = simulate(c["panel"]["close"], c["mask"], score(score_name), cfg, start, end,
-                        high=c["panel"]["high"], low=c["panel"]["low"])
+                        high=c["panel"]["high"], low=c["panel"]["low"], vol_forecast=c.get("har"))
     return name, period, maker, stats
 
 
@@ -101,8 +107,15 @@ def main(path: str) -> None:
     cols = [p + s for p in PERIODS for s in (" ret", " maker", " mdd", " comp", " 14d+", " tr/d")]
     df = df[cols]
     fmt = {c: ("{:.1%}" if c.split(" ")[1] in ("ret", "maker", "mdd", "14d+") else "{:.2f}") for c in cols}
+    close = data()["panel"]["close"]["BTC/USD"]
+    hold = {}
+    for period, (start, end) in PERIODS.items():
+        x = close[(close.index >= start) & (close.index < end)]
+        hold[period + " ret"] = x.iloc[-1] / x.iloc[0] - 1
+        hold[period + " mdd"] = float((1 - x / x.cummax()).max())
+    df.loc["(hold BTC)"] = pd.Series(hold)
     pd.set_option("display.width", 200)
-    print(df.to_string(formatters={c: fmt[c].format for c in cols}))
+    print(df.to_string(formatters={c: fmt[c].format for c in cols}, na_rep=""))
 
 
 if __name__ == "__main__":

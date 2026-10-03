@@ -1,0 +1,13 @@
+[
+  {"name": "C base: low-vol, fixed budget", "score": "low_vol"},
+  {"name": "H7 rank by HAR forecast", "score": "low_vol_har"},
+  {"name": "H6 size by HAR forecast", "score": "low_vol", "config": {"vol_source": "forecast"}},
+  {"name": "H11 equal risk contribution", "score": "low_vol", "config": {"weighting": "erc", "vol_source": "forecast"}},
+  {"name": "H12 cost-theory no-trade bands", "score": "low_vol", "config": {"tc_bands": true}},
+  {"name": "H10 vol-managed 1.5%/day", "score": "low_vol", "config": {"vol_managed": 0.015, "vol_source": "forecast", "exposure_on": 0.95, "max_weight": 0.25}},
+  {"name": "H10 vol-managed 2.0%/day", "score": "low_vol", "config": {"vol_managed": 0.020, "vol_source": "forecast", "exposure_on": 0.95, "max_weight": 0.25}},
+  {"name": "H10 vol-managed 2.5%/day", "score": "low_vol", "config": {"vol_managed": 0.025, "vol_source": "forecast", "exposure_on": 0.95, "max_weight": 0.25}},
+  {"name": "H10 vol-managed 3.0%/day", "score": "low_vol", "config": {"vol_managed": 0.030, "vol_source": "forecast", "exposure_on": 0.95, "max_weight": 0.25}},
+  {"name": "H10+11 6 pos ERC 2%/day", "score": "low_vol", "config": {"vol_managed": 0.020, "vol_source": "forecast", "weighting": "erc", "exposure_on": 0.95, "max_weight": 0.25, "max_positions_on": 6}},
+  {"name": "H10+11 6 pos ERC 2.5%/day", "score": "low_vol", "config": {"vol_managed": 0.025, "vol_source": "forecast", "weighting": "erc", "exposure_on": 0.95, "max_weight": 0.25, "max_positions_on": 6}}
+]

@@ -1,0 +1,7 @@
+[
+  {"name": "C base: low-vol long only", "score": "low_vol"},
+  {"name": "H13 BAB: short 3 most volatile, 20%", "score": "low_vol", "config": {"short_on": 0.20, "short_off": 0.20, "short_trend_filter": false}},
+  {"name": "H13 BAB: short 3 most volatile, 30%", "score": "low_vol", "config": {"short_on": 0.30, "short_off": 0.30, "short_trend_filter": false}},
+  {"name": "H13 BAB 20%, stop 5 ATR", "score": "low_vol", "config": {"short_on": 0.20, "short_off": 0.20, "short_trend_filter": false, "short_stop_atr": 5.0}},
+  {"name": "H13 BAB 20%, 5 names", "score": "low_vol", "config": {"short_on": 0.20, "short_off": 0.20, "short_trend_filter": false, "max_shorts": 5}}
+]

@@ -3,7 +3,8 @@
 Nothing in the development research looked at these months. A finalist that only works
 on the development period should fall apart here.
 
-    python -m research.holdout
+    python -m research.holdout          # the July 2026 finalists
+    python -m research.holdout --bab    # the short sleeve (H13), chosen later
 """
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
@@ -22,6 +23,17 @@ FINALISTS = [
     ("F2 F1 + 40% shorts in bear", "low_vol", {"vol_target": 0.02, "short_off": 0.40, "short_regime_ema": 720}),
     ("L low-vol optimiser (MVO)", "low_vol", {"construction": "mvo", "decide_every": 24, "target_vol": 0.01}),
 ]
+# H13, chosen afterwards on the development period only, so these months are still out of
+# sample for it: the long book plus a short sleeve in the most volatile coins.
+_BAB = {"short_on": 0.15, "short_off": 0.15, "short_trend_filter": False, "short_stop_atr": 10.0}
+BAB_FINALISTS = [
+    ("C long only (current bot)", "low_vol", {}),
+    ("BAB 15%, stop 10 (chosen)", "low_vol", _BAB),
+    ("BAB 10%, stop 10", "low_vol", dict(_BAB, short_on=0.10, short_off=0.10)),
+    ("BAB 20%, stop 10", "low_vol", dict(_BAB, short_on=0.20, short_off=0.20)),
+    ("BAB 15%, stop 8", "low_vol", dict(_BAB, short_stop_atr=8.0)),
+    ("BAB 15%, stop 12", "low_vol", dict(_BAB, short_stop_atr=12.0)),
+]
 
 
 def run(job):
@@ -34,7 +46,9 @@ def run(job):
 
 
 def main() -> None:
-    jobs = [(n, s, o, m) for n, s, o in FINALISTS for m in (False, True)]
+    import sys
+    finalists = BAB_FINALISTS if "--bab" in sys.argv else FINALISTS
+    jobs = [(n, s, o, m) for n, s, o in finalists for m in (False, True)]
     with ProcessPoolExecutor(max_workers=6) as pool:
         results = list(pool.map(run, jobs))
     rows = {}

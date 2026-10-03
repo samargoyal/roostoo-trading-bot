@@ -1,0 +1,206 @@
+[
+ {
+  "name": "C base: long only",
+  "score": "low_vol"
+ },
+ {
+  "name": "BAB 10% stop  6",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.1,
+   "short_off": 0.1,
+   "short_trend_filter": false,
+   "short_stop_atr": 6.0
+  }
+ },
+ {
+  "name": "BAB 10% stop  8",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.1,
+   "short_off": 0.1,
+   "short_trend_filter": false,
+   "short_stop_atr": 8.0
+  }
+ },
+ {
+  "name": "BAB 10% stop 10",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.1,
+   "short_off": 0.1,
+   "short_trend_filter": false,
+   "short_stop_atr": 10.0
+  }
+ },
+ {
+  "name": "BAB 10% stop 12",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.1,
+   "short_off": 0.1,
+   "short_trend_filter": false,
+   "short_stop_atr": 12.0
+  }
+ },
+ {
+  "name": "BAB 15% stop  6",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.15,
+   "short_off": 0.15,
+   "short_trend_filter": false,
+   "short_stop_atr": 6.0
+  }
+ },
+ {
+  "name": "BAB 15% stop  8",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.15,
+   "short_off": 0.15,
+   "short_trend_filter": false,
+   "short_stop_atr": 8.0
+  }
+ },
+ {
+  "name": "BAB 15% stop 10",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.15,
+   "short_off": 0.15,
+   "short_trend_filter": false,
+   "short_stop_atr": 10.0
+  }
+ },
+ {
+  "name": "BAB 15% stop 12",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.15,
+   "short_off": 0.15,
+   "short_trend_filter": false,
+   "short_stop_atr": 12.0
+  }
+ },
+ {
+  "name": "BAB 20% stop  6",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.2,
+   "short_off": 0.2,
+   "short_trend_filter": false,
+   "short_stop_atr": 6.0
+  }
+ },
+ {
+  "name": "BAB 20% stop  8",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.2,
+   "short_off": 0.2,
+   "short_trend_filter": false,
+   "short_stop_atr": 8.0
+  }
+ },
+ {
+  "name": "BAB 20% stop 10",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.2,
+   "short_off": 0.2,
+   "short_trend_filter": false,
+   "short_stop_atr": 10.0
+  }
+ },
+ {
+  "name": "BAB 20% stop 12",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.2,
+   "short_off": 0.2,
+   "short_trend_filter": false,
+   "short_stop_atr": 12.0
+  }
+ },
+ {
+  "name": "BAB 25% stop  6",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.25,
+   "short_off": 0.25,
+   "short_trend_filter": false,
+   "short_stop_atr": 6.0
+  }
+ },
+ {
+  "name": "BAB 25% stop  8",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.25,
+   "short_off": 0.25,
+   "short_trend_filter": false,
+   "short_stop_atr": 8.0
+  }
+ },
+ {
+  "name": "BAB 25% stop 10",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.25,
+   "short_off": 0.25,
+   "short_trend_filter": false,
+   "short_stop_atr": 10.0
+  }
+ },
+ {
+  "name": "BAB 25% stop 12",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.25,
+   "short_off": 0.25,
+   "short_trend_filter": false,
+   "short_stop_atr": 12.0
+  }
+ },
+ {
+  "name": "BAB 15% stop  8, 2 names",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.15,
+   "short_off": 0.15,
+   "short_trend_filter": false,
+   "max_shorts": 2
+  }
+ },
+ {
+  "name": "BAB 15% stop  8, 4 names",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.15,
+   "short_off": 0.15,
+   "short_trend_filter": false,
+   "max_shorts": 4
+  }
+ },
+ {
+  "name": "BAB 20% stop  8, 2 names",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.2,
+   "short_off": 0.2,
+   "short_trend_filter": false,
+   "max_shorts": 2
+  }
+ },
+ {
+  "name": "BAB 20% stop  8, 4 names",
+  "score": "low_vol",
+  "config": {
+   "short_on": 0.2,
+   "short_off": 0.2,
+   "short_trend_filter": false,
+   "max_shorts": 4
+  }
+ }
+]

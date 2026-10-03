@@ -49,7 +49,14 @@ class SimConfig:
     short_stop_atr: float = 8.0      # trailing stop above the lowest close since entry
     short_fee: float = 0.001
     short_regime_ema: int = 200      # shorts only while BTC is below this EMA (hours)
+    short_trend_filter: bool = True  # False: short the lowest scores whatever their trend (BAB)
     vol_target: float = 0.0          # > 0: scale exposure by min(1, target / BTC daily vol)
+    # Sizing of the selected coins (topn)
+    weighting: str = "inverse_vol"   # "inverse_vol" or "erc" (equal risk contribution)
+    vol_source: str = "rolling"      # "rolling" (168h) or "forecast" (the vol_forecast panel)
+    vol_managed: float = 0.0         # > 0: scale the trend sleeve to this ex-ante daily vol
+    tc_bands: bool = False           # per-coin no-trade bands from transaction-cost theory
+    tc_gamma: float = 2.0            # risk aversion in the band formula
     # mvo only
     ic: float = 0.08                 # expected skill: alpha = ic x volatility x z-score
     horizon: int = 24                # hours the alpha and risk are measured over
@@ -80,6 +87,30 @@ def project(v: np.ndarray, lo: np.ndarray, hi: np.ndarray, budget: float,
     return np.clip(v - b, lo, hi)
 
 
+def erc_weights(cov: np.ndarray, iters: int = 500, tol: float = 1e-10) -> np.ndarray:
+    """Equal-risk-contribution weights (sum 1) by cyclical coordinate descent on the strictly
+    convex problem  min 1/2 y'Cy - sum(log y) / n,  then normalising y."""
+    n = len(cov)
+    b = np.full(n, 1.0 / n)
+    y = 1.0 / np.sqrt(np.diag(cov))
+    for _ in range(iters):
+        y_old = y.copy()
+        for i in range(n):
+            c = cov[i] @ y - cov[i, i] * y[i]
+            y[i] = (-c + np.sqrt(c * c + 4 * cov[i, i] * b[i])) / (2 * cov[i, i])
+        if np.max(np.abs(y - y_old)) < tol:
+            break
+    return y / y.sum()
+
+
+def no_trade_band(weight: np.ndarray, cost: float, gamma: float) -> np.ndarray:
+    """Half-width of the optimal no-trade region around a target weight under proportional
+    costs (the Janecek-Shreve asymptotics of the Davis-Norman problem):
+    (3 / (2 gamma) * w^2 (1 - w)^2 * cost) ** (1/3)."""
+    w = np.abs(weight)
+    return (1.5 / gamma * w * w * (1 - w) ** 2 * cost) ** (1.0 / 3.0)
+
+
 def solve_mvo(alpha: np.ndarray, cov: np.ndarray, w_prev: np.ndarray, lo: np.ndarray,
               hi: np.ndarray, budget: float, risk_aversion: float, turnover_aversion: float,
               iters: int = 300, equality: bool = False) -> np.ndarray:
@@ -104,7 +135,8 @@ def simulate(close: pd.DataFrame, mask: pd.DataFrame, score: pd.DataFrame,
              cfg: SimConfig, start: str, end: str, initial: float = 100000.0,
              defensive: str = "PAXG/USD", regime_pair: str = "BTC/USD",
              high: Optional[pd.DataFrame] = None,
-             low: Optional[pd.DataFrame] = None) -> Tuple[Dict[str, float], pd.Series]:
+             low: Optional[pd.DataFrame] = None,
+             vol_forecast: Optional[pd.DataFrame] = None) -> Tuple[Dict[str, float], pd.Series]:
     close = close.ffill()
     ema50 = close.ewm(span=50, adjust=False).mean()
     ema200 = close.ewm(span=200, adjust=False).mean()
@@ -125,6 +157,11 @@ def simulate(close: pd.DataFrame, mask: pd.DataFrame, score: pd.DataFrame,
     lo_ = close if low is None else low.reindex_like(close).ffill()
     tr = pd.concat([hi_ - lo_, (hi_ - close.shift()).abs(), (lo_ - close.shift()).abs()]).groupby(level=0).max()
     atr = tr.ewm(alpha=1 / 14, adjust=False).mean().reindex(close.index).values
+    # Daily volatility per coin for sizing: the 168h estimate, or a forecast where available.
+    vol24 = sig * np.sqrt(24)
+    if cfg.vol_source == "forecast" and vol_forecast is not None:
+        fc = np.sqrt(vol_forecast.reindex(index=close.index, columns=close.columns).values)
+        vol24 = np.where(np.isfinite(fc) & (fc > 0), fc, vol24)
 
     times = close.index
     rows = np.where((times >= start) & (times < end))[0]
@@ -180,8 +217,8 @@ def simulate(close: pd.DataFrame, mask: pd.DataFrame, score: pd.DataFrame,
                 core[d] = cfg.core_weight
             factor = cfg.brake_factor if brake else 1.0
             if cfg.construction == "topn":
-                target = _topn(cfg, sc[i], sig[i], ok, held, regime_on[i] or not cfg.regime,
-                               cap - core.sum(), d) * factor + core
+                keep = _select(cfg, sc[i], ok, held, regime_on[i] or not cfg.regime, d)
+                target = _allocate(cfg, keep, vol24[i], logret, i, cap - core.sum(), d) * factor + core
             else:
                 target = _mvo(cfg, sc[i], logret, i, sig[i], ok, m[i], w_cur, core,
                               core.sum() + (cap - core.sum()) * factor)
@@ -189,15 +226,20 @@ def simulate(close: pd.DataFrame, mask: pd.DataFrame, score: pd.DataFrame,
             if short_cap > 0:
                 s_base = m[i] & ~np.isnan(sc[i]) & (p > 0)
                 s_base[d] = False                       # never short the defensive asset
-                s_entry = s_base & short_entry_trend[i] & (rsi[i] >= cfg.short_rsi_min) & (cool_s < i)
-                s_hold = s_base & ~hold_trend[i] & ~stopped_s
+                s_entry = s_base & (rsi[i] >= cfg.short_rsi_min) & (cool_s < i)
+                s_hold = s_base & ~stopped_s
+                if cfg.short_trend_filter:
+                    s_entry &= short_entry_trend[i]
+                    s_hold &= ~hold_trend[i]
                 target = target + _shorts(cfg, sc[i], sig[i], np.where(held_s, s_hold, s_entry), held_s, short_cap)
 
             delta = target - w_cur
             small = np.abs(delta) < cfg.min_trade
             closing = (np.abs(target) <= 1e-9) & (np.abs(w_cur) > 0)
             opening = (np.abs(w_cur) < 0.005) & (np.abs(target) > 0)
-            go = ~small & (closing | opening | (np.abs(delta) >= cfg.rebalance_threshold))
+            band = (no_trade_band(target, cfg.fee + cfg.slippage, cfg.tc_gamma) if cfg.tc_bands
+                    else cfg.rebalance_threshold)
+            go = ~small & (closing | opening | (np.abs(delta) >= band))
             for j in list(np.where(go & (delta < 0))[0]) + list(np.where(go & (delta > 0))[0]):
                 dq = -qty[j] if closing[j] else delta[j] * equity / p[j]
                 notional = abs(dq) * p[j]
@@ -245,30 +287,58 @@ def _shorts(cfg: SimConfig, score, sig, ok, held_s, cap) -> np.ndarray:
     return w
 
 
-def _topn(cfg: SimConfig, score, sig, ok, held, risk_on, budget, d) -> np.ndarray:
-    n = len(score)
+def _select(cfg: SimConfig, score, ok, held, risk_on, d) -> list:
+    """The coins to hold: held ones that still qualify, then the best-scoring new ones."""
     limit = cfg.max_positions_on if risk_on else cfg.max_positions_off
-    keep = [j for j in np.where(held & ok)[0]]
     order = [j for j in np.argsort(-np.nan_to_num(score, nan=-np.inf)) if ok[j]]
     if not risk_on and ok[d] and d in order:
         order.remove(d)
         order.insert(0, d)
     rank = {j: r for r, j in enumerate(order)}
-    keep = sorted(keep, key=lambda j: rank.get(j, 1e9))[:limit]
+    keep = sorted([j for j in np.where(held & ok)[0]], key=lambda j: rank.get(j, 1e9))[:limit]
     for j in order:
         if len(keep) >= limit:
             break
         if j not in keep:
             keep.append(j)
+    return keep
+
+
+def _cov(cfg: SimConfig, logret, i, keep, vol) -> np.ndarray:
+    """Daily covariance of the kept coins: shrunk hourly correlation scaled by daily vols."""
+    window = logret[max(0, i - cfg.cov_window + 1):i + 1][:, keep]
+    corr = np.nan_to_num(np.corrcoef(window, rowvar=False)) if len(keep) > 1 else np.ones((1, 1))
+    corr = (1 - cfg.shrink) * corr + cfg.shrink * np.eye(len(keep))
+    return corr * np.outer(vol, vol)
+
+
+def _allocate(cfg: SimConfig, keep, vol24, logret, i, budget, d) -> np.ndarray:
+    n = len(vol24)
     w = np.zeros(n)
     if not keep:
         return w
-    inv = np.array([1 / sig[j] if sig[j] > 0 else 0 for j in keep])
-    if inv.sum() <= 0:
+    vol = np.nan_to_num(vol24[keep])
+    if np.any(vol <= 0):
         return w
-    w[keep] = np.minimum(budget * inv / inv.sum(), cfg.max_weight)
+    cov = None
+    if cfg.weighting == "erc" and len(keep) > 1:
+        cov = _cov(cfg, logret, i, keep, vol)
+        base = erc_weights(cov)
+    else:
+        base = (1 / vol) / np.sum(1 / vol)
+    caps = np.full(len(keep), cfg.max_weight)
     if d in keep:
-        w[d] = min(w[d], cfg.max_weight - cfg.core_weight)
+        caps[keep.index(d)] -= cfg.core_weight
+    if cfg.vol_managed > 0:
+        cov = _cov(cfg, logret, i, keep, vol) if cov is None else cov
+        port_vol = float(np.sqrt(base @ cov @ base))
+        x = base * (cfg.vol_managed / port_vol if port_vol > 0 else 0.0)
+    else:
+        x = base * budget
+    x = np.minimum(x, np.maximum(caps, 0.0))
+    if x.sum() > budget:
+        x *= budget / x.sum()
+    w[keep] = x
     return w
 
 
