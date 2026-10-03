@@ -79,6 +79,19 @@ class StrategyConfig:
     short_rsi_min: float = 30.0          # no new shorts into oversold coins
     short_stop_atr_multiple: float = 10.0  # cover above the lowest close since entry plus this many ATRs
 
+    # Momentum rotation sleeve (research H15-H16): this share of equity holds the coins with
+    # the strongest positive return over rotation_lookback hours, equally weighted, chosen
+    # again every rotation_rebalance_hours at 00:00 UTC. It is in the market only while the
+    # regime pair's rotation_trend_fast EMA is above its rotation_trend_slow EMA, and leaves
+    # at once when that fails; an empty slot goes to the defensive pair if its own return is
+    # positive. The rest of equity runs the strategy above. 0 switches the sleeve off.
+    rotation_weight: float = 0.4
+    rotation_lookback: int = 336
+    rotation_top: int = 2
+    rotation_rebalance_hours: int = 24
+    rotation_trend_fast: int = 168
+    rotation_trend_slow: int = 672
+
 
 @dataclass
 class UniverseConfig:
@@ -120,7 +133,7 @@ class ApiConfig:
 @dataclass
 class LiveConfig:
     binance_url: str = "https://data-api.binance.vision"
-    history_bars: int = 1000            # hourly candles behind the indicators (EMA200 needs plenty)
+    history_bars: int = 2500            # hourly candles behind the indicators (the 672h EMA needs plenty)
     bar_delay_sec: int = 60             # run this long after the hour, once the candle is final
     ticker_sample_sec: int = 300        # Roostoo price samples, the fallback if Binance is unreachable
     runs_dir: str = "runs"
@@ -135,12 +148,13 @@ class BacktestConfig:
     maker_fee: float = 0.0005
     taker_slippage: float = 0.0002      # half-spread paid by a market order
     short_fee: float = 0.001            # Roostoo charges 0.1% to open and to close a short
-    warmup_bars: int = 1000
+    warmup_bars: int = 2500
     data_dir: str = "data"
     # Choose the universe with the universe rule as of the start of the test window, using
     # only data available then. False backtests strategy.universe as configured, which
     # flatters the result if that list was picked with hindsight.
     point_in_time_universe: bool = True
+    refresh_universe_monthly: bool = True   # re-apply the rule on the first day of every month
 
 
 @dataclass

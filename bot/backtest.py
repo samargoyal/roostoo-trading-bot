@@ -13,6 +13,7 @@ of the window, using only data available then; --fixed-universe tests the config
 list instead. Candles are cached under data/; results are written to runs/backtest/.
 """
 import argparse
+import copy
 import csv
 import json
 import logging
@@ -71,14 +72,20 @@ class ShortPosition:
 
 
 def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms: int,
-                 fee: float, slippage: float, name: str = "strategy") -> Result:
+                 fee: float, slippage: float, name: str = "strategy",
+                 monthly_universe: bool = False) -> Result:
     """Replay the strategy hour by hour from start_ms. Bars before start_ms only warm up indicators.
 
     Shorts follow Roostoo's rules: opening locks the USD collateral (quantity = collateral /
     price) plus a 0.1% fee out of free cash; closing returns the collateral plus the profit or
     loss, less 0.1% of the closed value. The short fee is the same for limit and market orders.
+
+    With monthly_universe, `bars` holds every candidate and the universe rule is re-applied on
+    the first day of each month with data available then, as the live list would be refreshed.
     """
-    strategy = Strategy(cfg.strategy)
+    cfg = copy.deepcopy(cfg)
+    strategy = Strategy(cfg.strategy, pairs=list(bars) if monthly_universe else None)
+    month = None
     state = StrategyState()
     cash = cfg.backtest.initial_cash
     short_fee = cfg.backtest.short_fee
@@ -110,6 +117,15 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
         if ts < start_ms:
             continue
         now = ts + HOUR_MS  # the decision is made when this bar closes
+        if monthly_universe:
+            this_month = datetime.fromtimestamp(now / 1000, tz=timezone.utc).strftime("%Y-%m")
+            if this_month != month:
+                month = this_month
+                first = int(datetime.strptime(this_month, "%Y-%m").replace(tzinfo=timezone.utc).timestamp() * 1000)
+                universe = select_universe(bars, max(first, start_ms), cfg.universe, cfg.strategy.defensive_pair)
+                if cfg.strategy.regime_pair not in universe:
+                    universe.insert(0, cfg.strategy.regime_pair)
+                cfg.strategy.universe = universe
 
         equity, values = mark()
         weights = {p: v / equity for p, v in values.items()}
@@ -337,20 +353,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     else:
         pairs = list(cfg.strategy.universe)
     bars = load_all(cfg, pairs, warmup_start, end_ms)
+    monthly = point_in_time and cfg.backtest.refresh_universe_monthly
     if point_in_time:
         universe = select_universe(bars, start_ms, cfg.universe, cfg.strategy.defensive_pair)
         if cfg.strategy.regime_pair not in universe:
             universe.insert(0, cfg.strategy.regime_pair)
         cfg.strategy.universe = universe
-        print("Universe: the %d most traded pairs as of %s, plus %s:\n  %s\n" % (
+        print("Universe: the %d most traded pairs as of %s, plus %s%s:\n  %s\n" % (
             cfg.universe.size, start, cfg.strategy.defensive_pair,
+            ", refreshed on the first day of every month" if monthly else "",
             " ".join(p.split("/")[0] for p in universe)))
-    bars = {p: bars.get(p, []) for p in cfg.strategy.universe}
+    if not monthly:
+        bars = {p: bars.get(p, []) for p in cfg.strategy.universe}
 
     b = cfg.backtest
     results = [
-        run_backtest(cfg, bars, start_ms, end_ms, b.taker_fee, b.taker_slippage, "taker"),
-        run_backtest(cfg, bars, start_ms, end_ms, b.maker_fee, 0.0, "maker"),
+        run_backtest(cfg, bars, start_ms, end_ms, b.taker_fee, b.taker_slippage, "taker", monthly),
+        run_backtest(cfg, bars, start_ms, end_ms, b.maker_fee, 0.0, "maker", monthly),
     ]
     benchmarks = [
         buy_and_hold(bars, [cfg.strategy.regime_pair], start_ms, end_ms, b.initial_cash, "BTC hold"),

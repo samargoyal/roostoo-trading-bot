@@ -22,7 +22,7 @@ UNIVERSE = ["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD", "PEPE/USD", "PAXG/USD"]
 
 
 def make_strategy(signals, **overrides):
-    cfg = StrategyConfig(universe=list(UNIVERSE), short_exposure=0.15, **overrides)
+    cfg = StrategyConfig(universe=list(UNIVERSE), **dict({"short_exposure": 0.15, "rotation_weight": 0.0}, **overrides))
     strategy = Strategy(cfg)
     strategy.signals = lambda: signals
     return strategy
@@ -82,7 +82,7 @@ class StrategyShortTest(unittest.TestCase):
         self.assertAlmostEqual(braked, normal / 2)
 
     def test_switching_the_sleeve_off_covers_remembered_shorts(self):
-        cfg = StrategyConfig(universe=list(UNIVERSE), short_exposure=0.0)
+        cfg = StrategyConfig(universe=list(UNIVERSE), short_exposure=0.0, rotation_weight=0.0)
         strategy = Strategy(cfg)
         strategy.signals = lambda: market()
         state = StrategyState(shorts={"PEPE/USD": ShortInfo(0, 100.0)})

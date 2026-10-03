@@ -21,6 +21,11 @@ exchange. Every number below is a field of StrategyConfig.
            drawdown is back under 2%.
   Core     5% of equity stays in PAXG at all times, so there is always a position
            to rebalance on quiet days (see the activity rule in planner.py).
+  Rotation 40% of equity (rotation_weight) rotates daily into the 2 coins with the
+           strongest positive 336h return, while BTC's 168h EMA is above its 672h EMA, and
+           leaves at once when it is not. Everything above runs on the other 60%. The two
+           books' returns are barely correlated (0.18), so together they beat holding BTC
+           in every test period with a smaller drawdown than BTC (research H15-H16).
   Shorts   optional (short_exposure, off by default): short the 3 most volatile coins
            whatever their trend, sized by inverse ATR, with a trailing stop 10 ATR above
            the lowest close since entry. Low-volatility coins have tended to beat
@@ -54,6 +59,7 @@ SHORT_ENTRY = "short_entry"
 SHORT_HOLD = "short_hold"
 EXIT_SHORT_STOP = "exit_short_stop"
 EXIT_SHORT = "exit_short"
+ROTATION = "rotation"
 
 
 @dataclass
@@ -78,6 +84,13 @@ class StrategyState:
     last_fill_ts: int = 0
     shorts: Dict[str, ShortInfo] = field(default_factory=dict)        # open short positions
     short_cooldown_until: Dict[str, int] = field(default_factory=dict)
+    rotation_plan: Dict[str, float] = field(default_factory=dict)      # the sleeve's weights
+    rotation_plan_ts: int = 0                                          # when they were chosen
+    # The non-rotation book's own value, so its drawdown brake ignores the rotation sleeve.
+    book_nav: float = 1.0
+    book_peak: float = 1.0
+    book_weights: Dict[str, float] = field(default_factory=dict)       # its last targets
+    book_closes: Dict[str, float] = field(default_factory=dict)        # prices when they were set
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -92,6 +105,12 @@ class StrategyState:
             last_fill_ts=int(data.get("last_fill_ts", 0)),
             shorts={p: ShortInfo(**v) for p, v in data.get("shorts", {}).items()},
             short_cooldown_until={p: int(v) for p, v in data.get("short_cooldown_until", {}).items()},
+            rotation_plan={p: float(v) for p, v in data.get("rotation_plan", {}).items()},
+            rotation_plan_ts=int(data.get("rotation_plan_ts", 0)),
+            book_nav=float(data.get("book_nav", 1.0)),
+            book_peak=float(data.get("book_peak", 1.0)),
+            book_weights={p: float(v) for p, v in data.get("book_weights", {}).items()},
+            book_closes={p: float(v) for p, v in data.get("book_closes", {}).items()},
         )
 
 
@@ -105,16 +124,20 @@ class Decision:
     targets: Dict[str, float]   # target weight (fraction of equity) for every pair in the universe
     reasons: Dict[str, str]     # why each pair's target is what it is
     scores: Dict[str, float]    # ranking score of every pair with data
+    rotation: Dict[str, float] = field(default_factory=dict)  # the rotation sleeve's own weights
 
 
 class Strategy:
-    def __init__(self, cfg: StrategyConfig):
+    def __init__(self, cfg: StrategyConfig, pairs: Optional[List[str]] = None):
+        """`pairs` (default: the universe) are the pairs whose indicators are kept. The backtest
+        tracks every candidate so the universe can change month by month."""
         self.cfg = cfg
         self.indicators = {
             pair: IndicatorSet(cfg.fast_ema, cfg.slow_ema, cfg.regime_ema, cfg.atr_period,
                                cfg.rsi_period, cfg.momentum_short, cfg.momentum_long,
-                               cfg.volatility_window)
-            for pair in cfg.universe
+                               cfg.volatility_window, cfg.rotation_lookback,
+                               cfg.rotation_trend_fast, cfg.rotation_trend_slow)
+            for pair in (pairs if pairs is not None else cfg.universe)
         }
 
     def update(self, pair: str, bar: Bar) -> None:
@@ -123,8 +146,12 @@ class Strategy:
             indicators.update(bar)
 
     def signals(self) -> Dict[str, Signal]:
+        """Signals for the pairs in the current universe that have finished warming up."""
         out = {}
+        universe = set(self.cfg.universe)
         for pair, indicators in self.indicators.items():
+            if pair not in universe:
+                continue
             signal = indicators.signal()
             if signal is not None:
                 out[pair] = signal
@@ -151,7 +178,9 @@ class Strategy:
         """
         c = self.cfg
         signals = self.signals()
-        drawdown = self._update_brake(equity, state)
+        drawdown = self._update_brake(equity, state, signals)
+        rotation = self._rotation(ts, signals, state)
+        weights = self._defensive_weights(weights, rotation)
 
         regime = signals.get(c.regime_pair)
         risk_on = regime is not None and regime.close > regime.ema_regime
@@ -201,7 +230,7 @@ class Strategy:
             reasons[pair] = HOLD if pair in keep else ENTRY
 
         for pair in state.positions:
-            if pair not in signals:
+            if pair not in signals and pair in targets:
                 # No data to judge it by: leave the position as it is (the core is added below).
                 held_core = core if pair == c.defensive_pair else 0.0
                 targets[pair] = max(weights.get(pair, 0.0) - held_core, 0.0)
@@ -212,10 +241,22 @@ class Strategy:
             reasons.setdefault(c.defensive_pair, CORE)
 
         if c.short_exposure > 0 or state.shorts:
-            self._shorts(ts, signals, scores, weights, state, targets, reasons, set(keep + entries))
+            self._shorts(ts, signals, scores, weights, state, targets, reasons,
+                         set(keep + entries) | set(rotation))
+
+        if c.rotation_weight > 0:
+            state.book_weights = {p: t for p, t in targets.items() if t != 0.0}
+            state.book_closes = {p: signals[p].close for p in state.book_weights if p in signals}
+            share = 1.0 - c.rotation_weight
+            targets = {p: share * t for p, t in targets.items()}
+            for pair, weight in rotation.items():
+                if targets.get(pair, 0.0) == 0.0:
+                    reasons[pair] = ROTATION
+                targets[pair] = targets.get(pair, 0.0) + c.rotation_weight * weight
 
         return Decision(ts=ts, risk_on=risk_on, exposure_limit=exposure, drawdown=drawdown,
-                        brake_on=state.brake_on, targets=targets, reasons=reasons, scores=scores)
+                        brake_on=state.brake_on, targets=targets, reasons=reasons, scores=scores,
+                        rotation=rotation)
 
     def reconcile(self, ts: int, weights: Dict[str, float], decision: Optional[Decision],
                   state: StrategyState) -> None:
@@ -226,6 +267,8 @@ class Strategy:
         """
         c = self.cfg
         signals = self.signals()
+        rotation = decision.rotation if decision is not None else state.rotation_plan
+        weights = self._defensive_weights(weights, rotation)
         for pair in c.universe:
             weight = weights.get(pair, 0.0)
             if pair == c.defensive_pair:
@@ -243,6 +286,11 @@ class Strategy:
                     state.cooldown_until[pair] = ts + c.stop_cooldown_hours * HOUR_MS
         for pair in [p for p, until in state.cooldown_until.items() if until <= ts]:
             del state.cooldown_until[pair]
+        # Pairs that left the universe are sold by the planner; forget them once they are gone.
+        universe = set(c.universe)
+        for book in (state.positions, state.shorts):
+            for pair in [p for p in book if p not in universe and abs(weights.get(p, 0.0)) <= c.min_position_weight]:
+                del book[pair]
 
         for pair in c.universe:
             short = weights.get(pair, 0.0) < -c.min_position_weight
@@ -255,6 +303,45 @@ class Strategy:
                     state.short_cooldown_until[pair] = ts + c.stop_cooldown_hours * HOUR_MS
         for pair in [p for p, until in state.short_cooldown_until.items() if until <= ts]:
             del state.short_cooldown_until[pair]
+
+    def _rotation(self, ts: int, signals: Dict[str, Signal], state: StrategyState) -> Dict[str, float]:
+        """The rotation sleeve's weights (summing to at most 1), chosen afresh at each rebalance."""
+        c = self.cfg
+        if c.rotation_weight <= 0:
+            return {}
+        regime = signals.get(c.regime_pair)
+        trend_on = regime is not None and regime.ema_trend_fast > regime.ema_trend_slow
+        hour = ts // HOUR_MS
+        last = state.rotation_plan_ts // HOUR_MS
+        due = (state.rotation_plan_ts == 0 or hour - last >= c.rotation_rebalance_hours
+               or (hour % c.rotation_rebalance_hours == 0 and hour != last))
+        if due:
+            plan: Dict[str, float] = {}
+            if trend_on:
+                rising = {p: s.return_rotation for p, s in signals.items()
+                          if p != c.defensive_pair and s.return_rotation > 0}
+                for pair in sorted(rising, key=rising.get, reverse=True)[:c.rotation_top]:
+                    plan[pair] = 1.0 / c.rotation_top
+            empty = 1.0 - sum(plan.values())
+            defensive = signals.get(c.defensive_pair)
+            if empty > 1e-9 and defensive is not None and defensive.return_rotation > 0:
+                plan[c.defensive_pair] = plan.get(c.defensive_pair, 0.0) + empty
+            state.rotation_plan = plan
+            state.rotation_plan_ts = ts
+        plan = dict(state.rotation_plan)
+        if not trend_on:
+            # Leave at once when the trend filter fails; only the defensive part stays.
+            plan = {p: w for p, w in plan.items() if p == c.defensive_pair}
+        return plan
+
+    def _defensive_weights(self, weights: Dict[str, float], rotation: Dict[str, float]) -> Dict[str, float]:
+        """Holdings as fractions of the non-rotation book: the rotation sleeve's share is taken
+        out, so its coins do not count as positions of the strategy above."""
+        rw = self.cfg.rotation_weight
+        if rw <= 0:
+            return weights
+        pairs = set(weights) | set(rotation)
+        return {p: (weights.get(p, 0.0) - rw * rotation.get(p, 0.0)) / (1.0 - rw) for p in pairs}
 
     def _shorts(self, ts: int, signals: Dict[str, Signal], scores: Dict[str, float],
                 weights: Dict[str, float], state: StrategyState, targets: Dict[str, float],
@@ -284,6 +371,8 @@ class Strategy:
             if pair not in keep:
                 keep.append(pair)
         for pair in state.shorts:
+            if pair not in targets:
+                continue                                    # left the universe: the planner covers it
             if pair not in signals and pair not in longs:
                 targets[pair] = min(weights.get(pair, 0.0), 0.0)   # no data: leave it as it is
                 reasons[pair] = HOLD_NO_DATA
@@ -315,12 +404,26 @@ class Strategy:
             weights[pair] = min(budget * x / total, max(cap, 0.0))
         return weights
 
-    def _update_brake(self, equity: float, state: StrategyState) -> float:
+    def _update_brake(self, equity: float, state: StrategyState,
+                      signals: Optional[Dict[str, Signal]] = None) -> float:
+        """Engage or release the brake; returns the account's drawdown for the records.
+
+        With the rotation sleeve on, the brake follows the other book's own value, marked from
+        its last targets and the price changes since, as it would on a separate account.
+        """
         c = self.cfg
         state.peak_equity = max(state.peak_equity, equity)
         drawdown = 1.0 - equity / state.peak_equity if state.peak_equity > 0 else 0.0
-        if state.brake_on and drawdown <= c.brake_release_drawdown:
+        brake_drawdown = drawdown
+        if c.rotation_weight > 0 and signals is not None:
+            change = sum(w * (signals[p].close / state.book_closes[p] - 1.0)
+                         for p, w in state.book_weights.items()
+                         if p in signals and state.book_closes.get(p))
+            state.book_nav *= 1.0 + change
+            state.book_peak = max(state.book_peak, state.book_nav)
+            brake_drawdown = 1.0 - state.book_nav / state.book_peak
+        if state.brake_on and brake_drawdown <= c.brake_release_drawdown:
             state.brake_on = False
-        elif not state.brake_on and drawdown >= c.brake_drawdown:
+        elif not state.brake_on and brake_drawdown >= c.brake_drawdown:
             state.brake_on = True
         return drawdown

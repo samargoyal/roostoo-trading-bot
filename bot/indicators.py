@@ -132,22 +132,29 @@ class Signal(NamedTuple):
     return_short: float   # close / close N bars ago - 1
     return_long: float
     volatility: float     # standard deviation of hourly log returns
+    return_rotation: float = 0.0   # close / close rotation_lookback bars ago - 1
+    ema_trend_fast: float = 0.0    # the slow trend filter used by the rotation sleeve
+    ema_trend_slow: float = 0.0
 
 
 class IndicatorSet:
     """All the indicators the strategy needs for one pair."""
 
     def __init__(self, fast_ema: int, slow_ema: int, regime_ema: int, atr_period: int,
-                 rsi_period: int, momentum_short: int, momentum_long: int, volatility_window: int):
+                 rsi_period: int, momentum_short: int, momentum_long: int, volatility_window: int,
+                 rotation_lookback: int = 336, trend_fast: int = 168, trend_slow: int = 672):
         self.fast = EMA(fast_ema)
         self.slow = EMA(slow_ema)
         self.regime = EMA(regime_ema)
         self.atr = ATR(atr_period)
         self.rsi = RSI(rsi_period)
         self.volatility = RollingStd(volatility_window)
+        self.trend_fast = EMA(trend_fast)
+        self.trend_slow = EMA(trend_slow)
         self.momentum_short = momentum_short
         self.momentum_long = momentum_long
-        self.closes: Deque[float] = deque(maxlen=max(momentum_short, momentum_long) + 1)
+        self.rotation_lookback = rotation_lookback
+        self.closes: Deque[float] = deque(maxlen=max(momentum_short, momentum_long, rotation_lookback) + 1)
         self.last_ts: Optional[int] = None
 
     def update(self, bar: Bar) -> None:
@@ -159,6 +166,8 @@ class IndicatorSet:
         self.fast.update(bar.close)
         self.slow.update(bar.close)
         self.regime.update(bar.close)
+        self.trend_fast.update(bar.close)
+        self.trend_slow.update(bar.close)
         self.atr.update(bar.high, bar.low, bar.close)
         self.rsi.update(bar.close)
         self.last_ts = bar.ts
@@ -166,7 +175,7 @@ class IndicatorSet:
     def signal(self) -> Optional[Signal]:
         """Latest values, or None while any indicator is still warming up."""
         values = (self.fast.value, self.slow.value, self.regime.value, self.atr.value,
-                  self.rsi.value, self.volatility.value)
+                  self.rsi.value, self.volatility.value, self.trend_fast.value, self.trend_slow.value)
         if any(v is None for v in values) or len(self.closes) < self.closes.maxlen:
             return None
         close = self.closes[-1]
@@ -181,4 +190,7 @@ class IndicatorSet:
             return_short=close / self.closes[-1 - self.momentum_short] - 1.0,
             return_long=close / self.closes[-1 - self.momentum_long] - 1.0,
             volatility=self.volatility.value,
+            return_rotation=close / self.closes[-1 - self.rotation_lookback] - 1.0,
+            ema_trend_fast=self.trend_fast.value,
+            ema_trend_slow=self.trend_slow.value,
         )

@@ -65,7 +65,8 @@ class RollingStdTest(unittest.TestCase):
 class IndicatorSetTest(unittest.TestCase):
     def make(self):
         return IndicatorSet(fast_ema=3, slow_ema=5, regime_ema=5, atr_period=3, rsi_period=3,
-                            momentum_short=2, momentum_long=4, volatility_window=3)
+                            momentum_short=2, momentum_long=4, volatility_window=3,
+                            rotation_lookback=4, trend_fast=3, trend_slow=5)
 
     def test_signal_only_after_warm_up_and_returns_are_correct(self):
         ind = self.make()
