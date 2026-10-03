@@ -98,6 +98,9 @@ class StrategyState:
     rotation_entry: Dict[str, int] = field(default_factory=dict)       # when each pick was first picked
     rotation_brake_on: bool = False
     rotation_on_since: int = 0                                          # when the sleeve's filter last turned on
+    regime_on: int = -1                                                 # with hysteresis: -1 unknown, 0 off, 1 on
+    rotation_plan_on: int = -1                                          # filter state when the plan was made
+    rotation_filter_on: int = -1
     equity_history: List[float] = field(default_factory=list)          # hourly account values (recent)
     rotation_cooldown: Dict[str, int] = field(default_factory=dict)    # stopped picks barred until (ms)
     # The non-rotation book's own value, so its drawdown brake ignores the rotation sleeve.
@@ -125,6 +128,9 @@ class StrategyState:
             rotation_entry={p: int(v) for p, v in data.get("rotation_entry", {}).items()},
             rotation_brake_on=bool(data.get("rotation_brake_on", False)),
             rotation_on_since=int(data.get("rotation_on_since", 0)),
+            regime_on=int(data.get("regime_on", -1)),
+            rotation_plan_on=int(data.get("rotation_plan_on", -1)),
+            rotation_filter_on=int(data.get("rotation_filter_on", -1)),
             equity_history=[float(v) for v in data.get("equity_history", [])],
             rotation_cooldown={p: int(v) for p, v in data.get("rotation_cooldown", {}).items()},
             book_nav=float(data.get("book_nav", 1.0)),
@@ -232,12 +238,18 @@ class Strategy:
         signals = self.signals()
         drawdown = self._update_brake(equity, state, signals)
         rotation = self._rotation(ts, signals, state, frozen)
+        if c.rotation_trim_ratio > 0 and c.rotation_weight > 0:
+            rotation = {p: (max(w, min(account.get(p, 0.0) / c.rotation_weight, w * c.rotation_trim_ratio))
+                            if w > 0 and p != c.defensive_pair else w) for p, w in rotation.items()}
         if c.rotation_brake_drawdown > 0 or c.rotation_equity_ma_hours > 0:
             rotation = self._rotation_risk(rotation, equity, state, frozen)
         weights = self._defensive_weights(weights, rotation)
 
         regime = signals.get(c.regime_pair)
         risk_on = regime is not None and regime.close > regime.ema_regime
+        if c.regime_band > 0 and regime is not None:
+            risk_on = _banded(regime.close, regime.ema_regime, c.regime_band, state.regime_on)
+            state.regime_on = int(risk_on)
         if c.regime_breadth > 0:
             risk_on = _breadth(signals, c.defensive_pair) >= c.regime_breadth
         exposure = c.risk_on_exposure if risk_on else c.risk_off_exposure
@@ -252,7 +264,7 @@ class Strategy:
             position.highest_close = max(position.highest_close, s.close)
             if pair in frozen:
                 continue                      # halted: it cannot be sold, whatever the signal
-            if s.ema_fast < s.ema_slow:
+            if s.ema_fast < s.ema_slow * (1.0 - c.trend_exit_band):
                 reasons[pair] = EXIT_TREND
                 exiting.add(pair)
             elif s.close < position.highest_close - c.stop_atr_multiple * s.atr:
@@ -263,7 +275,8 @@ class Strategy:
         stuck = [p for p in state.positions if p in frozen]
         held = [p for p in state.positions if p not in exiting and p in signals and p not in frozen]
         candidates = [p for p, s in signals.items()
-                      if p not in state.positions and p not in frozen and self._can_enter(p, s, ts, state)]
+                      if p not in state.positions and p not in frozen and self._can_enter(p, s, ts, state)
+                      and not (c.book_excludes_rotation and rotation.get(p, 0.0) > 0)]
 
         ranked = sorted(held + candidates, key=lambda p: scores[p], reverse=True)
         if not risk_on and c.defensive_pair in ranked:
@@ -381,6 +394,13 @@ class Strategy:
             return {}
         regime = signals.get(c.regime_pair)
         trend_on = regime is not None and regime.ema_trend_fast > regime.ema_trend_slow
+        if c.rotation_regime_pair:
+            other = signals.get(c.rotation_regime_pair)
+            trend_on = other is not None and other.ema_trend_fast > other.ema_trend_slow
+        if c.rotation_filter_band > 0 and regime is not None:
+            trend_on = _banded(regime.ema_trend_fast, regime.ema_trend_slow, c.rotation_filter_band,
+                               state.rotation_filter_on)
+            state.rotation_filter_on = int(trend_on)
         if c.rotation_breadth > 0:
             wide = _breadth(signals, c.defensive_pair) >= c.rotation_breadth
             trend_on = (trend_on and wide) if c.rotation_breadth_mode == "and" else wide
@@ -396,7 +416,20 @@ class Strategy:
         last = state.rotation_plan_ts // HOUR_MS
         due = (state.rotation_plan_ts == 0 or hour - last >= c.rotation_rebalance_hours
                or (hour % c.rotation_rebalance_hours == 0 and hour != last))
+        if (c.rotation_entry_every > 0 and trend_on and state.rotation_plan_on == 0
+                and hour % c.rotation_entry_every == 0 and hour != last):
+            due = True                          # the filter turned on: enter now, not at midnight
         if due:
+            state.rotation_plan_on = int(trend_on)
+        if due and c.rotation_ensemble:
+            plan = self._ensemble_plan(signals, frozen) if trend_on else {}
+            defensive = signals.get(c.defensive_pair)
+            if (not trend_on and defensive is not None and defensive.return_rotation > 0
+                    and c.defensive_pair not in frozen):
+                plan = {c.defensive_pair: 1.0}
+            state.rotation_plan = plan
+            state.rotation_plan_ts = ts
+        elif due:
             plan = {p: w for p, w in state.rotation_plan.items() if p in frozen}
             stuck = len([p for p in plan if p != c.defensive_pair])
             if trend_on:
@@ -412,6 +445,17 @@ class Strategy:
                     floor = regime.return_rotation + c.rotation_btc_margin
                     rising = {p: r for p, r in rising.items() if p != c.regime_pair and r > floor}
                     alts = True
+                if c.rotation_min_age_hours > 0:
+                    rising = {p: r for p, r in rising.items()
+                              if self.indicators[p].bars_seen >= c.rotation_min_age_hours}
+                if c.rotation_top_volume > 0:
+                    liquid = sorted(signals, key=lambda p: self.indicators[p].dollar_sum, reverse=True)
+                    allowed = set(liquid[:c.rotation_top_volume])
+                    rising = {p: r for p, r in rising.items() if p in allowed}
+                if c.rotation_min_tstat > 0:
+                    rising = {p: r for p, r in rising.items()
+                              if signals[p].volatility > 0 and math.log1p(signals[p].return_rotation)
+                              / (signals[p].volatility * math.sqrt(c.rotation_lookback)) >= c.rotation_min_tstat}
                 if c.rotation_pick_trend:
                     def own_trend(s: Signal) -> bool:
                         above = s.close > s.ema_slow
@@ -434,6 +478,17 @@ class Strategy:
                     rising = {p: table.get(p, -1e9) for p in rising}
                 ranked = sorted(rising, key=rising.get, reverse=True)
                 picks = ranked[:max(c.rotation_top - stuck, 0)]
+                if c.rotation_corr_lambda > 0 and len(ranked) >= 3 and c.rotation_top == 2 and stuck == 0:
+                    first, pool = ranked[0], ranked[1:5]
+                    series = self._recent_returns([first] + pool, c.rotation_lookback)
+                    if series is not None:
+                        cov = covariance(series, shrink=0.0)
+                        z = _normal_scores({p: rising[p] for p in pool})
+                        corr = {p: cov[0][i + 1] / math.sqrt(cov[0][0] * cov[i + 1][i + 1])
+                                for i, p in enumerate(pool) if cov[0][0] > 0 and cov[i + 1][i + 1] > 0}
+                        second = max(corr, key=lambda p: z[p] - c.rotation_corr_lambda * corr[p])
+                        ranked = [first, second] + [p for p in ranked if p not in (first, second)]
+                        picks = ranked[:2]
                 if (c.rotation_concentrate > 0 and len(ranked) >= 2 and stuck == 0
                         and signals[ranked[1]].return_rotation > 0
                         and signals[ranked[0]].return_rotation >= c.rotation_concentrate * signals[ranked[1]].return_rotation):
@@ -500,6 +555,45 @@ class Strategy:
         if c.rotation_vol_forecast and plan:
             scale = self._vol_scale(c.rotation_vol_forecast)
             plan = {p: w * scale for p, w in plan.items()}
+        return plan
+
+    def _horizon_return(self, pair: str, hours: int) -> Optional[float]:
+        r = self.indicators[pair].returns
+        if len(r) < hours:
+            return None
+        return math.exp(sum(list(r)[-hours:])) - 1.0
+
+    def _ensemble_plan(self, signals: Dict[str, Signal], frozen: AbstractSet[str]) -> Dict[str, float]:
+        """Equal sub-sleeves, each holding its own top rotation_top coins; an empty slot in a
+        sub-sleeve goes to the defensive pair if its 336h return is positive, else cash."""
+        c = self.cfg
+        share = 1.0 / len(c.rotation_ensemble)
+        pool = [p for p in signals if p != c.defensive_pair and p not in frozen]
+        defensive = signals.get(c.defensive_pair)
+        gold_up = defensive is not None and defensive.return_rotation > 0 and c.defensive_pair not in frozen
+        plan: Dict[str, float] = {}
+        for spec in c.rotation_ensemble:
+            kind, _, arg = spec.partition(":")
+            horizons = [int(h) for h in arg.split(",")]
+            if kind == "ret":
+                rets = {p: self._horizon_return(p, horizons[0]) for p in pool}
+                score = {p: r for p, r in rets.items() if r is not None and r > 0}
+            else:
+                eligible = [p for p in pool if signals[p].return_rotation > 0]
+                score = {}
+                if eligible:
+                    total = {p: 0.0 for p in eligible}
+                    for h in horizons:
+                        vals = {p: (self._horizon_return(p, h) or 0.0) for p in eligible}
+                        for p, z in _normal_scores(vals).items():
+                            total[p] += z
+                    score = total
+            picks = sorted(score, key=score.get, reverse=True)[:c.rotation_top]
+            for p in picks:
+                plan[p] = plan.get(p, 0.0) + share / c.rotation_top
+            empty = share * (c.rotation_top - len(picks)) / c.rotation_top
+            if empty > 1e-12 and gold_up:
+                plan[c.defensive_pair] = plan.get(c.defensive_pair, 0.0) + empty
         return plan
 
     def _rotation_risk(self, plan: Dict[str, float], equity: float, state: StrategyState,
@@ -794,6 +888,16 @@ class Strategy:
         elif not state.brake_on and brake_drawdown >= c.brake_drawdown:
             state.brake_on = True
         return drawdown
+
+
+def _banded(value: float, level: float, band: float, was_on: int) -> bool:
+    """value > level, with hysteresis: once on, off only below level x (1 - band); once off, on
+    only above level x (1 + band)."""
+    if was_on == 1:
+        return value >= level * (1.0 - band)
+    if was_on == 0:
+        return value > level * (1.0 + band)
+    return value > level
 
 
 def _breadth(signals: Dict[str, Signal], defensive_pair: str) -> float:

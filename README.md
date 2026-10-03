@@ -785,6 +785,37 @@ the evidence supports, one setting away:
 {"strategy": {"rotation_ranking": "multi", "rotation_horizons": [168, 336, 504]}}
 ```
 
+### Rounds 31 to 40: an untouched holdout, and the competition's own yardstick
+
+To keep searching without simply finding lucky fits, rounds 31+ add a confirmation step on data
+no research had touched: October 2018 to October 2020 (`research/holdout2018.py`; the coins
+Roostoo lists today that traded then, 20 of the 54). A design counts as better only if it passes
+the strict rule on the six folds (from round 31 compared fold by fold, paired: at least 5 of 6
+folds better, which implies a positive median gain; the unpaired medians had let the one year
+the rotation was tuned on veto designs better in the other five), its neighbours each win at
+least 4 of 6 folds, and it beats the incumbent in both holdout years. No design's holdout result
+is looked at before it passes on the six folds.
+
+| Round | Design | Folds better | Result |
+|---|---|---|---|
+| 31 | sub-sleeves on 1-, 2- and 3-week momentum / half 2-week, half multi-horizon | 4 / **5** | the second's neighbour with 3- and 4-week horizons broke (3/6) |
+| 32 | half 2-week, half 1+2-week ranking / sub-sleeves on 1- and 2-week momentum | **5** / 3 | the first's 240-hour neighbour broke (3/6) |
+| 33 | hysteresis on the book's regime / on its trend exit / 6% rebalance threshold / on the rotation filter | 1 / 1 / 4 / 3 | cutting churn mostly cut useful trades |
+| 34 | book risk-off PAXG only / 10% exposure / brake at 6% | 1 / 0 / 3 | the book's calm coins cushioned the 2021–22 crash |
+| 35 | enter as soon as the filter turns on | 4 | more whipsaw, worst drawdown 48% |
+| 36 | book skips rotation coins / correlation-aware second pick / picks need a 1-sd rise | 2 / 0 / 3 | the correlation term never outweighed momentum |
+| 37 | rotation winners run to twice their weight | 3 | worst drawdown 46% |
+| 38 | rotation filter on ETH / both regimes on ETH | 1 / 0 | BTC leads |
+| 39 | picks need 2,000 hours of history | 3 | hardly binds |
+| 40 | picks among the 20 most traded | 3 | |
+
+`research/competition_rule.py` then judged all 37 designs of rounds 20–37 on the competition's
+own yardstick, the median 14-day composite per fold (fixed after round 37): none was higher than
+the incumbent's in 5 of 6 folds. The higher 14-day figures some designs show on average come
+from one fold, 2020–21. No design reached the holdout. Forty rounds and about 85 designs later
+the incumbent stands: designs that win most years break when their setting is nudged, which is
+what noise around a good design looks like.
+
 ## How it works
 
 ```

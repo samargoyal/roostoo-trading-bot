@@ -119,6 +119,26 @@ class StrategyConfig:
                                           # or "external" (research only): saved model scores
     rotation_exclude_external: bool = False  # research only: skip coins whose saved external score is
                                           # negative (research H30, funding-rate crowding)
+    rotation_regime_pair: str = ""        # set: the sleeve's trend filter reads this pair instead (round 38)
+    rotation_min_age_hours: int = 0       # > 0: picks need this many hourly bars of history (round 39)
+    rotation_top_volume: int = 0          # > 0: picks must rank in this many by 30-day dollar volume (40)
+    book_excludes_rotation: bool = False  # the book does not enter coins the sleeve holds (round 36)
+    rotation_corr_lambda: float = 0.0     # > 0: the second pick, among the top 5, maximises the normal score
+                                          # of its return minus this x its correlation with the first (36)
+    rotation_min_tstat: float = 0.0       # > 0: a pick's lookback log return over its volatility x sqrt(hours)
+                                          # must reach this (round 36)
+    rotation_trim_ratio: float = 0.0      # > 0: a held pick is not trimmed until it is this multiple of its
+                                          # target weight (round 37)
+    rotation_entry_every: int = 0         # > 0: when the filter turns on, re-plan at the next hour divisible
+                                          # by this instead of waiting for the daily rebalance (round 35)
+    regime_band: float = 0.0              # > 0: hysteresis on the book's regime: off only below EMA x (1 - b),
+                                          # on only above EMA x (1 + b) (research round 33)
+    trend_exit_band: float = 0.0          # > 0: trend exit only when EMA fast < EMA slow x (1 - b) (round 33)
+    rotation_filter_band: float = 0.0     # > 0: hysteresis on the sleeve's trend filter (round 33)
+    rotation_ensemble: List[str] = field(default_factory=list)  # research rounds 31+: sub-sleeves, each
+                                          # an equal share picking its own top coins: "ret:H" ranks by the
+                                          # H-hour return (which must be positive), "multi:H1,H2,.." by the
+                                          # summed normal scores of those returns (336h return positive)
     rotation_vs_btc: str = ""             # "btc" or "cash": a pick must beat BTC's return over the lookback
                                           # by rotation_btc_margin; empty slots go to BTC ("btc") or as
                                           # usual to PAXG or cash ("cash") (research round 21)

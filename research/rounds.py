@@ -9,6 +9,14 @@ Rounds 1-19 tried about 50 designs. A design with no real edge beats the incumbe
   4  robustness: each of the design's nearest neighbours (its setting nudged both ways)
      passes the old rule (higher median, at least 4 of 6)
 
+From round 31 a design must also beat the incumbent's composite in both untouched holdout
+years, October 2018 to October 2020 (research/holdout2018.py), looked at only after it has
+passed on the six folds. With that guard against luck, condition 1 compares the folds paired
+(the median of the design's fold-by-fold gains must be positive, which 5 of 6 already implies)
+instead of the two medians unpaired: with six folds the unpaired median is the mean of the
+middle two, and let the one year the rotation was tuned on veto designs better in the other
+five (R21c, R31b). Neighbours then need at least 4 of 6 folds better, paired.
+
 Each round is fixed in ROUNDS before it runs, in the light of the rounds before it. Results of
 each (design, fold) are cached (the incumbent is the same in every round while the defaults
 are unchanged; bump VERSION if they change).
@@ -24,6 +32,7 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 
 from research.folds import FOLDS, run
+from research.holdout2018 import HOLDOUT
 
 VERSION = "defaults-2026-10-03"
 CACHE = os.path.join("runs", "research", "fold_cache")
@@ -154,6 +163,117 @@ ROUNDS = {
             [{"strategy": {"risk_on_exposure": 0.9, "max_positions_risk_on": 8}},
              {"strategy": {"risk_on_exposure": 1.0, "max_positions_risk_on": 8}}]),
     },
+    # Round 31 (holdout confirmation from here on). Multi-horizon ranking was robust but lost the
+    # year the 2-week ranking was tuned on; so run rankings side by side, each with its own share
+    # of the sleeve, keeping part of the 2-week ranking and adding the others.
+    31: {
+        "R31a sub-sleeves on 1-, 2- and 3-week momentum": (
+            {"strategy": {"rotation_ensemble": ["ret:168", "ret:336", "ret:504"]}},
+            [{"strategy": {"rotation_ensemble": ["ret:120", "ret:336", "ret:504"]}},
+             {"strategy": {"rotation_ensemble": ["ret:168", "ret:336", "ret:720"]}}]),
+        "R31b half 2-week ranking, half multi-horizon": (
+            {"strategy": {"rotation_ensemble": ["ret:336", "multi:168,336,504"]}},
+            [{"strategy": {"rotation_ensemble": ["ret:336", "multi:168,336"]}},
+             {"strategy": {"rotation_ensemble": ["ret:336", "multi:336,504,720"]}}]),
+    },
+    # Round 31: R31b won 5 of 6 but its neighbour with 3- and 4-week horizons broke, as R21c's did:
+    # the longer horizons hurt and the 1-week one helps. Chosen after seeing that, so the holdout
+    # decides.
+    32: {
+        "R32a half 2-week ranking, half 1+2-week ranking": (
+            {"strategy": {"rotation_ensemble": ["ret:336", "multi:168,336"]}},
+            [{"strategy": {"rotation_ensemble": ["ret:336", "multi:120,336"]}},
+             {"strategy": {"rotation_ensemble": ["ret:336", "multi:240,336"]}}]),
+        "R32b sub-sleeves on 1-week and 2-week momentum": (
+            {"strategy": {"rotation_ensemble": ["ret:168", "ret:336"]}},
+            [{"strategy": {"rotation_ensemble": ["ret:120", "ret:336"]}},
+             {"strategy": {"rotation_ensemble": ["ret:240", "ret:336"]}}]),
+    },
+    # Round 32: ranking variants circle the incumbent and break on a neighbour; they are noise in
+    # that dimension. Something that should help every year instead: costs (about $10k a year on
+    # $100k at market-order fees), much of it from signals flipping back and forth at a line.
+    33: {
+        "R33a book regime with a 1% band around BTC's EMA": (
+            {"strategy": {"regime_band": 0.01}},
+            [{"strategy": {"regime_band": 0.005}}, {"strategy": {"regime_band": 0.02}}]),
+        "R33b book trend exit only 1% below the slow EMA": (
+            {"strategy": {"trend_exit_band": 0.01}},
+            [{"strategy": {"trend_exit_band": 0.005}}, {"strategy": {"trend_exit_band": 0.02}}]),
+        "R33c rebalance threshold 6% instead of 4%": (
+            {"execution": {"rebalance_threshold": 0.06}},
+            [{"execution": {"rebalance_threshold": 0.05}}, {"execution": {"rebalance_threshold": 0.08}}]),
+        "R33d rotation filter with a 1% band": (
+            {"strategy": {"rotation_filter_band": 0.01}},
+            [{"strategy": {"rotation_filter_band": 0.005}}, {"strategy": {"rotation_filter_band": 0.02}}]),
+    },
+    # Round 33: less churn mostly cut useful trades. The defensive book's risk settings were set in
+    # round 1, before the rotation existed; its job is now to steady a volatile sleeve.
+    34: {
+        "R34a book risk-off: PAXG only": (
+            {"strategy": {"max_positions_risk_off": 1}},
+            [{"strategy": {"max_positions_risk_off": 2}}, {"strategy": {"max_positions_risk_off": 1,
+                                                                         "risk_off_exposure": 0.15}}]),
+        "R34b book risk-off exposure 10%": (
+            {"strategy": {"risk_off_exposure": 0.10}},
+            [{"strategy": {"risk_off_exposure": 0.05}}, {"strategy": {"risk_off_exposure": 0.15}}]),
+        "R34c book brake at 6%, released at 3%": (
+            {"strategy": {"brake_drawdown": 0.06, "brake_release_drawdown": 0.03}},
+            [{"strategy": {"brake_drawdown": 0.05, "brake_release_drawdown": 0.025}},
+             {"strategy": {"brake_drawdown": 0.08, "brake_release_drawdown": 0.04}}]),
+    },
+    # Round 35: the sleeve leaves at once when the filter fails but waits up to 23 hours for the
+    # daily rebalance when it turns on, missing the start of rallies.
+    35: {
+        "R35 enter as soon as the filter turns on": (
+            {"strategy": {"rotation_entry_every": 1}},
+            [{"strategy": {"rotation_entry_every": 6}}, {"strategy": {"rotation_entry_every": 12}}]),
+    },
+    # Round 35: entering at once whipsawed more. Diversification between and within the books:
+    # the book and the sleeve can double up on one coin, the two picks often move together, and a
+    # pick can be one whose rise is within its noise.
+    36: {
+        "R36a book does not buy what the rotation holds": (
+            {"strategy": {"book_excludes_rotation": True}},
+            [{"strategy": {"book_excludes_rotation": True, "max_positions_risk_on": 7}},
+             {"strategy": {"book_excludes_rotation": True, "max_positions_risk_on": 9}}]),
+        "R36b second pick trades momentum against correlation": (
+            {"strategy": {"rotation_corr_lambda": 1.0}},
+            [{"strategy": {"rotation_corr_lambda": 0.5}}, {"strategy": {"rotation_corr_lambda": 2.0}}]),
+        "R36c picks need a 2-week rise of at least 1 sd": (
+            {"strategy": {"rotation_min_tstat": 1.0}},
+            [{"strategy": {"rotation_min_tstat": 0.5}}, {"strategy": {"rotation_min_tstat": 1.5}}]),
+    },
+    # Round 37: let winners run: a held pick is not trimmed until twice its target weight.
+    37: {
+        "R37 rotation winners run to twice their weight": (
+            {"strategy": {"rotation_trim_ratio": 2.0}},
+            [{"strategy": {"rotation_trim_ratio": 1.5}}, {"strategy": {"rotation_trim_ratio": 3.0}}]),
+    },
+    # Rounds 36-37 and the 14-day yardstick (research/competition_rule.py) found nothing
+    # consistently better. Structurally new, untried ideas:
+    # 38: altcoins may follow ETH rather than BTC.
+    38: {
+        "R38a rotation filter reads ETH instead of BTC": (
+            {"strategy": {"rotation_regime_pair": "ETH/USD"}},
+            [{"strategy": {"rotation_regime_pair": "ETH/USD", "rotation_trend_fast": 120, "rotation_trend_slow": 480}},
+             {"strategy": {"rotation_regime_pair": "ETH/USD", "rotation_trend_fast": 240, "rotation_trend_slow": 960}}]),
+        "R38b both regimes read ETH": (
+            {"strategy": {"regime_pair": "ETH/USD"}},
+            [{"strategy": {"regime_pair": "ETH/USD", "regime_ema": 150}},
+             {"strategy": {"regime_pair": "ETH/USD", "regime_ema": 300}}]),
+    },
+    # 39: new listings pump and fade (like stock IPOs): picks need about 3 months of history.
+    39: {
+        "R39 rotation picks need 2000 hours of history": (
+            {"strategy": {"rotation_min_age_hours": 2000}},
+            [{"strategy": {"rotation_min_age_hours": 1500}}, {"strategy": {"rotation_min_age_hours": 2400}}]),
+    },
+    # 40: illiquid pumps reverse: picks must be among the 20 most traded coins.
+    40: {
+        "R40 rotation picks among the 20 most traded": (
+            {"strategy": {"rotation_top_volume": 20}},
+            [{"strategy": {"rotation_top_volume": 15}}, {"strategy": {"rotation_top_volume": 30}}]),
+    },
 }
 
 
@@ -162,12 +282,12 @@ def key(overrides: dict, fold) -> str:
     return hashlib.sha1(text.encode()).hexdigest()
 
 
-def results_for(designs: dict) -> dict:
+def results_for(designs: dict, folds=FOLDS) -> dict:
     """{name: {year: stats}} for every (name, overrides), computed once and cached."""
     os.makedirs(CACHE, exist_ok=True)
     todo, out = [], {}
     for name, overrides in designs.items():
-        for fold in FOLDS:
+        for fold in folds:
             path = os.path.join(CACHE, key(overrides, fold) + ".json")
             if os.path.exists(path):
                 with open(path) as f:
@@ -183,7 +303,7 @@ def results_for(designs: dict) -> dict:
     return out
 
 
-def verdict(by_year: dict, base: dict, strict: bool = True):
+def verdict(by_year: dict, base: dict, strict: bool = True, paired: bool = False):
     years = [f[0][:4] for f in FOLDS]
     comps = [by_year[y]["comp"] for y in years]
     bcomps = [base[y]["comp"] for y in years]
@@ -191,6 +311,8 @@ def verdict(by_year: dict, base: dict, strict: bool = True):
     worst = max(by_year[y]["mdd"] for y in years)
     bworst = max(base[y]["mdd"] for y in years)
     median_ok = np.median(comps) > np.median(bcomps)
+    if paired:
+        median_ok = np.median([c - b for c, b in zip(comps, bcomps)]) > 0
     if strict:
         ok = median_ok and better >= 5 and worst <= bworst + 0.02
     else:
@@ -206,12 +328,14 @@ def main() -> None:
     res = results_for(designs)
     base = res["incumbent"]
     years = [f[0][:4] for f in FOLDS]
-    print("Round %d: composite per fold (from October 2020), strict rule: median up, 5/6 better, "
-          "drawdown at most 2 points worse, neighbours robust" % number)
+    print("Round %d: composite per fold (from October 2020), strict rule: %s, 5/6 better, "
+          "drawdown at most 2 points worse, neighbours robust%s" % (
+              number, "paired gains" if number >= 31 else "median up",
+              ", then both holdout years" if number >= 31 else ""))
     candidates = []
     for name in designs:
         by = res[name]
-        ok, med, better, worst = verdict(by, base)
+        ok, med, better, worst = verdict(by, base, paired=number >= 31)
         w14 = np.mean([by[y].get("w14_comp", 0.0) for y in years])
         print("  %-48s %s | median %.2f, better %d/6, worst drawdown %.0f%%, 14d %.2f%s" % (
             name, " ".join("%6.2f" % by[y]["comp"] for y in years), med, better, worst * 100, w14,
@@ -223,10 +347,22 @@ def main() -> None:
         nres = results_for(neighbours)
         fine = []
         for n in neighbours:
-            ok, med, better, worst = verdict(nres[n], base, strict=False)
+            ok, med, better, worst = verdict(nres[n], base, strict=False, paired=number >= 31)
             fine.append(ok)
             print("    %-60s median %.2f, better %d/6 -> %s" % (n, med, better, "holds" if ok else "breaks"))
-        print("  %s: %s" % (name, "ADOPT" if all(fine) else "not robust, not adopted"))
+        if not all(fine):
+            print("  %s: not robust, not adopted" % name)
+            continue
+        if number < 31:
+            print("  %s: ADOPT" % name)
+            continue
+        hres = results_for({"incumbent": {}, name: spec[name][0]}, HOLDOUT)
+        hy = [f[0][:4] for f in HOLDOUT]
+        wins = sum(hres[name][y]["comp"] > hres["incumbent"][y]["comp"] for y in hy)
+        print("    holdout %s: incumbent %s, design %s -> %s" % (
+            " / ".join(hy), " ".join("%.2f" % hres["incumbent"][y]["comp"] for y in hy),
+            " ".join("%.2f" % hres[name][y]["comp"] for y in hy),
+            "BETTER, confirmed on unseen years" if wins == len(hy) else "not confirmed"))
     if not candidates:
         print("  no candidate: nothing adopted")
 
