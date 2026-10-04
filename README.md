@@ -870,6 +870,33 @@ series screened, about one design in fifteen would get this far by luck; the hol
 to tell, and it did. The option stays in the research code only (it needs Binance volume data
 the bot's live loop already has, if a future, untouched test ever confirms it).
 
+### Rounds 47 and 48: order flow and ICT concepts
+
+Gamma exposure could not be tested: Deribit publishes options trades but not past open interest
+by strike, so historical gamma levels cannot be rebuilt from free data. Order-book heatmaps
+exist (Binance's futures book depth) only from 2023, which covers neither the early folds nor
+the holdout. What could be tested, `research/h35_orderflow_ict.py` screened on the 1-hour and
+daily charts with the H33 rules (24 series; the taker-buy history was extended back to 2018 for
+the holdout):
+
+- Order flow from taker-buy volume (delta = taker buys - taker sells): CVD slope, CVD-price
+  divergence, absorption, delta z-score, buying climax.
+- ICT concepts from OHLC: liquidity sweeps (a wick through the prior swing high or low that
+  closes back inside), fair value gaps, market structure (the latest break of structure),
+  change of character.
+
+ICT's liquidity sweeps, fair value gaps and changes of character showed no predictive power at
+all (ICs within ±0.02, inconsistent across folds); market structure on the 1-hour chart passed
+only as a next-day reversal (IC -0.022). The slow order-flow series passed: three weeks of CVD
+on the 1-hour chart (IC +0.038 a week ahead, every fold) and its daily-chart versions, the same
+family as round 46's Accumulation/Distribution.
+
+`research/h36_orderflow_strategies.py` used them as round 46 did (no timing signal passed).
+Keeping the rotation out of the fifth of coins with the weakest three-week CVD won 5 of 6
+folds (worst drawdown 41%), but its neighbour with 1.4x the window won 2, so it was not robust;
+everything else won at most 3. "Don't buy what is being sold" has now come close twice (round
+46 lost a holdout year, this one broke on a neighbour), which is suggestive and not enough.
+
 ## How it works
 
 ```

@@ -4,7 +4,8 @@ bot/market_data.py keeps only OHLCV. Microstructure signals (research H20) also 
 aggressive: Binance reports, per candle, the volume bought by takers. Cached under
 data/binance_full/ as CSV.
 
-    python -m research.fullbars        # fetch or top up every frozen candidate
+    python -m research.fullbars          # fetch or top up every frozen candidate
+    python -m research.fullbars --back   # extend them back to 2018 (the holdout)
 """
 import csv
 import os
@@ -64,6 +65,29 @@ def update(pair: str, data_dir: str = "data") -> str:
     return "%s %d candles" % (pair, len(rows))
 
 
+def extend_back(pair: str, start: str = "2018-01-01", data_dir: str = "data") -> str:
+    """Prepend candles from `start` to a cached file (for the 2018-2020 holdout)."""
+    file = path(pair, data_dir)
+    if not os.path.exists(file):
+        return "%s not cached" % pair
+    df = pd.read_csv(file)
+    first = int(df["ts"].iloc[0]) if len(df) else ms(END)
+    if first <= ms(start):
+        return "%s already from %s" % (pair, start)
+    with requests.Session() as session:
+        rows = fetch(pair, ms(start), first, session)
+    if rows:
+        old = df.values.tolist()
+        merged = {int(r[0]): r for r in rows}
+        merged.update({int(r[0]): r for r in old})
+        with open(file + ".tmp", "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(FIELDS)
+            writer.writerows(merged[t] for t in sorted(merged))
+        os.replace(file + ".tmp", file)
+    return "%s +%d earlier candles" % (pair, len(rows))
+
+
 def load(pairs: List[str], data_dir: str = "data") -> Dict[str, pd.DataFrame]:
     """{field: hour x pair frame} for every field, on a full hourly index."""
     frames = {}
@@ -81,9 +105,11 @@ def load(pairs: List[str], data_dir: str = "data") -> Dict[str, pd.DataFrame]:
 
 
 def main() -> None:
+    import sys
     pairs = [r["pair"] for r in candidate_table() if r["asset_type"] == "crypto"]
+    job = (lambda p: extend_back(p)) if "--back" in sys.argv else update
     with ThreadPoolExecutor(max_workers=4) as pool:
-        for line in pool.map(update, pairs):
+        for line in pool.map(job, pairs):
             print(line)
 
 
