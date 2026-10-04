@@ -20,14 +20,16 @@ strategy, and every order, decision and hourly equity point is recorded.
 Two books share the account, trading the 45 most traded crypto pairs on Roostoo plus PAXG
 (gold-backed):
 
-- **Momentum rotation, 50% of equity.** Holds the 2 coins with the strongest positive
+- **Momentum rotation, 60% of equity.** Holds the 2 coins with the strongest positive
   2-week return, re-chosen daily at 00:00 UTC, while BTC's 168-hour EMA is above its
   672-hour EMA, and leaves at once when it is not. This is the return engine.
-- **Defensive trend book, 50% of equity.** Low-volatility coins in uptrends, with a market
+- **Defensive trend book, 40% of equity.** Low-volatility coins in uptrends, with a market
   regime filter, trailing stops and a drawdown brake. This is the risk engine.
 
 The split was 40/60 until 4 October 2026. An optimisation of the rotation's share in steps of
-5% (see [The rotation's share](#the-rotations-share-optimised)) moved it to 50/50.
+5% (see [The rotation's share](#the-rotations-share-optimised)) gave 50% under a 50% drawdown
+limit; the user then chose 60%, more return for more risk, as the competition ranks on
+return first.
 
 The two books' daily returns are barely correlated (0.18), so together they keep most of the
 rotation's upside with a much smaller drawdown. The competition ranks on return and then
@@ -115,8 +117,8 @@ other stop widths did no better in both years; three risk-off positions did.
   coins that did well. A coin the rotation bought in 2021 or 2023 that later collapsed and was
   delisted is missing, and the wider the coin list, the more such coins are missing. The
   six-year results therefore overstate what to expect, the early years most.
-- It still loses money in a crash: -45% in October 2021 to October 2022 (BTC -56%). The
-  worst drawdown in six years was 48%.
+- It still loses money in a crash: -51% in October 2021 to October 2022 (BTC -56%). The
+  worst drawdown in six years was 54%.
 - With 20 coins it lagged BTC in BTC-led rallies (October 2022 to October 2024); with 45 it beat
   BTC in every year tested, but that came from the wider coin list, chosen after seeing those
   years, so treat it as promising rather than proven.
@@ -930,6 +932,11 @@ the holdout on both yardsticks: yearly composite 2.03 and 3.03 against 1.98 and 
 14-day composite -2.15 and -0.01 against -2.31 and -0.02. The price is a deeper worst drawdown
 (48% against 42%) and a worse crash year (-45% against -39%).
 
+The user then chose 60%: more return for more risk, as the competition ranks on return before
+the composite. Over the six folds +18,756% against +12,696% at 50%, with a worst yearly
+drawdown of 54% and -51% in 2021–22. On the holdout it beat 40% on the yearly composite in
+both years (2.12 and 3.00) but not on the 14-day composite in 2019–20 (-0.11 against -0.02).
+
 ## How it works
 
 ```
@@ -997,7 +1004,8 @@ year starting in October.
 
 | | 2020–21 | 2021–22 | 2022–23 | 2023–24 | 2024–25 | 2025–26 | Six years |
 |---|---|---|---|---|---|---|---|
-| **Bot (45 coins, 50% rotation, 8-coin ERC book)** | **+795%** (30%) | **-45%** (48%) | **+44%** (38%) | **+323%** (29%) | **+209%** (35%) | **+38%** (28%) | **+12,696%** |
+| **Bot (45 coins, 60% rotation, 8-coin ERC book)** | **+973%** (34%) | **-51%** (54%) | **+52%** (42%) | **+431%** (33%) | **+228%** (39%) | **+36%** (32%) | **+18,756%** |
+| Bot with 50% rotation (the optimised share under a 50% drawdown limit) | +795% (30%) | -45% (48%) | +44% (38%) | +323% (29%) | +209% (35%) | +38% (28%) | +12,696% |
 | Bot with 40% rotation (until 4 October 2026) | +679% (27%) | -39% (42%) | +39% (33%) | +229% (24%) | +181% (31%) | +36% (25%) | +8,228% |
 | Bot with a 4-coin inverse-ATR book (before round 6) | +537% (25%) | -40% (42%) | +42% (30%) | +236% (23%) | +150% (31%) | +30% (22%) | +5,871% |
 | Bot with 20 coins (the earlier list) | +786% (21%) | -28% (35%) | -1% (30%) | +39% (41%) | +89% (33%) | +43% (24%) | +2,258% |

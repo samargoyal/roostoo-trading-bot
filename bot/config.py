@@ -100,10 +100,10 @@ class StrategyConfig:
     # again every rotation_rebalance_hours at 00:00 UTC. It is in the market only while the
     # regime pair's rotation_trend_fast EMA is above its rotation_trend_slow EMA, and leaves
     # at once when that fails; an empty slot goes to the defensive pair if its own return is
-    # positive. The rest of equity runs the strategy above. 0 switches the sleeve off. 50%
-    # since 2026-10-04: the largest multiple of 5 whose worst yearly drawdown stays under 50%,
-    # confirmed on the 2018-2020 holdout (research/rotation_weight.py, README).
-    rotation_weight: float = 0.5
+    # positive. The rest of equity runs the strategy above. 0 switches the sleeve off. 60%
+    # since 2026-10-04, the user's choice of risk after the optimisation in research/
+    # rotation_weight.py (which, with a 50% drawdown limit, gives 50%; see the README).
+    rotation_weight: float = 0.6
     rotation_lookback: int = 336
     rotation_top: int = 2
     rotation_rebalance_hours: int = 24

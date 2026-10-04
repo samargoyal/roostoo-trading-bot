@@ -22,9 +22,9 @@ exchange. Every number below is a field of StrategyConfig.
            drawdown is back under 2%.
   Core     5% of equity stays in PAXG at all times, so there is always a position
            to rebalance on quiet days (see the activity rule in planner.py).
-  Rotation 50% of equity (rotation_weight) rotates daily into the 2 coins with the
+  Rotation 60% of equity (rotation_weight) rotates daily into the 2 coins with the
            strongest positive 336h return, while BTC's 168h EMA is above its 672h EMA, and
-           leaves at once when it is not. Everything above runs on the other 50%. The two
+           leaves at once when it is not. Everything above runs on the other 40%. The two
            books' returns are barely correlated (0.18), so together they beat holding BTC
            in every test period with a smaller drawdown than BTC (research H15-H16).
   Shorts   optional (short_exposure, off by default): short the 3 most volatile coins

@@ -34,7 +34,7 @@ import numpy as np
 from research.folds import FOLDS, run
 from research.holdout2018 import HOLDOUT
 
-VERSION = "defaults-2026-10-04-rotation50"
+VERSION = "defaults-2026-10-04-rotation60"
 CACHE = os.path.join("runs", "research", "fold_cache")
 WORKERS = int(os.environ.get("FOLD_WORKERS", "12"))
 
