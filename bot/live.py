@@ -29,6 +29,7 @@ import logging
 import os
 import re
 import signal
+import subprocess
 import sys
 import time
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -351,6 +352,22 @@ def _stop(signum, frame):
     raise KeyboardInterrupt
 
 
+def code_version(directory: Optional[str] = None) -> str:
+    """The git commit the bot runs from, marked if files differ from it, so every log and
+    decision can be traced to the exact code behind it ("unknown" outside a git checkout)."""
+    directory = directory or os.path.dirname(os.path.abspath(__file__))
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=directory, capture_output=True,
+                              text=True, timeout=10)
+        if head.returncode != 0:
+            return "unknown"
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=directory,
+                               capture_output=True, text=True, timeout=10)
+        return head.stdout.strip() + (" (with local changes)" if dirty.stdout.strip() else "")
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
 def config_path(account: str, explicit: Optional[str] = None, directory: str = "config") -> Optional[str]:
     """The config file to run with: the one given, else config/<account>.json if it exists, so
     each account's settings live in the repository and a restart picks up committed changes."""
@@ -377,8 +394,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     run_dir = os.path.join(cfg.live.runs_dir, args.account + ("-dry" if args.dry_run else ""))
     setup_logging(os.path.join(run_dir, "logs"))
     signal.signal(signal.SIGTERM, _stop)
-    log.info("starting: account=%s dry_run=%s once=%s config=%s", args.account, args.dry_run, args.once,
-             path or "code defaults")
+    log.info("starting: account=%s dry_run=%s once=%s commit=%s config=%s", args.account, args.dry_run,
+             args.once, code_version(), path or "code defaults")
     log.info("config: %s", json.dumps(cfg.to_dict(), sort_keys=True))
     try:
         bot = LiveBot(cfg, run_dir, dry_run=args.dry_run)

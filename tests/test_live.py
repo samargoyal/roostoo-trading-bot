@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from bot.config import Config
-from bot.live import LiveBot, PriceSampler, config_path, portfolio_value
+from bot.live import LiveBot, PriceSampler, code_version, config_path, portfolio_value
 from bot.market_data import HOUR_MS
 from tests.fakes import NOW, FakeBinance, FakeExchange, zigzag
 
@@ -117,6 +117,13 @@ class HelpersTest(unittest.TestCase):
         self.assertEqual(sampler.closed_bars("BTC/USD", None, hour + 30 * 60000), [])
         (bar,) = sampler.closed_bars("BTC/USD", None, hour + HOUR_MS)
         self.assertEqual((bar.open, bar.high, bar.low, bar.close), (10.0, 12.0, 9.0, 11.0))
+
+
+class CodeVersionTest(unittest.TestCase):
+    def test_names_the_commit_or_says_unknown(self):
+        version = code_version()
+        self.assertTrue(version == "unknown" or len(version.split()[0]) >= 7, version)
+        self.assertEqual(code_version(tempfile.gettempdir()), "unknown")
 
 
 class ConfigPathTest(unittest.TestCase):
