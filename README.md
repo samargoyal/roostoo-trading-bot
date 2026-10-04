@@ -62,7 +62,10 @@ price history, plus PAXG. As of 2 October 2026 that is:
 
 > BTC, ETH, ZEC, SOL, XRP, NEAR, BNB, SUI, DOGE, UNI, ENA, AVAX, WLD, LINK, ADA, TAO, ARB,
 > PUMP, LTC, TRX, ONDO, XLM, TRUMP, HBAR, AAVE, FIL, XPL, FET, ASTER, PENGU, DOT, APT, ICP,
-> POL, CAKE, SEI, ZEN, TUT, VIRTUAL, PENDLE, CRV, FORM, EIGEN, WIF, PLUME, and PAXG
+> POL, CAKE, SEI, ZEN, TUT, VIRTUAL, PENDLE, CRV, FLOKI, EIGEN, WIF, PLUME, and PAXG
+
+(FORM was replaced by FLOKI on 4 October 2026, when FORM's spread rose above 0.1% and the
+rule picked FLOKI instead.)
 
 The list was 20 coins until a six-year test (see [Out-of-sample validation](#out-of-sample-validation-across-six-years))
 showed the rotation book needs a wider net to catch the market's leaders.
