@@ -22,9 +22,9 @@ exchange. Every number below is a field of StrategyConfig.
            drawdown is back under 2%.
   Core     5% of equity stays in PAXG at all times, so there is always a position
            to rebalance on quiet days (see the activity rule in planner.py).
-  Rotation 40% of equity (rotation_weight) rotates daily into the 2 coins with the
+  Rotation 50% of equity (rotation_weight) rotates daily into the 2 coins with the
            strongest positive 336h return, while BTC's 168h EMA is above its 672h EMA, and
-           leaves at once when it is not. Everything above runs on the other 60%. The two
+           leaves at once when it is not. Everything above runs on the other 50%. The two
            books' returns are barely correlated (0.18), so together they beat holding BTC
            in every test period with a smaller drawdown than BTC (research H15-H16).
   Shorts   optional (short_exposure, off by default): short the 3 most volatile coins
@@ -166,7 +166,8 @@ class Strategy:
             pair: IndicatorSet(cfg.fast_ema, cfg.slow_ema, cfg.regime_ema, cfg.atr_period,
                                cfg.rsi_period, cfg.momentum_short, cfg.momentum_long,
                                cfg.volatility_window, cfg.rotation_lookback,
-                               cfg.rotation_trend_fast, cfg.rotation_trend_slow)
+                               cfg.rotation_trend_fast, cfg.rotation_trend_slow,
+                               tuple(cfg.slow_filter) if cfg.slow_filter else None)
             for pair in (pairs if pairs is not None else cfg.universe)
         }
 
@@ -247,6 +248,8 @@ class Strategy:
 
         regime = signals.get(c.regime_pair)
         risk_on = regime is not None and regime.close > regime.ema_regime
+        if c.regime_slow_filter and c.slow_filter and regime is not None:
+            risk_on = risk_on and 0 < regime.slow_slow < regime.slow_fast
         if c.regime_band > 0 and regime is not None:
             risk_on = _banded(regime.close, regime.ema_regime, c.regime_band, state.regime_on)
             state.regime_on = int(risk_on)
@@ -395,6 +398,8 @@ class Strategy:
             return {}
         regime = signals.get(c.regime_pair)
         trend_on = regime is not None and regime.ema_trend_fast > regime.ema_trend_slow
+        if c.slow_filter and regime is not None:
+            trend_on = trend_on and 0 < regime.slow_slow < regime.slow_fast
         if c.rotation_regime_pair:
             other = signals.get(c.rotation_regime_pair)
             trend_on = other is not None and other.ema_trend_fast > other.ema_trend_slow

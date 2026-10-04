@@ -34,7 +34,7 @@ import numpy as np
 from research.folds import FOLDS, run
 from research.holdout2018 import HOLDOUT
 
-VERSION = "defaults-2026-10-03"
+VERSION = "defaults-2026-10-04-rotation50"
 CACHE = os.path.join("runs", "research", "fold_cache")
 WORKERS = int(os.environ.get("FOLD_WORKERS", "12"))
 
@@ -307,6 +307,18 @@ ROUNDS = {
             {"strategy": {"rotation_adaptive_lookbacks": [168, 336]}},
             [{"strategy": {"rotation_adaptive_lookbacks": [120, 336]}},
              {"strategy": {"rotation_adaptive_lookbacks": [240, 336]}}]),
+    },
+    # Round 49: the 2021-22 loss is the rotation (-68%), in bear-market rallies (Feb, Apr, Aug
+    # 2022) that flipped its 1-week/4-week filter on 12 times. Enter only when a slower filter
+    # (2-week/8-week EMAs) agrees too; the fast filter still exits at once.
+    49: {
+        "R49a rotation needs the fast and the slow BTC filter": (
+            {"strategy": {"slow_filter": [336, 1344]}},
+            [{"strategy": {"slow_filter": [288, 1152]}}, {"strategy": {"slow_filter": [432, 1728]}}]),
+        "R49b both books need the slow BTC filter": (
+            {"strategy": {"slow_filter": [336, 1344], "regime_slow_filter": True}},
+            [{"strategy": {"slow_filter": [288, 1152], "regime_slow_filter": True}},
+             {"strategy": {"slow_filter": [432, 1728], "regime_slow_filter": True}}]),
     },
 }
 

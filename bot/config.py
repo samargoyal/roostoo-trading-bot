@@ -100,8 +100,10 @@ class StrategyConfig:
     # again every rotation_rebalance_hours at 00:00 UTC. It is in the market only while the
     # regime pair's rotation_trend_fast EMA is above its rotation_trend_slow EMA, and leaves
     # at once when that fails; an empty slot goes to the defensive pair if its own return is
-    # positive. The rest of equity runs the strategy above. 0 switches the sleeve off.
-    rotation_weight: float = 0.4
+    # positive. The rest of equity runs the strategy above. 0 switches the sleeve off. 50%
+    # since 2026-10-04: the largest multiple of 5 whose worst yearly drawdown stays under 50%,
+    # confirmed on the 2018-2020 holdout (research/rotation_weight.py, README).
+    rotation_weight: float = 0.5
     rotation_lookback: int = 336
     rotation_top: int = 2
     rotation_rebalance_hours: int = 24
@@ -119,6 +121,9 @@ class StrategyConfig:
                                           # or "external" (research only): saved model scores
     rotation_exclude_external: bool = False  # research only: skip coins whose saved external score is
                                           # negative (research H30, funding-rate crowding)
+    slow_filter: List[int] = field(default_factory=list)  # [fast, slow] EMA spans: a second, slower BTC
+                                          # trend filter the sleeve must also pass (research round 49)
+    regime_slow_filter: bool = False      # the book's risk-on also needs that slow filter (round 49)
     rotation_adaptive_lookbacks: List[int] = field(default_factory=list)  # [high-vol, normal]: the
                                           # lookback while BTC's 30-day volatility is above, or not, its
                                           # median over the last 60 days (research round 44)

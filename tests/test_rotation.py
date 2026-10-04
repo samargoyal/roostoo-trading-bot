@@ -22,7 +22,9 @@ def market(trend_up=True):
 
 
 def make(signals, **overrides):
-    cfg = StrategyConfig(universe=list(UNIVERSE), **overrides)
+    """The rotation tests were written for a 40% sleeve; they pin it so they do not depend on
+    the default."""
+    cfg = StrategyConfig(universe=list(UNIVERSE), **dict({"rotation_weight": 0.4}, **overrides))
     strategy = Strategy(cfg)
     strategy.signals = lambda: signals
     return strategy

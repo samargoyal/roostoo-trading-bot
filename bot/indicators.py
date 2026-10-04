@@ -211,6 +211,8 @@ class Signal(NamedTuple):
     ema_trend_fast: float = 0.0    # the slow trend filter used by the rotation sleeve
     ema_trend_slow: float = 0.0
     trend_strength: float = 0.0    # Kalman trend slope over its standard deviation
+    slow_fast: float = 0.0         # the optional slower trend filter's EMAs (0 when not configured)
+    slow_slow: float = 0.0
     spread: float = 0.0            # Corwin-Schultz spread estimate over the last week
 
 
@@ -219,7 +221,8 @@ class IndicatorSet:
 
     def __init__(self, fast_ema: int, slow_ema: int, regime_ema: int, atr_period: int,
                  rsi_period: int, momentum_short: int, momentum_long: int, volatility_window: int,
-                 rotation_lookback: int = 336, trend_fast: int = 168, trend_slow: int = 672):
+                 rotation_lookback: int = 336, trend_fast: int = 168, trend_slow: int = 672,
+                 slow_filter: Optional[tuple] = None):
         self.fast = EMA(fast_ema)
         self.slow = EMA(slow_ema)
         self.regime = EMA(regime_ema)
@@ -229,6 +232,7 @@ class IndicatorSet:
         self.trend_fast = EMA(trend_fast)
         self.trend_slow = EMA(trend_slow)
         self.kalman = KalmanTrend()
+        self.slow_pair = (EMA(slow_filter[0]), EMA(slow_filter[1])) if slow_filter else None
         self.spread = SpreadEstimate()
         self.momentum_short = momentum_short
         self.momentum_long = momentum_long
@@ -265,6 +269,9 @@ class IndicatorSet:
         self.atr.update(bar.high, bar.low, bar.close)
         self.rsi.update(bar.close)
         self.kalman.update(bar.close)
+        if self.slow_pair:
+            self.slow_pair[0].update(bar.close)
+            self.slow_pair[1].update(bar.close)
         self.spread.update(bar.high, bar.low)
         self.last_ts = bar.ts
 
@@ -291,4 +298,6 @@ class IndicatorSet:
             ema_trend_slow=self.trend_slow.value,
             trend_strength=self.kalman.value if self.kalman.value is not None else 0.0,
             spread=self.spread.value if self.spread.value is not None else 0.0,
+            slow_fast=(self.slow_pair[0].value or 0.0) if self.slow_pair else 0.0,
+            slow_slow=(self.slow_pair[1].value or 0.0) if self.slow_pair else 0.0,
         )
