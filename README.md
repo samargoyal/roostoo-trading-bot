@@ -838,6 +838,38 @@ most in exactly those greedy weeks (`research/h32_sentiment_strategy.py`). The D
 nearly halved the worst drawdown by entering only after a 20-day high, and gave up most of the
 return doing it.
 
+### Rounds 45 and 46: TradingView's indicators
+
+Round 45 (`research/h33_indicators.py`) screened about 65 of TradingView's built-in indicators
+(most from the `ta` library, plus SuperTrend, Hull MA, Choppiness, Elder Ray, Chande Momentum,
+Coppock, Balance of Power and linear-regression slope and R²), each on the 1-hour and the daily
+chart, 124 series in all, with the H20 rules. 37 passed as 24-hour rankings, 23 as 168-hour
+rankings and 3 as BTC timing signals. Most were the low-volatility effect again (ATR %, Keltner,
+Bollinger and Donchian widths, Ulcer Index), or short-term reversal on the 1-hour chart; the one
+genuinely different family was volume accumulation (Chaikin Money Flow and Accumulation/
+Distribution change on the daily chart, IC +0.041 a week ahead).
+
+Round 46 (`research/h34_indicator_strategies.py`) took, by a rule fixed before the screen, the
+strongest of each family and used it four ways: in the book's ranking (U1), as the rotation's
+ranking (U2), as a filter that keeps the rotation out of the worst fifth (U3), and, for the
+timing signals, halving the rotation in their bearish fifth (U4). Fifteen designs; composite per
+fold against the incumbent (11.32, -1.91, 1.33, 5.65, 4.30, 1.44):
+
+| Design | Folds better | Worst DD |
+|---|---|---|
+| U1 book: low vol + Elder bull power / DI+ − DI− / Keltner width / Accumulation-Distribution | 3 / 2 / 3 / 0 | 43–45% |
+| U2 rotation ranked by each | 1 / 1 / 1 / 2 | 31–40% |
+| U3 rotation skips the worst fifth by Elder bull power / DI+ − DI− / Keltner width | 2 / 1 / 2 | 35–47% |
+| **U3 rotation skips the worst fifth by Accumulation/Distribution change (daily)** | **5** | **38%** |
+| U4 rotation halved when BTC is bearish on KAMA / SMA(200) / Choppiness | 1 / 0 / 2 | 38–42% |
+
+The Accumulation/Distribution filter is the first design of the whole project to pass the
+strict rule and its robustness check (neighbours 5 and 4 of 6). On the untouched holdout it won
+2018–19 (2.12 against 1.98) but lost 2019–20 (1.50 against 2.87), so it is not adopted. With 124
+series screened, about one design in fifteen would get this far by luck; the holdout is there
+to tell, and it did. The option stays in the research code only (it needs Binance volume data
+the bot's live loop already has, if a future, untouched test ever confirms it).
+
 ## How it works
 
 ```
