@@ -47,7 +47,7 @@ momentum did not predict which coin would do better next, while low volatility d
 import math
 from dataclasses import asdict, dataclass, field
 from statistics import NormalDist
-from typing import AbstractSet, Dict, List, Optional
+from typing import AbstractSet, Dict, List, Optional, Tuple
 
 from bot.config import StrategyConfig
 from bot.indicators import IndicatorSet, Signal
@@ -68,6 +68,8 @@ SHORT_HOLD = "short_hold"
 EXIT_SHORT_STOP = "exit_short_stop"
 EXIT_SHORT = "exit_short"
 ROTATION = "rotation"
+LS_LONG = "ls_long"           # the long-short trend book (research H50): coin in an uptrend
+LS_SHORT = "ls_short"         # ... and in a downtrend
 
 
 @dataclass
@@ -167,7 +169,11 @@ class Strategy:
                                cfg.rsi_period, cfg.momentum_short, cfg.momentum_long,
                                cfg.volatility_window, cfg.rotation_lookback,
                                cfg.rotation_trend_fast, cfg.rotation_trend_slow,
-                               tuple(cfg.slow_filter) if cfg.slow_filter else None)
+                               tuple(cfg.slow_filter) if cfg.slow_filter else None,
+                               tuple(cfg.ls_trend) if cfg.book_mode in ("long_short", "hybrid", "overlay") else None,
+                               cfg.short_regime_hours or cfg.ls_absorb_sma_hours,
+                               [tuple(p) for p in cfg.ls_ensemble] if cfg.book_mode != "trend" else None,
+                               tuple(cfg.ls_short_trend) if cfg.ls_short_trend and cfg.book_mode != "trend" else None)
             for pair in (pairs if pairs is not None else cfg.universe)
         }
 
@@ -257,6 +263,19 @@ class Strategy:
             risk_on = _breadth(signals, c.defensive_pair) >= c.regime_breadth
         exposure = c.risk_on_exposure if risk_on else c.risk_off_exposure
         max_positions = c.max_positions_risk_on if risk_on else c.max_positions_risk_off
+        if c.book_mode == "long_short" or (c.book_mode == "hybrid" and self._bear(regime)):
+            sides = "short" if c.book_mode == "hybrid" else None
+            share = None
+            if (c.ls_absorb_rotation > 0 and c.book_mode == "long_short" and regime is not None
+                    and regime.ema_trend_fast <= regime.ema_trend_slow
+                    and (c.ls_absorb_sma_hours <= 0 or 0 < regime.close < regime.sma_long)):
+                # The rotation is out of the market: its share (bar halted coins) joins the book.
+                rotation = {p: w for p, w in rotation.items() if p in frozen}
+                free = 1.0 - sum(abs(w) for w in rotation.values())
+                share = 1.0 - c.rotation_weight + c.rotation_weight * c.ls_absorb_rotation * free
+            targets, reasons = self._long_short_book(signals, weights, frozen, regime, sides, state, ts)
+            return self._merge(ts, risk_on, 1.0, drawdown, state, signals, targets, reasons, {},
+                               rotation, account, frozen, share)
 
         reasons: Dict[str, str] = {}
         exiting = set()
@@ -323,14 +342,42 @@ class Strategy:
             targets[c.defensive_pair] += core
             reasons.setdefault(c.defensive_pair, CORE)
 
-        if c.short_exposure > 0 or state.shorts:
+        if c.book_mode == "overlay":
+            self._overlay(ts, signals, weights, state, targets, reasons, regime, frozen)
+        elif c.short_exposure > 0 or state.shorts:
             self._shorts(ts, signals, scores, weights, state, targets, reasons,
                          set(keep + entries) | set(rotation), frozen)
+        return self._merge(ts, risk_on, exposure, drawdown, state, signals, targets, reasons, scores,
+                           rotation, account, frozen)
 
+    def _overlay(self, ts: int, signals: Dict[str, Signal], weights: Dict[str, float], state: StrategyState,
+                 targets: Dict[str, float], reasons: Dict[str, str], regime: Optional[Signal],
+                 frozen: AbstractSet[str]) -> None:
+        """book_mode "overlay": the cash the defensive book leaves idle shorts every coin in its
+        own downtrend that the book does not hold, each its inverse-volatility share of all coins
+        (so a few laggards in a rising market get small shorts, a broad decline large ones)."""
+        idle = max(1.0 - sum(t for t in targets.values() if t > 0), 0.0)
+        shorts, why = self._long_short_book(signals, weights, frozen, regime, "short", state, ts, slots=True)
+        for pair, weight in shorts.items():
+            if pair in frozen:
+                continue
+            if weight < 0 and targets.get(pair, 0.0) <= 0:
+                targets[pair] = weight * idle
+                reasons[pair] = why.get(pair, LS_SHORT)
+            elif why.get(pair) in (EXIT_SHORT_STOP, EXIT_SHORT) and targets.get(pair, 0.0) == 0:
+                reasons[pair] = why[pair]
+
+    def _merge(self, ts: int, risk_on: bool, exposure: float, drawdown: float, state: StrategyState,
+               signals: Dict[str, Signal], targets: Dict[str, float], reasons: Dict[str, str],
+               scores: Dict[str, float], rotation: Dict[str, float], account: Dict[str, float],
+               frozen: AbstractSet[str], share: Optional[float] = None) -> Decision:
+        """The book's targets (fractions of its share, by default 1 - rotation_weight) and the
+        rotation's, as fractions of equity."""
+        c = self.cfg
         if c.rotation_weight > 0:
             state.book_weights = {p: t for p, t in targets.items() if t != 0.0}
             state.book_closes = {p: signals[p].close for p in state.book_weights if p in signals}
-            share = 1.0 - c.rotation_weight
+            share = 1.0 - c.rotation_weight if share is None else share
             targets = {p: share * t for p, t in targets.items()}
             for pair, weight in rotation.items():
                 if targets.get(pair, 0.0) == 0.0:
@@ -478,6 +525,9 @@ class Strategy:
                 if c.rotation_exclude_external and self.external_scores:
                     table = self._external(ts)
                     rising = {p: r for p, r in rising.items() if table.get(p, 1.0) >= 0}
+                if c.rotation_max_external > 0 and self.external_scores:
+                    table = self._external(ts)
+                    rising = {p: r for p, r in rising.items() if table.get(p, 0.0) <= c.rotation_max_external}
                 if c.rotation_max_z > 0:
                     rising = {p: r for p, r in rising.items() if self._zscore(p) <= c.rotation_max_z}
                 if c.rotation_ranking == "residual":
@@ -534,11 +584,23 @@ class Strategy:
                         and regime.return_rotation > 0 and c.regime_pair not in frozen):
                     # No coin beat BTC: BTC itself fills the empty slots.
                     plan[c.regime_pair] = plan.get(c.regime_pair, 0.0) + (slots - len(picks)) / c.rotation_top
-            elif c.rotation_shorts > 0:
+            elif c.rotation_shorts > 0 and self._shorts_allowed(regime):
                 # Bear market: the sleeve's capital backs shorts on the weakest (or wildest) coins.
                 pool = {p: s for p, s in signals.items()
                         if p != c.defensive_pair and p not in frozen and p not in state.positions}
-                if c.rotation_short_ranking == "volatility":
+                if c.rotation_short_ranking == "trend_basket":
+                    # Every coin in its own downtrend, by inverse volatility: many small shorts,
+                    # so one squeeze costs little (research H50).
+                    crowded = (self._external(ts) if c.short_exclude_external and self.external_scores
+                               else {})
+                    down = {p: 1.0 / s.volatility for p, s in pool.items()
+                            if 0 < s.ema_trend_fast < s.ema_trend_slow and s.volatility > 0
+                            and crowded.get(p, 0.0) >= 0}
+                    total = sum(down.values())
+                    for pair, v in down.items():
+                        plan[pair] = -min(v / total, c.rotation_short_cap)
+                    order = []
+                elif c.rotation_short_ranking == "volatility":
                     order = sorted(pool, key=lambda p: pool[p].volatility, reverse=True)
                 else:
                     order = sorted((p for p, s in pool.items() if s.return_rotation < 0),
@@ -854,6 +916,181 @@ class Strategy:
                 weight *= c.brake_factor
             targets[pair] = -weight
             reasons[pair] = SHORT_HOLD if pair in state.shorts else SHORT_ENTRY
+
+    def _bear(self, regime: Optional[Signal]) -> bool:
+        """A confirmed bear market: the rotation's BTC filter off and, with short_regime_hours,
+        BTC below its long simple average (never before that average is ready)."""
+        c = self.cfg
+        if regime is None or regime.ema_trend_fast >= regime.ema_trend_slow:
+            return False
+        return c.short_regime_hours <= 0 or 0 < regime.close < regime.sma_long
+
+    def _shorts_allowed(self, regime: Optional[Signal]) -> bool:
+        return self.cfg.short_regime_hours <= 0 or self._bear(regime)
+
+    def _long_short_book(self, signals: Dict[str, Signal], weights: Dict[str, float],
+                         frozen: AbstractSet[str], regime: Optional[Signal], sides: Optional[str] = None,
+                         state: Optional[StrategyState] = None, ts: int = 0, slots: bool = False
+                         ) -> Tuple[Dict[str, float], Dict[str, str]]:
+        """The long-short trend book (book_mode "long_short"), as fractions of the book: each
+        coin long while its ls_trend fast EMA is above the slow one, short while below, weighted
+        by inverse volatility to a gross of 1. Halted coins keep their weight and use up part
+        of the budget; the defensive pair is left out."""
+        c = self.cfg
+        targets = {pair: 0.0 for pair in c.universe}
+        reasons: Dict[str, str] = {}
+        trend_on = regime is not None and regime.ema_trend_fast > regime.ema_trend_slow
+        sides = sides or c.ls_sides
+        shorts_ok = self._shorts_allowed(regime)
+        fixed = {p: weights.get(p, 0.0) for p in frozen if p in targets and weights.get(p, 0.0) != 0.0}
+        held_shorts = state.shorts if state is not None else {}
+        liquid = None
+        if c.short_top_volume > 0:
+            ranked = sorted(signals, key=lambda p: self.indicators[p].dollar_sum, reverse=True)
+            liquid = set(ranked[:c.short_top_volume])
+        use_slots = slots
+        slots = 0.0                         # gross if every eligible coin held its position
+        raw = {}
+        for pair, s in signals.items():
+            if pair == c.defensive_pair or pair in frozen or pair not in targets:
+                continue
+            if c.ls_pairs == "btc" and pair != c.regime_pair:
+                continue
+            if s.ls_fast <= 0 or s.ls_slow <= 0 or s.volatility <= 0:
+                continue
+            slots += 1.0 / s.volatility
+            if self._short_vetoed(pair, s, state, ts, held_shorts, liquid, reasons):
+                continue
+            if (c.long_max_external > 0 and s.ls_fast > s.ls_slow and not c.ls_ensemble and self.external_scores
+                    and self._external(ts).get(pair, 0.0) > c.long_max_external):
+                continue
+            side = 1.0 if s.ls_fast > s.ls_slow else -1.0
+            if c.ls_short_trend:
+                short_down = 0 < s.ls_short_fast < s.ls_short_slow
+                if (side > 0) == short_down:
+                    continue                    # the long and short trends disagree: flat
+                side = -1.0 if short_down else 1.0
+            if side > 0 and self._long_stopped(pair, s, state, ts, reasons):
+                continue
+            if c.ls_ensemble:
+                if s.ls_vote == 0:
+                    continue
+                side = s.ls_vote
+            gap = s.ls_fast / s.ls_slow - 1.0
+            if c.ls_regime_aligned and (side > 0) != trend_on:
+                continue
+            if (sides == "long" and side < 0) or (sides == "short" and side > 0) or (side < 0 and not shorts_ok):
+                continue
+            if abs(gap) < c.ls_band:
+                continue
+            strength = min(abs(gap) / c.ls_full_gap, 1.0) if c.ls_full_gap > 0 else 1.0
+            raw[pair] = side * strength / s.volatility           # side is +-1, or the ensemble's vote
+        budget = max(1.0 - sum(abs(w) for w in fixed.values()), 0.0)
+        gross = sum(abs(v) for v in raw.values())
+        if c.short_entry_channel > 0 or c.short_stop_atr > 0 or use_slots:
+            gross = slots                   # a short not timed in (or stopped out) leaves its slot in cash
+        if c.ls_full_gap > 0:
+            # Strength sizing: full trends everywhere would fill the book; weak ones leave cash.
+            gross = sum(1.0 / s.volatility for p, s in signals.items()
+                        if p != c.defensive_pair and p not in frozen and p in targets and s.volatility > 0
+                        and (c.ls_pairs != "btc" or p == c.regime_pair))
+        scale = self._short_vol_scale() if c.short_vol_ratio else 1.0
+        for pair, v in raw.items():
+            targets[pair] = v / gross * budget * (scale * c.ls_short_scale if v < 0 else 1.0)
+            reasons[pair] = LS_LONG if v > 0 else LS_SHORT
+        for pair, w in fixed.items():
+            targets[pair] = w
+            reasons[pair] = HOLD_HALTED
+        if (c.ls_idle_horizon > 0 and sides != "short" and c.defensive_pair in targets
+                and c.defensive_pair in signals and c.defensive_pair not in frozen):
+            gold = self._horizon_return(c.defensive_pair, c.ls_idle_horizon)
+            idle = 1.0 - sum(abs(t) for t in targets.values())
+            if gold is not None and gold > 0 and idle > 1e-9:
+                targets[c.defensive_pair] = idle
+                reasons[c.defensive_pair] = CORE
+        return targets, reasons
+
+    def _short_vetoed(self, pair: str, s: Signal, state: Optional[StrategyState], ts: int,
+                      held: Dict[str, "ShortInfo"], liquid: Optional[set], reasons: Dict[str, str]) -> bool:
+        """True when the long-short book must not be short `pair` now, although its trend is down:
+        outside the most traded coins, cooling down after a stop, stopped out, not yet broken
+        below its entry channel, or broken above its exit channel. Only coins in a downtrend are
+        vetoed; the caller skips the rest of its checks for them."""
+        c = self.cfg
+        if c.ls_ensemble:
+            down = s.ls_vote < 0
+        elif c.ls_short_trend:
+            down = 0 < s.ls_short_fast < s.ls_short_slow
+        else:
+            down = 0 < s.ls_fast < s.ls_slow
+        if not down:
+            return False
+        if liquid is not None and pair not in liquid:
+            return True
+        if c.short_exclude_external and self.external_scores and self._external(ts).get(pair, 0.0) < 0:
+            return True
+        if pair not in held:
+            if (c.short_entry_min_funding > 0 and self.external_scores
+                    and self._external(ts).get(pair, c.short_entry_min_funding) < c.short_entry_min_funding):
+                return True
+            if c.short_entry_rsi_min > 0 and s.rsi < c.short_entry_rsi_min:
+                return True
+        if c.short_min_funding_rank > 0 and self.external_scores:
+            table = self._external(ts)
+            rate = table.get(pair)
+            if rate is not None and len(table) > 1:
+                below = sum(1 for v in table.values() if v < rate)
+                if below / (len(table) - 1) < c.short_min_funding_rank:
+                    return True
+        if state is not None and state.short_cooldown_until.get(pair, 0) > ts:
+            return True
+        if pair in held and c.short_stop_atr > 0:
+            info = held[pair]
+            info.lowest_close = min(info.lowest_close, s.close)
+            if s.close > info.lowest_close + c.short_stop_atr * s.atr:
+                reasons[pair] = EXIT_SHORT_STOP
+                return True
+        if c.short_entry_channel > 0:
+            if pair in held:
+                if s.close > self._channel(pair, c.short_exit_channel, high=True):
+                    reasons[pair] = EXIT_SHORT
+                    return True
+            elif s.close >= self._channel(pair, c.short_entry_channel, high=False):
+                return True
+        return False
+
+    def _long_stopped(self, pair: str, s: Signal, state: Optional[StrategyState], ts: int,
+                      reasons: Dict[str, str]) -> bool:
+        """ls_long_stop_atr: a held long below its highest close since entry less that many ATRs
+        is sold (and cools down); a coin cooling down is not bought again yet."""
+        c = self.cfg
+        if c.ls_long_stop_atr <= 0 or state is None:
+            return False
+        if state.cooldown_until.get(pair, 0) > ts:
+            return True
+        info = state.positions.get(pair)
+        if info is None:
+            return False
+        info.highest_close = max(info.highest_close, s.close)
+        if s.close < info.highest_close - c.ls_long_stop_atr * s.atr:
+            reasons[pair] = EXIT_STOP
+            return True
+        return False
+
+    def _short_vol_scale(self) -> float:
+        """base / recent volatility of the regime pair's hourly returns, at most 1."""
+        recent_h, base_h = self.cfg.short_vol_ratio
+        ind = self.indicators.get(self.cfg.regime_pair)
+        r = list(ind.returns) if ind is not None else []
+        if len(r) < max(recent_h, base_h):
+            return 1.0
+
+        def stdev(xs):
+            m = sum(xs) / len(xs)
+            return math.sqrt(sum((x - m) ** 2 for x in xs) / (len(xs) - 1))
+
+        recent, base = stdev(r[-recent_h:]), stdev(r[-base_h:])
+        return min(1.0, base / recent) if recent > 0 else 1.0
 
     def _can_enter(self, pair: str, s: Signal, ts: int, state: StrategyState) -> bool:
         c = self.cfg

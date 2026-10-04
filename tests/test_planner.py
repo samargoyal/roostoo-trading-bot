@@ -2,7 +2,8 @@ import unittest
 
 from bot.config import ExecutionConfig
 from bot.market_data import HOUR_MS
-from bot.planner import ACTIVITY, BUY, EXIT_UNIVERSE, REBALANCE, SELL, activity_due, plan_trades
+from bot.planner import (ACTIVITY, BUY, COVER, EXIT_UNIVERSE, FUNDING, REBALANCE, SELL, SHORT,
+                         activity_due, plan_trades)
 from bot.strategy import ENTRY, EXIT_TREND, HOLD, Decision
 
 DAY = 24 * HOUR_MS
@@ -47,6 +48,21 @@ class ThresholdTest(unittest.TestCase):
                          ("OLD/USD", SELL, EXIT_UNIVERSE))
         self.assertTrue(trades[0].close_position)
 
+    def test_entries_beyond_free_cash_are_paid_for_by_trimming_the_most_overweight(self):
+        # Fully invested: SOL enters at 10% while BTC and ETH sit 6% and 4% above their targets.
+        trades = plan({"BTC/USD": 0.47, "ETH/USD": 0.43, "SOL/USD": 0.10}, {"BTC/USD": 0.53, "ETH/USD": 0.47},
+                      {"BTC/USD": HOLD, "ETH/USD": HOLD, "SOL/USD": ENTRY})
+        by_pair = {t.pair: t for t in trades}
+        self.assertEqual(by_pair["SOL/USD"].side, BUY)
+        self.assertEqual(by_pair["BTC/USD"].reason, REBALANCE)           # 6% off: the threshold trims it
+        self.assertEqual((by_pair["ETH/USD"].side, by_pair["ETH/USD"].reason), (SELL, FUNDING))
+        self.assertAlmostEqual(by_pair["ETH/USD"].usd, 4000.0)            # down to its target, no further
+        self.assertEqual([t.side for t in trades][-1], BUY)               # sales first
+
+    def test_no_funding_sales_while_cash_covers_the_entries(self):
+        trades = plan({"BTC/USD": 0.47, "SOL/USD": 0.10}, {"BTC/USD": 0.50}, {"BTC/USD": HOLD, "SOL/USD": ENTRY})
+        self.assertEqual([t.pair for t in trades], ["SOL/USD"])
+
     def test_orders_below_the_minimum_are_dropped(self):
         trades = plan({"BTC/USD": 0.00005}, {}, {"BTC/USD": ENTRY})  # $5
         self.assertEqual(trades, [])
@@ -73,6 +89,24 @@ class ActivityTest(unittest.TestCase):
         ts = DAY + 6 * HOUR_MS
         trades = plan({"PAXG/USD": 0.05}, {"PAXG/USD": 0.05}, ts=ts, last_fill=0)
         self.assertEqual(trades[0].usd, CFG.activity_min_usd)
+
+    def test_a_book_of_shorts_only_adjusts_its_most_drifted_short(self):
+        ts = DAY + 6 * HOUR_MS
+        trades = plan({"SOL/USD": -0.10, "ETH/USD": -0.10}, {"SOL/USD": -0.095, "ETH/USD": -0.099},
+                      ts=ts, last_fill=DAY - HOUR_MS)
+        self.assertEqual(len(trades), 1)
+        self.assertEqual((trades[0].pair, trades[0].side, trades[0].reason), ("SOL/USD", SHORT, ACTIVITY))
+        self.assertAlmostEqual(trades[0].usd, 500.0)
+        trades = plan({"SOL/USD": -0.08}, {"SOL/USD": -0.10}, ts=ts, last_fill=DAY - HOUR_MS)
+        self.assertEqual(trades[0].side, COVER)
+        self.assertAlmostEqual(trades[0].usd, 2000.0)
+
+    def test_fully_invested_trims_the_most_overweight_holding_instead_of_buying(self):
+        ts = DAY + 6 * HOUR_MS
+        trades = plan({"BTC/USD": 0.52, "ETH/USD": 0.48}, {"BTC/USD": 0.505, "ETH/USD": 0.495},
+                      ts=ts, last_fill=DAY - HOUR_MS)
+        self.assertEqual((trades[0].pair, trades[0].side, trades[0].reason), ("ETH/USD", SELL, ACTIVITY))
+        self.assertAlmostEqual(trades[0].usd, CFG.activity_min_usd)
 
     def test_no_forced_trade_when_regular_trades_exist(self):
         ts = DAY + 6 * HOUR_MS

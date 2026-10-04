@@ -165,10 +165,38 @@ def ms(day: str) -> int:
     return int(datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
+_FUNDING = {}
+
+
+def funding_table(hours: int) -> dict:
+    """{00:00 of each day (ms): {pair: mean perpetual funding rate over the `hours` up to then}},
+    from data/funding (research round 54). Negative: shorts pay longs, the shorts are crowded."""
+    if hours in _FUNDING:
+        return _FUNDING[hours]
+    import glob
+    out = {}
+    for path in glob.glob(os.path.join("data", "funding", "*.csv")):
+        df = pd.read_csv(path)
+        if df.empty:
+            continue
+        s = pd.Series(df["rate"].values, index=pd.to_datetime(df["ts"] // 1000, unit="s", utc=True))
+        s = s[~s.index.duplicated()].sort_index()
+        mean = s.rolling("%dh" % hours).mean()
+        days = pd.date_range(s.index[0].ceil("D"), s.index[-1].floor("D"), freq="D")
+        pair = os.path.basename(path)[:-4] + "/USD"
+        for day, value in mean.reindex(mean.index.union(days)).ffill().reindex(days).items():
+            if value == value:
+                out.setdefault(int(day.timestamp() * 1000), {})[pair] = float(value)
+    _FUNDING[hours] = out
+    return out
+
+
 def run(job):
     name, overrides, (start, end) = job
+    overrides = copy.deepcopy(overrides)
+    extra = overrides.pop("research", {})
     cfg = load_config()
-    apply_overrides(cfg, copy.deepcopy(overrides))
+    apply_overrides(cfg, overrides)
     s, e = ms(start), ms(end)
     warm = s - cfg.backtest.warmup_bars * HOUR_MS
     client = BinanceClient()
@@ -180,8 +208,9 @@ def run(job):
             bars[pair] = series
     if "BTC/USD" not in bars:
         bars["BTC/USD"] = load_history(client, "BTC/USD", warm, e, cfg.backtest.data_dir)
+    external = funding_table(extra["funding_hours"]) if extra.get("funding_hours") else None
     result = run_backtest(cfg, bars, s, e, cfg.backtest.taker_fee, cfg.backtest.taker_slippage,
-                          "taker", monthly_universe=True, slippage_by_pair=slippage)
+                          "taker", monthly_universe=True, slippage_by_pair=slippage, external_scores=external)
     btc = [b.close for b in bars["BTC/USD"] if s <= b.ts < e]
     peak, worst = btc[0], 0.0
     for price in btc:

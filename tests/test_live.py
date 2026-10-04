@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from bot.config import Config
-from bot.live import LiveBot, PriceSampler, portfolio_value
+from bot.live import LiveBot, PriceSampler, config_path, portfolio_value
 from bot.market_data import HOUR_MS
 from tests.fakes import NOW, FakeBinance, FakeExchange, zigzag
 
@@ -117,6 +117,21 @@ class HelpersTest(unittest.TestCase):
         self.assertEqual(sampler.closed_bars("BTC/USD", None, hour + 30 * 60000), [])
         (bar,) = sampler.closed_bars("BTC/USD", None, hour + HOUR_MS)
         self.assertEqual((bar.open, bar.high, bar.low, bar.close), (10.0, 12.0, 9.0, 11.0))
+
+
+class ConfigPathTest(unittest.TestCase):
+    def test_account_file_is_used_when_present_unless_one_is_given(self):
+        directory = tempfile.mkdtemp()
+        try:
+            self.assertIsNone(config_path("comp", directory=directory))
+            path = os.path.join(directory, "comp.json")
+            with open(path, "w") as f:
+                f.write("{}")
+            self.assertEqual(config_path("comp", directory=directory), path)
+            self.assertIsNone(config_path("test", directory=directory))
+            self.assertEqual(config_path("comp", "other.json", directory=directory), "other.json")
+        finally:
+            shutil.rmtree(directory)
 
 
 if __name__ == "__main__":

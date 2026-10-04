@@ -8,7 +8,7 @@ import csv
 import logging
 import os
 import time
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import requests
 
@@ -60,6 +60,13 @@ class BinanceClient:
         rows = self._get("/api/v3/klines", params)
         return [Bar(int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]))
                 for r in rows]
+
+    def funding_rates(self, symbol: str, start_ms: int, end_ms: int) -> List[Tuple[int, float]]:
+        """Perpetual funding prints (time, rate) in [start_ms, end_ms], from Binance USD-M futures
+        (construct the client with the futures URL)."""
+        rows = self._get("/fapi/v1/fundingRate",
+                         {"symbol": symbol, "startTime": start_ms, "endTime": end_ms, "limit": 1000})
+        return [(int(r["fundingTime"]), float(r["fundingRate"])) for r in rows]
 
     def recent_closed(self, symbol: str, count: int, at_ms: Optional[int] = None) -> List[Bar]:
         """The last `count` hourly candles that had closed by `at_ms` (default: now)."""

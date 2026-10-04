@@ -92,6 +92,26 @@ class RSI:
         return self.value
 
 
+class RollingMean:
+    """Mean of the last `window` values (None until there are that many)."""
+
+    def __init__(self, window: int):
+        self.window = window
+        self.values: Deque[float] = deque()
+        self.total = 0.0
+
+    @property
+    def value(self) -> Optional[float]:
+        return self.total / self.window if len(self.values) >= self.window else None
+
+    def update(self, x: float) -> Optional[float]:
+        self.values.append(x)
+        self.total += x
+        if len(self.values) > self.window:
+            self.total -= self.values.popleft()
+        return self.value
+
+
 class RollingStd:
     """Sample standard deviation of the last `window` values."""
 
@@ -214,6 +234,12 @@ class Signal(NamedTuple):
     slow_fast: float = 0.0         # the optional slower trend filter's EMAs (0 when not configured)
     slow_slow: float = 0.0
     spread: float = 0.0            # Corwin-Schultz spread estimate over the last week
+    ls_fast: float = 0.0           # the long-short trend book's EMAs (0 when it is off)
+    ls_slow: float = 0.0
+    sma_long: float = 0.0          # simple average of closes over short_regime_hours (0 until ready)
+    ls_vote: float = 0.0           # mean trend sign over the long-short book's EMA pairs (-1 to 1)
+    ls_short_fast: float = 0.0     # the long-short book's short-side EMAs (0 when not configured)
+    ls_short_slow: float = 0.0
 
 
 class IndicatorSet:
@@ -222,7 +248,8 @@ class IndicatorSet:
     def __init__(self, fast_ema: int, slow_ema: int, regime_ema: int, atr_period: int,
                  rsi_period: int, momentum_short: int, momentum_long: int, volatility_window: int,
                  rotation_lookback: int = 336, trend_fast: int = 168, trend_slow: int = 672,
-                 slow_filter: Optional[tuple] = None):
+                 slow_filter: Optional[tuple] = None, ls_pair: Optional[tuple] = None,
+                 long_sma: int = 0, ls_extra: Optional[list] = None, ls_short: Optional[tuple] = None):
         self.fast = EMA(fast_ema)
         self.slow = EMA(slow_ema)
         self.regime = EMA(regime_ema)
@@ -233,6 +260,10 @@ class IndicatorSet:
         self.trend_slow = EMA(trend_slow)
         self.kalman = KalmanTrend()
         self.slow_pair = (EMA(slow_filter[0]), EMA(slow_filter[1])) if slow_filter else None
+        self.ls_pair = (EMA(ls_pair[0]), EMA(ls_pair[1])) if ls_pair else None
+        self.long_sma = RollingMean(long_sma) if long_sma > 0 else None
+        self.ls_extra = [(EMA(a), EMA(b)) for a, b in (ls_extra or [])]
+        self.ls_short = (EMA(ls_short[0]), EMA(ls_short[1])) if ls_short else None
         self.spread = SpreadEstimate()
         self.momentum_short = momentum_short
         self.momentum_long = momentum_long
@@ -272,6 +303,17 @@ class IndicatorSet:
         if self.slow_pair:
             self.slow_pair[0].update(bar.close)
             self.slow_pair[1].update(bar.close)
+        if self.ls_pair:
+            self.ls_pair[0].update(bar.close)
+            self.ls_pair[1].update(bar.close)
+        if self.long_sma:
+            self.long_sma.update(bar.close)
+        for fast, slow in self.ls_extra:
+            fast.update(bar.close)
+            slow.update(bar.close)
+        if self.ls_short:
+            self.ls_short[0].update(bar.close)
+            self.ls_short[1].update(bar.close)
         self.spread.update(bar.high, bar.low)
         self.last_ts = bar.ts
 
@@ -300,4 +342,16 @@ class IndicatorSet:
             spread=self.spread.value if self.spread.value is not None else 0.0,
             slow_fast=(self.slow_pair[0].value or 0.0) if self.slow_pair else 0.0,
             slow_slow=(self.slow_pair[1].value or 0.0) if self.slow_pair else 0.0,
+            ls_fast=(self.ls_pair[0].value or 0.0) if self.ls_pair else 0.0,
+            ls_slow=(self.ls_pair[1].value or 0.0) if self.ls_pair else 0.0,
+            sma_long=(self.long_sma.value or 0.0) if self.long_sma else 0.0,
+            ls_vote=self._vote(),
+            ls_short_fast=(self.ls_short[0].value or 0.0) if self.ls_short else 0.0,
+            ls_short_slow=(self.ls_short[1].value or 0.0) if self.ls_short else 0.0,
         )
+
+    def _vote(self) -> float:
+        pairs = ([self.ls_pair] if self.ls_pair else []) + self.ls_extra
+        signs = [1.0 if f.value > s.value else -1.0 for f, s in pairs
+                 if f.value is not None and s.value is not None and f.value != s.value]
+        return sum(signs) / len(pairs) if pairs else 0.0

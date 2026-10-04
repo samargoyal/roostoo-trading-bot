@@ -10,6 +10,10 @@ trading costs and compliance in balance:
              block is nearly over, the long position furthest from its target is
              rebalanced, even below the threshold. The permanent PAXG core means
              there is always a position to adjust.
+  Funding    a fully invested account cannot pay for an entry: when the planned buys
+             and new shorts need more than the free cash and the planned sales bring,
+             the holdings furthest above their targets are trimmed to pay for them,
+             even below the threshold.
 """
 from dataclasses import dataclass
 from typing import AbstractSet, Dict, List, Optional
@@ -26,6 +30,7 @@ COVER = "COVER"    # reduce or close a short
 REBALANCE = "rebalance"
 ACTIVITY = "activity"
 EXIT_UNIVERSE = "exit_universe"  # a holding in a pair the strategy no longer trades
+FUNDING = "funding"              # trimmed to pay for an entry
 EXITS = (EXIT_TREND, EXIT_STOP, EXIT_REGIME, EXIT_SHORT_STOP, EXIT_SHORT)
 
 
@@ -66,6 +71,7 @@ def plan_trades(decision: Decision, weights: Dict[str, float], equity: float, ts
         trade = _towards(pair, current, target, equity, reason, cfg, min_position_weight)
         if trade is not None:
             trades.append(trade)
+    trades += _funding(trades, decision, weights, equity, cfg, frozen)
 
     if not trades and activity_due(ts, last_fill_ts, cfg):
         trade = activity_trade(decision, weights, equity, cfg, frozen)
@@ -74,6 +80,39 @@ def plan_trades(decision: Decision, weights: Dict[str, float], equity: float, ts
 
     trades.sort(key=lambda t: t.side not in (SELL, COVER))
     return trades
+
+
+def _funding(trades: List[PlannedTrade], decision: Decision, weights: Dict[str, float], equity: float,
+             cfg: ExecutionConfig, frozen: AbstractSet[str]) -> List[PlannedTrade]:
+    """Sales of the holdings furthest above their targets, enough to pay for the planned buys and
+    new shorts that the free cash and the planned sales cannot (with 1% to spare for fees)."""
+    need = 1.01 * sum(t.usd for t in trades if t.side in (BUY, SHORT))
+    have = (1.0 - sum(abs(w) for w in weights.values())) * equity
+    have += sum(t.usd for t in trades if t.side in (SELL, COVER))
+    deficit = need - have
+    if deficit < cfg.min_trade_usd:
+        return []
+    busy = {t.pair for t in trades}
+    excess = {}
+    for pair, current in weights.items():
+        target = decision.targets.get(pair, 0.0)
+        if (pair in busy or pair in frozen or decision.reasons.get(pair) == HOLD_HALTED
+                or current * target < 0 or abs(current) <= abs(target)):
+            continue
+        excess[pair] = (abs(current) - abs(target)) * equity
+    out = []
+    for pair in sorted(excess, key=excess.get, reverse=True):
+        usd = min(excess[pair], deficit)
+        if usd < cfg.min_trade_usd:
+            break
+        current = weights[pair]
+        side = SELL if current > 0 else COVER
+        out.append(PlannedTrade(pair, side, usd, False, current, current - usd / equity * (1 if current > 0 else -1),
+                                FUNDING))
+        deficit -= usd
+        if deficit < cfg.min_trade_usd:
+            break
+    return out
 
 
 def _towards(pair: str, current: float, target: float, equity: float, reason: str,
@@ -115,18 +154,41 @@ def activity_due(ts: int, last_fill_ts: int, cfg: ExecutionConfig) -> bool:
 
 def activity_trade(decision: Decision, weights: Dict[str, float], equity: float,
                    cfg: ExecutionConfig, frozen: AbstractSet[str] = frozenset()) -> Optional[PlannedTrade]:
-    """Rebalance the long position furthest from its target, by at least activity_min_usd.
-    Halted pairs are skipped: the exchange would refuse the order."""
+    """Rebalance the long position furthest from its target, by at least activity_min_usd, or,
+    with no long position to adjust (a book holding only shorts), the short furthest from its
+    target. Halted pairs are skipped: the exchange would refuse the order."""
+    tradable = lambda p: p not in frozen and decision.reasons.get(p) != HOLD_HALTED
     pairs = [p for p, target in decision.targets.items()
-             if (target > 0 or weights.get(p, 0.0) > 0) and p not in frozen
-             and decision.reasons.get(p) != HOLD_HALTED]
-    if not pairs or equity <= 0:
+             if (target > 0 or weights.get(p, 0.0) > 0) and tradable(p)]
+    if equity <= 0:
         return None
+    if not pairs:
+        shorts = [p for p, target in decision.targets.items()
+                  if (target < 0 or weights.get(p, 0.0) < 0) and tradable(p)]
+        if not shorts:
+            return None
+        pair = max(shorts, key=lambda p: abs(decision.targets[p] - weights.get(p, 0.0)))
+        current = weights.get(pair, 0.0)
+        target = decision.targets[pair]
+        side = SHORT if target <= current else COVER
+        usd = max(abs(target - current) * equity, cfg.activity_min_usd)
+        if side == COVER:
+            usd = min(usd, -current * equity)
+            if usd < cfg.min_trade_usd:
+                side, usd = SHORT, cfg.activity_min_usd
+        return PlannedTrade(pair, side, usd, False, current, target, ACTIVITY)
     pair = max(pairs, key=lambda p: abs(decision.targets[p] - weights.get(p, 0.0)))
     current = weights.get(pair, 0.0)
     target = decision.targets[pair]
     side = BUY if target >= current else SELL
     usd = max(abs(target - current) * equity, cfg.activity_min_usd)
+    free = (1.0 - sum(abs(w) for w in weights.values())) * equity
+    held = [p for p in pairs if weights.get(p, 0.0) > 0]
+    if side == BUY and free < cfg.activity_min_usd and held:
+        # Fully invested: a buy would find no cash, so trim the most overweight holding instead.
+        pair = max(held, key=lambda p: weights[p] - decision.targets[p])
+        current, target = weights[pair], decision.targets[pair]
+        side, usd = SELL, cfg.activity_min_usd
     if side == SELL:
         usd = min(usd, current * equity)
         if usd < cfg.min_trade_usd:

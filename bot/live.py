@@ -114,7 +114,7 @@ def portfolio_value(wallet: Dict[str, Dict[str, float]], quotes: Dict[str, Dict[
 class LiveBot:
     def __init__(self, cfg: Config, run_dir: str, dry_run: bool = False,
                  client: Optional[RoostooClient] = None, binance: Optional[BinanceClient] = None,
-                 sleep: Callable[[float], None] = time.sleep):
+                 sleep: Callable[[float], None] = time.sleep, funding: Optional[BinanceClient] = None):
         self.cfg = cfg
         self.dry_run = dry_run
         a = cfg.api
@@ -122,6 +122,12 @@ class LiveBot:
             base_url=a.base_url, timeout_sec=a.timeout_sec, max_calls_per_minute=a.max_calls_per_minute,
             max_retries=a.max_retries, backoff_sec=a.backoff_sec)
         self.binance = binance or BinanceClient(cfg.live.binance_url)
+        s = cfg.strategy
+        uses_funding = (s.short_exclude_external or s.long_max_external > 0 or s.short_min_funding_rank > 0
+                        or s.rotation_max_external > 0)
+        self.funding = ((funding or BinanceClient(cfg.live.funding_url, timeout_sec=5.0, max_retries=1))
+                        if uses_funding else None)
+        self.funding_table: Dict[int, Dict[str, float]] = {}
         self.journal = Journal(os.path.join(run_dir, "journal"))
         self.store = StateStore(os.path.join(run_dir, "state.json"))
         self.sampler = PriceSampler()
@@ -184,7 +190,7 @@ class LiveBot:
             log.warning("cancelling orders left open: %s", self.client.cancel_order())
 
         started = self.client.now_ms()
-        strategy = Strategy(self.cfg.strategy)
+        strategy = Strategy(self.cfg.strategy, external_scores=self._funding_scores(started))
         universe = self.cfg.strategy.universe
         # Binance candles for ~46 pairs, a few pages each: fetched six at a time.
         with ThreadPoolExecutor(max_workers=6) as pool:
@@ -222,6 +228,36 @@ class LiveBot:
         self._record_equity(equity, cash, values, decision)
         self.store.save(self.state)
 
+    def _funding_scores(self, now_ms: int) -> Dict[int, Dict[str, float]]:
+        """{day: {pair: mean funding rate over live.funding_hours up to that day's 00:00}}, for the
+        day the strategy looks up, fetched once a day. A coin Binance has no perpetual for, or
+        cannot be reached for, is left out, which leaves its shorts allowed."""
+        if self.funding is None:
+            return {}
+        day = (now_ms - HOUR_MS) // (24 * HOUR_MS) * (24 * HOUR_MS)
+        if day not in self.funding_table:
+            start = day - self.cfg.live.funding_hours * HOUR_MS + 1
+            table: Dict[str, float] = {}
+            failures = 0
+            for pair in self.cfg.strategy.universe:
+                try:
+                    prints = self.funding.funding_rates(binance_symbol(pair), start, day)
+                except BinanceError as exc:
+                    log.debug("no funding rates for %s: %s", pair, exc)
+                    failures += 1
+                    if failures >= 3 and not table:
+                        # Unreachable rather than a few coins without perpetuals: stop for today.
+                        log.warning("funding rates unavailable (%s); no crowding filter today", exc)
+                        break
+                    continue
+                if prints:
+                    table[pair] = sum(rate for _, rate in prints) / len(prints)
+            self.funding_table = {day: table}
+            crowded = sorted(p for p, rate in table.items() if rate < 0)
+            log.info("funding rates for %d pairs (mean over %dh to %s); shorts crowded, so not shorted: %s",
+                     len(table), self.cfg.live.funding_hours, utc_iso(day), ", ".join(crowded) or "none")
+        return self.funding_table
+
     def _refresh_rules(self, pairs: Iterable[str]) -> Set[str]:
         """Re-read Roostoo's trading rules; returns the given pairs it is not trading now."""
         try:
@@ -242,7 +278,8 @@ class LiveBot:
     def _shorts(self) -> List[Dict[str, float]]:
         """Open shorts, read only when the sleeve is on or the state remembers a short."""
         s = self.cfg.strategy
-        if s.short_exposure <= 0 and s.rotation_shorts <= 0 and not self.state.shorts:
+        if (s.short_exposure <= 0 and s.rotation_shorts <= 0 and s.book_mode == "trend"
+                and not self.state.shorts):
             return []
         return self.client.short_positions()
 
@@ -314,22 +351,34 @@ def _stop(signum, frame):
     raise KeyboardInterrupt
 
 
+def config_path(account: str, explicit: Optional[str] = None, directory: str = "config") -> Optional[str]:
+    """The config file to run with: the one given, else config/<account>.json if it exists, so
+    each account's settings live in the repository and a restart picks up committed changes."""
+    if explicit:
+        return explicit
+    default = os.path.join(directory, account + ".json")
+    return default if os.path.exists(default) else None
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Run the Roostoo trading bot.")
     parser.add_argument("--account", required=True,
                         help="label for this account's logs and state, e.g. test or comp")
     parser.add_argument("--dry-run", action="store_true", help="do everything except send orders")
     parser.add_argument("--once", action="store_true", help="run a single cycle and exit")
-    parser.add_argument("--config", help="JSON file overriding config defaults")
+    parser.add_argument("--config", help="JSON file overriding config defaults (default: config/<account>.json "
+                                         "if it exists)")
     args = parser.parse_args(argv)
     if not re.match(r"^[A-Za-z0-9_-]+$", args.account):
         parser.error("--account may only contain letters, digits, - and _")
 
-    cfg = load_config(args.config)
+    path = config_path(args.account, args.config)
+    cfg = load_config(path)
     run_dir = os.path.join(cfg.live.runs_dir, args.account + ("-dry" if args.dry_run else ""))
     setup_logging(os.path.join(run_dir, "logs"))
     signal.signal(signal.SIGTERM, _stop)
-    log.info("starting: account=%s dry_run=%s once=%s", args.account, args.dry_run, args.once)
+    log.info("starting: account=%s dry_run=%s once=%s config=%s", args.account, args.dry_run, args.once,
+             path or "code defaults")
     log.info("config: %s", json.dumps(cfg.to_dict(), sort_keys=True))
     try:
         bot = LiveBot(cfg, run_dir, dry_run=args.dry_run)

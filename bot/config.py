@@ -95,6 +95,62 @@ class StrategyConfig:
     short_rsi_min: float = 30.0          # no new shorts into oversold coins
     short_stop_atr_multiple: float = 10.0  # cover above the lowest close since entry plus this many ATRs
 
+    # Long-short trend book (research H50, off by default). "long_short" replaces the
+    # defensive book above: every coin is held long while its ls_trend fast EMA is above the
+    # slow one and short while below, weighted by inverse volatility to 100% of the book's
+    # share (shorts are 1x on Roostoo, so long plus short never exceeds that share).
+    book_mode: str = "trend"              # "hybrid": the defensive book, but in a confirmed bear market
+                                          # (short_regime_hours) every coin in its own downtrend, short;
+                                          # "overlay": the defensive book, with the cash it leaves idle
+                                          # short every coin in its own downtrend (ls_trend), each its
+                                          # inverse-volatility share of all coins
+    ls_trend: List[int] = field(default_factory=lambda: [168, 672])
+    ls_ensemble: List[List[int]] = field(default_factory=list)  # more [fast, slow] EMA pairs: each coin's
+                                          # position is the mean of its trend signs over ls_trend and these
+                                          # (a vote from -1 to 1), so mixed signals mean smaller positions
+    ls_regime_aligned: bool = False       # longs only while the rotation's BTC filter is on, shorts only
+                                          # while it is off
+    ls_pairs: str = "all"                 # "btc": the regime pair alone
+    ls_sides: str = "both"                # "long" or "short": that side alone (research diagnostics)
+    ls_short_scale: float = 1.0           # the book's shorts at this fraction of their weight, the rest in cash
+    ls_long_stop_atr: float = 0.0         # > 0: the book sells a long this many ATRs below its highest close
+                                          # since entry and leaves the coin for stop_cooldown_hours (round 64)
+    ls_short_trend: List[int] = field(default_factory=list)  # [fast, slow]: shorts follow this (faster) EMA
+                                          # pair, longs ls_trend; flat while the two disagree (round 64)
+    ls_absorb_rotation: float = 0.0       # > 0: while the rotation's BTC filter is off, this fraction of its
+                                          # share runs the long-short book instead of PAXG or cash (round 61)
+    ls_absorb_sma_hours: int = 0          # > 0: ... only while BTC is also below its simple average over this
+                                          # many hours (a confirmed bear market, round 62)
+    ls_idle_horizon: int = 0              # > 0: the long-short book's unused share goes to the defensive pair
+                                          # while its return over this many hours is positive (round 60)
+    ls_band: float = 0.0                  # > 0: a neutral zone, no position while the EMAs are closer than this
+    short_vol_ratio: List[int] = field(default_factory=list)  # [recent, base] hours: the book's shorts shrink
+                                          # by base / recent volatility of BTC when the recent one is higher
+    short_stop_atr: float = 0.0           # > 0: the book covers a short this many ATRs above its lowest close
+                                          # since entry, and leaves the coin for stop_cooldown_hours
+    short_entry_channel: int = 0          # > 0: the book shorts a coin only on a close below its lowest low of
+                                          # this many hours, and covers above its highest high of
+    short_exit_channel: int = 0           # this many (turtle rules); untimed slots stay in cash
+    short_top_volume: int = 0             # > 0: the book shorts only the most traded this many coins
+    short_entry_min_funding: float = 0.0  # > 0: a new short needs its external score (funding) at least this
+                                          # high; one already open stays until it turns negative (round 63)
+    short_entry_rsi_min: float = 0.0      # > 0: no new short while the coin's RSI is below this (round 63)
+    short_min_funding_rank: float = 0.0   # > 0: the book shorts only coins whose external score (funding) ranks
+                                          # at least this high among all coins: crowded longs (round 57)
+    rotation_max_external: float = 0.0    # > 0: the rotation skips a pick whose external score (funding) is
+                                          # above this: crowded longs (round 57)
+    long_max_external: float = 0.0        # > 0: the long-short book holds no long whose external score (its
+                                          # recent funding rate) is above this: crowded longs (round 56)
+    short_exclude_external: bool = False  # research: no short (book or rotation basket) on a coin whose saved
+                                          # external score is negative (round 54: its recent perpetual
+                                          # funding rate, negative when shorts are crowded)
+    short_regime_hours: int = 0           # > 0: shorts (long-short book, hybrid book, rotation basket) only in
+                                          # a confirmed bear market: the rotation's BTC filter off and BTC
+                                          # below its simple average over this many hours (4800: 200 days;
+                                          # backtest.warmup_bars and live.history_bars must exceed it)
+    ls_full_gap: float = 0.0              # > 0: size by trend strength, full size once the EMA gap reaches this
+                                          # (the book then holds cash while trends are weak)
+
     # Momentum rotation sleeve (research H15-H16): this share of equity holds the coins with
     # the strongest positive return over rotation_lookback hours, equally weighted, chosen
     # again every rotation_rebalance_hours at 00:00 UTC. It is in the market only while the
@@ -186,7 +242,10 @@ class StrategyConfig:
     rotation_stop_pct: float = 0.0        # > 0: drop a pick that falls this fraction below that high
     rotation_shorts: int = 0              # > 0: while the trend filter is off, the sleeve shorts this many
                                           # coins instead (research H31; off: Roostoo /v6 untested)
-    rotation_short_ranking: str = "return"  # "return": the weakest 2-week returns; "volatility": the wildest
+    rotation_short_ranking: str = "return"  # "return": the weakest 2-week returns; "volatility": the wildest;
+                                          # "trend_basket": every coin whose own 168h EMA is below its
+                                          # 672h EMA, by inverse volatility (research H50)
+    rotation_short_cap: float = 0.2       # "trend_basket": cap per coin, as a share of the sleeve
     rotation_vol_forecast: str = ""       # "har" or "ewma": scale the sleeve down when BTC's forecast daily
                                           # volatility is above its 60-day median (research H31)
     rotation_max_z: float = 0.0           # > 0: skip a pick whose close is more than this many standard
@@ -243,6 +302,9 @@ class LiveConfig:
     bar_delay_sec: int = 60             # run this long after the hour, once the candle is final
     ticker_sample_sec: int = 300        # Roostoo price samples, the fallback if Binance is unreachable
     runs_dir: str = "runs"
+    funding_url: str = "https://fapi.binance.com"   # Binance USD-M futures, for funding rates
+    funding_hours: int = 72             # with strategy.short_exclude_external: no short on a coin whose
+                                        # funding averaged below zero over this many hours (round 54)
 
 
 @dataclass
