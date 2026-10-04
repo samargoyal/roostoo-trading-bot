@@ -274,6 +274,40 @@ ROUNDS = {
             {"strategy": {"rotation_top_volume": 20}},
             [{"strategy": {"rotation_top_volume": 15}}, {"strategy": {"rotation_top_volume": 30}}]),
     },
+    # Round 42 (the user's request, and next on the list): Donchian channels, Turtle style. Round
+    # 41 (sentiment) runs in research/h32_sentiment_strategy.py, as it needs outside data.
+    42: {
+        "R42a Donchian rotation: 20-day breakouts, held to the 10-day low": (
+            {"strategy": {"rotation_donchian_entry": 480, "rotation_donchian_exit": 240, "rotation_donchian_hold": True}},
+            [{"strategy": {"rotation_donchian_entry": 336, "rotation_donchian_exit": 168, "rotation_donchian_hold": True}},
+             {"strategy": {"rotation_donchian_entry": 720, "rotation_donchian_exit": 360, "rotation_donchian_hold": True}}]),
+        "R42b rotation picks must be at a 20-day high": (
+            {"strategy": {"rotation_donchian_entry": 480}},
+            [{"strategy": {"rotation_donchian_entry": 336}}, {"strategy": {"rotation_donchian_entry": 720}}]),
+        "R42c rotation picks exit below their 10-day low": (
+            {"strategy": {"rotation_donchian_exit": 240}},
+            [{"strategy": {"rotation_donchian_exit": 168}}, {"strategy": {"rotation_donchian_exit": 336}}]),
+        "R42d book exits below the 10-day low (no ATR stop)": (
+            {"strategy": {"book_donchian_exit": 240, "stop_atr_multiple": 1000.0}},
+            [{"strategy": {"book_donchian_exit": 168, "stop_atr_multiple": 1000.0}},
+             {"strategy": {"book_donchian_exit": 336, "stop_atr_multiple": 1000.0}}]),
+    },
+    # Rounds 41-42: sentiment halving and Donchian rules cut drawdowns (Donchian to 22-29%) but
+    # cost too much return. 43: rebalance partially, halfway to the target, entries and exits
+    # in full (classic partial adjustment against costs and whipsaw).
+    43: {
+        "R43 plain rebalances move halfway to target": (
+            {"execution": {"rebalance_fraction": 0.5}},
+            [{"execution": {"rebalance_fraction": 0.33}}, {"execution": {"rebalance_fraction": 0.67}}]),
+    },
+    # 44: trends turn faster when markets are wild: a 1-week lookback while BTC's 30-day
+    # volatility is above its 60-day median, 2 weeks otherwise.
+    44: {
+        "R44 1-week lookback in high volatility, else 2 weeks": (
+            {"strategy": {"rotation_adaptive_lookbacks": [168, 336]}},
+            [{"strategy": {"rotation_adaptive_lookbacks": [120, 336]}},
+             {"strategy": {"rotation_adaptive_lookbacks": [240, 336]}}]),
+    },
 }
 
 

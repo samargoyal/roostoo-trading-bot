@@ -119,6 +119,17 @@ class StrategyConfig:
                                           # or "external" (research only): saved model scores
     rotation_exclude_external: bool = False  # research only: skip coins whose saved external score is
                                           # negative (research H30, funding-rate crowding)
+    rotation_adaptive_lookbacks: List[int] = field(default_factory=list)  # [high-vol, normal]: the
+                                          # lookback while BTC's 30-day volatility is above, or not, its
+                                          # median over the last 60 days (research round 44)
+    rotation_donchian_entry: int = 0      # > 0: picks must close at or above their highest high of the
+                                          # previous N hours, a breakout (research round 42)
+    rotation_donchian_exit: int = 0       # > 0: drop a pick that closes below its lowest low of the
+                                          # previous N hours (round 42)
+    rotation_donchian_hold: bool = False  # keep held picks until that exit instead of re-ranking (42)
+    book_donchian_exit: int = 0           # > 0: the book exits below the previous N hours' low (42)
+    rotation_external_scale: bool = False  # research only: scale the sleeve by the saved "__scale__"
+                                          # score of the day (round 41)
     rotation_regime_pair: str = ""        # set: the sleeve's trend filter reads this pair instead (round 38)
     rotation_min_age_hours: int = 0       # > 0: picks need this many hourly bars of history (round 39)
     rotation_top_volume: int = 0          # > 0: picks must rank in this many by 30-day dollar volume (40)
@@ -194,6 +205,8 @@ class UniverseConfig:
 @dataclass
 class ExecutionConfig:
     rebalance_threshold: float = 0.04   # resize a held position only when this far off target (fraction of equity)
+    rebalance_fraction: float = 1.0       # < 1: a plain rebalance moves only this share of the way to its
+                                          # target; entries and exits go all the way (research round 43)
     min_trade_usd: float = 10.0         # never send an order smaller than this
     use_limit_orders: bool = True       # try a maker order at the touch before paying the taker fee
     limit_timeout_sec: int = 300        # then cancel it and send the remainder at market

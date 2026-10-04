@@ -89,6 +89,10 @@ def _towards(pair: str, current: float, target: float, equity: float, reason: st
         return None
     if not (closing or opening) and reason not in EXITS:
         reason = REBALANCE
+        if cfg.rebalance_fraction < 1.0:
+            delta *= cfg.rebalance_fraction
+            usd = abs(delta) * equity
+            target = current + delta
     if opening and target < 0:
         reason = SHORT_ENTRY
     short_side = target < 0 or current < 0

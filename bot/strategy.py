@@ -267,7 +267,8 @@ class Strategy:
             if s.ema_fast < s.ema_slow * (1.0 - c.trend_exit_band):
                 reasons[pair] = EXIT_TREND
                 exiting.add(pair)
-            elif s.close < position.highest_close - c.stop_atr_multiple * s.atr:
+            elif (s.close < position.highest_close - c.stop_atr_multiple * s.atr
+                  or (c.book_donchian_exit > 0 and s.close < self._channel(pair, c.book_donchian_exit, high=False))):
                 reasons[pair] = EXIT_STOP
                 exiting.add(pair)
 
@@ -421,8 +422,12 @@ class Strategy:
             due = True                          # the filter turned on: enter now, not at midnight
         if due:
             state.rotation_plan_on = int(trend_on)
-        if due and c.rotation_ensemble:
-            plan = self._ensemble_plan(signals, frozen) if trend_on else {}
+        if due and (c.rotation_ensemble or c.rotation_adaptive_lookbacks):
+            specs = c.rotation_ensemble
+            if c.rotation_adaptive_lookbacks:
+                high_vol, normal = c.rotation_adaptive_lookbacks
+                specs = ["ret:%d" % (high_vol if self._vol_scale("realised") < 1.0 else normal)]
+            plan = self._ensemble_plan(signals, frozen, specs) if trend_on else {}
             defensive = signals.get(c.defensive_pair)
             if (not trend_on and defensive is not None and defensive.return_rotation > 0
                     and c.defensive_pair not in frozen):
@@ -445,6 +450,9 @@ class Strategy:
                     floor = regime.return_rotation + c.rotation_btc_margin
                     rising = {p: r for p, r in rising.items() if p != c.regime_pair and r > floor}
                     alts = True
+                if c.rotation_donchian_entry > 0:
+                    rising = {p: r for p, r in rising.items()
+                              if signals[p].close >= self._channel(p, c.rotation_donchian_entry, high=True)}
                 if c.rotation_min_age_hours > 0:
                     rising = {p: r for p, r in rising.items()
                               if self.indicators[p].bars_seen >= c.rotation_min_age_hours}
@@ -477,6 +485,10 @@ class Strategy:
                     table = self._external(ts)
                     rising = {p: table.get(p, -1e9) for p in rising}
                 ranked = sorted(rising, key=rising.get, reverse=True)
+                if c.rotation_donchian_hold:
+                    held = [p for p, w in state.rotation_plan.items()
+                            if w > 0 and p != c.defensive_pair and p in signals and p not in frozen]
+                    ranked = held + [p for p in ranked if p not in held]
                 picks = ranked[:max(c.rotation_top - stuck, 0)]
                 if c.rotation_corr_lambda > 0 and len(ranked) >= 3 and c.rotation_top == 2 and stuck == 0:
                     first, pool = ranked[0], ranked[1:5]
@@ -541,7 +553,7 @@ class Strategy:
                     plan = {p: w * scale for p, w in plan.items()}
             state.rotation_plan = plan
             state.rotation_plan_ts = ts
-        if c.rotation_stop_atr > 0 or c.rotation_stop_pct > 0:
+        if c.rotation_stop_atr > 0 or c.rotation_stop_pct > 0 or c.rotation_donchian_exit > 0:
             self._rotation_stops(ts, signals, state, frozen)
         plan = dict(state.rotation_plan)
         if not trend_on:
@@ -550,6 +562,9 @@ class Strategy:
             plan = {p: w for p, w in plan.items() if p == c.defensive_pair or p in frozen or w < 0}
         else:
             plan = {p: w for p, w in plan.items() if w > 0 or p in frozen}   # cover shorts at once
+        if c.rotation_external_scale and self.external_scores:
+            scale = self._external(ts).get("__scale__", 1.0)
+            plan = {p: w if p in frozen else w * scale for p, w in plan.items()}
         if c.rotation_euphoria > 0 and regime is not None and regime.return_rotation > c.rotation_euphoria:
             plan = {p: w if p in frozen else w * 0.5 for p, w in plan.items()}
         if c.rotation_vol_forecast and plan:
@@ -557,22 +572,34 @@ class Strategy:
             plan = {p: w * scale for p, w in plan.items()}
         return plan
 
+    def _channel(self, pair: str, hours: int, high: bool) -> float:
+        """Highest high (or lowest low) of the `hours` bars before the latest one; a value that
+        never triggers while there is too little history."""
+        ind = self.indicators[pair]
+        series = ind.highs if high else ind.lows
+        if len(series) < hours + 1:
+            return float("inf") if high else 0.0
+        window = list(series)[-hours - 1:-1]
+        return max(window) if high else min(window)
+
     def _horizon_return(self, pair: str, hours: int) -> Optional[float]:
         r = self.indicators[pair].returns
         if len(r) < hours:
             return None
         return math.exp(sum(list(r)[-hours:])) - 1.0
 
-    def _ensemble_plan(self, signals: Dict[str, Signal], frozen: AbstractSet[str]) -> Dict[str, float]:
+    def _ensemble_plan(self, signals: Dict[str, Signal], frozen: AbstractSet[str],
+                       specs: Optional[List[str]] = None) -> Dict[str, float]:
         """Equal sub-sleeves, each holding its own top rotation_top coins; an empty slot in a
         sub-sleeve goes to the defensive pair if its 336h return is positive, else cash."""
         c = self.cfg
-        share = 1.0 / len(c.rotation_ensemble)
+        specs = specs or c.rotation_ensemble
+        share = 1.0 / len(specs)
         pool = [p for p in signals if p != c.defensive_pair and p not in frozen]
         defensive = signals.get(c.defensive_pair)
         gold_up = defensive is not None and defensive.return_rotation > 0 and c.defensive_pair not in frozen
         plan: Dict[str, float] = {}
-        for spec in c.rotation_ensemble:
+        for spec in specs:
             kind, _, arg = spec.partition(":")
             horizons = [int(h) for h in arg.split(",")]
             if kind == "ret":
@@ -657,7 +684,9 @@ class Strategy:
             high = max(state.rotation_highs.get(pair, s.close), s.close)
             state.rotation_highs[pair] = high
             hit = ((c.rotation_stop_atr > 0 and s.close < high - c.rotation_stop_atr * s.atr)
-                   or (c.rotation_stop_pct > 0 and s.close < high * (1.0 - c.rotation_stop_pct)))
+                   or (c.rotation_stop_pct > 0 and s.close < high * (1.0 - c.rotation_stop_pct))
+                   or (c.rotation_donchian_exit > 0
+                       and s.close < self._channel(pair, c.rotation_donchian_exit, high=False)))
             if hit:
                 del state.rotation_plan[pair]
                 del state.rotation_highs[pair]
@@ -677,6 +706,8 @@ class Strategy:
         days = [sum(x * x for x in r[len(r) - 24 * (i + 1):len(r) - 24 * i]) for i in range(90)][::-1]
 
         def forecast(k: int) -> float:          # using day blocks up to index k (inclusive)
+            if method == "realised":
+                return sum(days[k - 29:k + 1]) / 30
             if method == "ewma":
                 var = days[k - 29]
                 for d in days[k - 28:k + 1]:

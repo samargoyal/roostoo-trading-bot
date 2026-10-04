@@ -816,6 +816,28 @@ from one fold, 2020–21. No design reached the holdout. Forty rounds and about 
 the incumbent stands: designs that win most years break when their setting is nudged, which is
 what noise around a good design looks like.
 
+### Rounds 41 to 44: sentiment, Donchian channels, partial rebalancing, adaptive lookback
+
+Same rule as rounds 31–40 (composite per fold, from October 2020; incumbent median 2.87, worst
+drawdown 42%):
+
+| Round | Design | Folds better | Median | Worst DD |
+|---|---|---|---|---|
+| 41 | halve the rotation in extreme greed (Fear & Greed ≥ 80) | 0/6 | – | 43% |
+| | halve the rotation when stablecoin supply growth is in its yearly top fifth | 1/6 | – | 42% |
+| 42 | Donchian rotation: 20-day breakouts, held until the 10-day low | 1/6 | 2.02 | **29%** |
+| | rotation picks must be at a 20-day high | 1/6 | 0.41 | **22%** |
+| | rotation picks exit below their 10-day low | 0/6 | 2.83 | 42% |
+| | the book exits below its 10-day low instead of the ATR stop | 2/6 | 2.87 | 42% |
+| 43 | plain rebalances move halfway to their target | 3/6 | 2.74 | 42% |
+| 44 | 1-week lookback while BTC's volatility is above its 60-day median | 2/6 | 2.20 | 44% |
+
+Both sentiment series passed a screen against BTC's next week (`research/h31_sentiment.py`:
+Fear & Greed correlation -0.072, stablecoin growth -0.054, 5 of 6 folds), but the rotation earns
+most in exactly those greedy weeks (`research/h32_sentiment_strategy.py`). The Donchian rules
+nearly halved the worst drawdown by entering only after a 20-day high, and gave up most of the
+return doing it.
+
 ## How it works
 
 ```
