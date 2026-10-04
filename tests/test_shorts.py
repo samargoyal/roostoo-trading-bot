@@ -3,7 +3,6 @@ import json
 import shutil
 import tempfile
 import unittest
-from decimal import Decimal
 
 from bot.backtest import run_backtest
 from bot.config import Config, ExecutionConfig, StrategyConfig
@@ -12,8 +11,8 @@ from bot.live import LiveBot, portfolio_value
 from bot.market_data import HOUR_MS
 from bot.planner import BUY, COVER, REBALANCE, SELL, SHORT, plan_trades
 from bot.roostoo import sign
-from bot.strategy import (ENTRY, EXIT_SHORT, EXIT_SHORT_STOP, HOLD, SHORT_ENTRY, SHORT_HOLD, Decision,
-                          PositionInfo, ShortInfo, Strategy, StrategyState)
+from bot.reasons import ENTRY, EXIT_SHORT, EXIT_SHORT_STOP, SHORT_ENTRY, SHORT_HOLD
+from bot.strategy import Decision, ShortInfo, Strategy, StrategyState
 from tests.fakes import NOW, FakeBinance, FakeExchange, zigzag
 from tests.test_roostoo import DOC_SECRET, FakeResponse, make_client
 from tests.test_strategy import sig

@@ -20,8 +20,9 @@ from typing import AbstractSet, Dict, List, Optional
 
 from bot.config import ExecutionConfig
 from bot.market_data import HOUR_MS
-from bot.strategy import (EXIT_REGIME, EXIT_SHORT, EXIT_SHORT_STOP, EXIT_STOP, EXIT_TREND,
-                          HOLD_HALTED, SHORT_ENTRY, Decision)
+from bot.reasons import (EXIT_REGIME, EXIT_SHORT, EXIT_SHORT_STOP, EXIT_STOP, EXIT_TREND, HOLD_HALTED,
+                         SHORT_ENTRY)
+from bot.strategy import Decision
 
 BUY = "BUY"        # open or add to a long
 SELL = "SELL"      # reduce or close a long

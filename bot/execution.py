@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 from bot.config import ExecutionConfig
 from bot.planner import BUY, COVER, SELL, SHORT, PlannedTrade
 from bot.roostoo import RoostooClient, RoostooError
-from bot.strategy import EXIT_STOP
+from bot.reasons import EXIT_STOP
 
 log = logging.getLogger(__name__)
 

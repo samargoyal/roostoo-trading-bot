@@ -28,83 +28,96 @@ DEFAULT_UNIVERSE = [
 
 @dataclass
 class StrategyConfig:
+    """The strategy. The first groups are what the bot trades with: the defaults run the
+    rotation beside the defensive book, and config/comp.json switches the competition account's
+    book to the long-short trend book. Everything under "Research options" is off by default
+    and used only by research/ (see docs/research.md)."""
     universe: List[str] = field(default_factory=lambda: list(DEFAULT_UNIVERSE))
 
-    # Market regime: risk-on while the regime pair closes above its long EMA.
+    # ---- Both books ------------------------------------------------------------------
+    # The regime pair (BTC) drives the trend filters; the defensive pair (PAXG) is the safe
+    # haven. Positions under min_position_weight of equity count as none. Pairs Roostoo halts
+    # are never traded; with plan_around_halts the strategy holds them as they are and plans
+    # the rest around them (round 11).
     regime_pair: str = "BTC/USD"
+    defensive_pair: str = "PAXG/USD"
+    volatility_window: int = 168        # hours of log returns behind the volatility estimate
+    atr_period: int = 14
+    stop_cooldown_hours: int = 24       # no re-entry into a coin for this long after a stop
+    min_position_weight: float = 0.005
+    plan_around_halts: bool = True
+
+    # ---- The momentum rotation: rotation_weight of equity -----------------------------
+    # Holds the rotation_top coins with the strongest positive return over rotation_lookback
+    # hours, equally weighted, chosen again every rotation_rebalance_hours at 00:00 UTC, while
+    # the regime pair's rotation_trend_fast EMA is above its rotation_trend_slow EMA; it leaves
+    # at once when that fails. An empty slot goes to the defensive pair if its own return is
+    # positive, else cash. 70% since 2026-10-04, the user's choice of risk after the
+    # optimisation in research/rotation_weight.py (which, with a 50% drawdown limit, gives 50%).
+    rotation_weight: float = 0.7
+    rotation_lookback: int = 336
+    rotation_top: int = 2
+    rotation_rebalance_hours: int = 24
+    rotation_trend_fast: int = 168
+    rotation_trend_slow: int = 672
+
+    # ---- The book: the rest of equity -------------------------------------------------
+    book_mode: str = "trend"              # "trend": the defensive book below; "long_short": the long-short
+                                          # trend book (the competition account since 5 October 2026);
+                                          # research: "hybrid" (the defensive book, but in a confirmed bear
+                                          # market every coin in its own downtrend, short) and "overlay"
+                                          # (the defensive book, its idle cash shorting downtrends)
+
+    # The long-short trend book (book_mode "long_short", research rounds 50-64): every coin
+    # long while its ls_trend fast EMA is above the slow one and short while below, each its
+    # inverse-volatility share of all coins (shorts are 1x on Roostoo, so longs plus shorts never
+    # exceed the book's share), shorts covered by a trailing stop and none where shorts are
+    # crowded. config/comp.json: EMAs 240h/960h, 10-ATR stops, the funding filter.
+    ls_trend: List[int] = field(default_factory=lambda: [168, 672])
+    short_stop_atr: float = 0.0           # > 0: the book covers a short this many ATRs above its lowest close
+                                          # since entry, and leaves the coin for stop_cooldown_hours
+    short_exclude_external: bool = False  # no short (book or rotation basket) on a coin whose external score
+                                          # is negative: live, its perpetual funding rate over
+                                          # live.funding_hours (crowded shorts, round 54)
+
+    # The defensive trend book (book_mode "trend", the default): low-volatility coins in
+    # uptrends (fast EMA above slow, close above slow, RSI not above rsi_max_entry), sized by
+    # equal risk contribution and capped at max_weight, with an ATR trailing stop, a market
+    # regime (risk-on while the regime pair closes above its regime_ema EMA), a PAXG core and a
+    # drawdown brake on the book's own value.
     regime_ema: int = 200
     risk_on_exposure: float = 0.75       # max fraction of equity invested when risk-on
     risk_off_exposure: float = 0.25      # ... and when risk-off
     max_positions_risk_on: int = 8
     max_positions_risk_off: int = 3
-
-    # Defensive asset: always held as a small core, and first in line when risk-off.
-    defensive_pair: str = "PAXG/USD"
     core_weight: float = 0.05
-
-    # Trend filter and trend exit.
     fast_ema: int = 50
     slow_ema: int = 200
-
-    # Ranking. "low_volatility" (default) prefers the coins with the calmest hourly returns
-    # over volatility_window; "momentum" uses the two-horizon volatility-adjusted momentum
-    # below; "composite" adds, with equal weight on each coin's normal-score rank, a narrow
-    # estimated spread and a strong Kalman trend (research H20). research/ shows why low
-    # volatility won (README: Strategy research). "external" (research only) ranks by saved
-    # model scores passed to the backtester (research H23).
     ranking: str = "low_volatility"
     momentum_short: int = 72
     momentum_long: int = 168
     momentum_short_weight: float = 0.5  # the long horizon gets 1 - this
-    volatility_window: int = 168        # hours of log returns behind the volatility estimate
-
-    # Entry timing.
     rsi_period: int = 14
     rsi_max_entry: float = 70.0
-
-    # Sizing and trailing stop.
-    atr_period: int = 14
     max_weight: float = 0.15            # per-coin cap; for the defensive pair it includes the core
     sizing: str = "erc"                 # "erc" (equal risk contribution), "min_variance" or "inverse_atr";
                                         # the first two use rotation_cov_hours of returns, all capped at
                                         # max_weight. Six-year folds: erc with 8 positions (round 6)
     stop_atr_multiple: float = 8.0      # exit below the highest close since entry minus this many ATRs
-    stop_cooldown_hours: int = 24       # no re-entry into a coin for this long after a stop
-
-    # Portfolio drawdown brake.
     brake_drawdown: float = 0.04         # engage when equity is this far below its peak
     brake_release_drawdown: float = 0.02  # release once the drawdown is back under this
     brake_factor: float = 0.5            # scale trend positions by this while engaged
 
-    # A holding below this fraction of equity counts as no position.
-    min_position_weight: float = 0.005
+    # ==== Research options, all off by default (research/rounds.py, docs/research.md) ====
 
-    # Pairs Roostoo halts are never traded (the planner drops their trades). True also tells
-    # the strategy, which then holds them as they are, never buys them and re-solves the book
-    # around them (equal risk contributions with their weights fixed). Round 11, with heavy
-    # halts: better than not telling it in 6 of 12 runs, a tie that met the rule set beforehand.
-    plan_around_halts: bool = True
-
-    # Short sleeve, betting against beta: short the most volatile coins in the universe,
-    # whatever their trend, sized by inverse ATR. 0 switches it off. Research (H13) found
-    # 10-20% with an 8-12 ATR stop worked in both years and in the rally that followed;
-    # 0.15 with a 10 ATR stop is the centre of that range. Off by default until Roostoo's
-    # /v6 short endpoints have been tried on the testing account.
+    # The short sleeve, betting against beta (H13): short the most volatile coins, sized by
+    # inverse ATR, with a trailing stop. config/shorts.json turns it on.
     short_exposure: float = 0.0
     max_shorts: int = 3
     short_rsi_min: float = 30.0          # no new shorts into oversold coins
     short_stop_atr_multiple: float = 10.0  # cover above the lowest close since entry plus this many ATRs
 
-    # Long-short trend book (research H50, off by default). "long_short" replaces the
-    # defensive book above: every coin is held long while its ls_trend fast EMA is above the
-    # slow one and short while below, weighted by inverse volatility to 100% of the book's
-    # share (shorts are 1x on Roostoo, so long plus short never exceeds that share).
-    book_mode: str = "trend"              # "hybrid": the defensive book, but in a confirmed bear market
-                                          # (short_regime_hours) every coin in its own downtrend, short;
-                                          # "overlay": the defensive book, with the cash it leaves idle
-                                          # short every coin in its own downtrend (ls_trend), each its
-                                          # inverse-volatility share of all coins
-    ls_trend: List[int] = field(default_factory=lambda: [168, 672])
+    # Long-short book variants (rounds 50-64).
     ls_ensemble: List[List[int]] = field(default_factory=list)  # more [fast, slow] EMA pairs: each coin's
                                           # position is the mean of its trend signs over ls_trend and these
                                           # (a vote from -1 to 1), so mixed signals mean smaller positions
@@ -124,10 +137,10 @@ class StrategyConfig:
     ls_idle_horizon: int = 0              # > 0: the long-short book's unused share goes to the defensive pair
                                           # while its return over this many hours is positive (round 60)
     ls_band: float = 0.0                  # > 0: a neutral zone, no position while the EMAs are closer than this
+    ls_full_gap: float = 0.0              # > 0: size by trend strength, full size once the EMA gap reaches this
+                                          # (the book then holds cash while trends are weak)
     short_vol_ratio: List[int] = field(default_factory=list)  # [recent, base] hours: the book's shorts shrink
                                           # by base / recent volatility of BTC when the recent one is higher
-    short_stop_atr: float = 0.0           # > 0: the book covers a short this many ATRs above its lowest close
-                                          # since entry, and leaves the coin for stop_cooldown_hours
     short_entry_channel: int = 0          # > 0: the book shorts a coin only on a close below its lowest low of
                                           # this many hours, and covers above its highest high of
     short_exit_channel: int = 0           # this many (turtle rules); untimed slots stay in cash
@@ -137,34 +150,27 @@ class StrategyConfig:
     short_entry_rsi_min: float = 0.0      # > 0: no new short while the coin's RSI is below this (round 63)
     short_min_funding_rank: float = 0.0   # > 0: the book shorts only coins whose external score (funding) ranks
                                           # at least this high among all coins: crowded longs (round 57)
-    rotation_max_external: float = 0.0    # > 0: the rotation skips a pick whose external score (funding) is
-                                          # above this: crowded longs (round 57)
     long_max_external: float = 0.0        # > 0: the long-short book holds no long whose external score (its
                                           # recent funding rate) is above this: crowded longs (round 56)
-    short_exclude_external: bool = False  # research: no short (book or rotation basket) on a coin whose saved
-                                          # external score is negative (round 54: its recent perpetual
-                                          # funding rate, negative when shorts are crowded)
     short_regime_hours: int = 0           # > 0: shorts (long-short book, hybrid book, rotation basket) only in
                                           # a confirmed bear market: the rotation's BTC filter off and BTC
                                           # below its simple average over this many hours (4800: 200 days;
                                           # backtest.warmup_bars and live.history_bars must exceed it)
-    ls_full_gap: float = 0.0              # > 0: size by trend strength, full size once the EMA gap reaches this
-                                          # (the book then holds cash while trends are weak)
 
-    # Momentum rotation sleeve (research H15-H16): this share of equity holds the coins with
-    # the strongest positive return over rotation_lookback hours, equally weighted, chosen
-    # again every rotation_rebalance_hours at 00:00 UTC. It is in the market only while the
-    # regime pair's rotation_trend_fast EMA is above its rotation_trend_slow EMA, and leaves
-    # at once when that fails; an empty slot goes to the defensive pair if its own return is
-    # positive. The rest of equity runs the strategy above. 0 switches the sleeve off. 70%
-    # since 2026-10-04, the user's choice of risk after the optimisation in research/
-    # rotation_weight.py (which, with a 50% drawdown limit, gives 50%; see the README).
-    rotation_weight: float = 0.7
-    rotation_lookback: int = 336
-    rotation_top: int = 2
-    rotation_rebalance_hours: int = 24
-    rotation_trend_fast: int = 168
-    rotation_trend_slow: int = 672
+    # Defensive book variants.
+    slow_filter: List[int] = field(default_factory=list)  # [fast, slow] EMA spans: a second, slower BTC
+                                          # trend filter the sleeve must also pass (research round 49)
+    regime_slow_filter: bool = False      # the book's risk-on also needs that slow filter (round 49)
+    regime_band: float = 0.0              # > 0: hysteresis on the book's regime: off only below EMA x (1 - b),
+                                          # on only above EMA x (1 + b) (research round 33)
+    trend_exit_band: float = 0.0          # > 0: trend exit only when EMA fast < EMA slow x (1 - b) (round 33)
+    regime_breadth: float = 0.0           # > 0: the book is risk-on while breadth is at least this (round 24)
+    book_donchian_exit: int = 0           # > 0: the book exits below the previous N hours' low (42)
+    book_excludes_rotation: bool = False  # the book does not enter coins the sleeve holds (round 36)
+
+    # Rotation variants (rounds 20-64).
+    rotation_max_external: float = 0.0    # > 0: the rotation skips a pick whose external score (funding) is
+                                          # above this: crowded longs (round 57)
     rotation_core_share: float = 0.0      # share of the sleeve kept in the regime pair (BTC) while the
                                           # trend filter is on; the momentum slots share the rest
     rotation_weighting: str = "equal"     # how the picks share the sleeve: "equal", "inverse_vol",
@@ -177,9 +183,6 @@ class StrategyConfig:
                                           # or "external" (research only): saved model scores
     rotation_exclude_external: bool = False  # research only: skip coins whose saved external score is
                                           # negative (research H30, funding-rate crowding)
-    slow_filter: List[int] = field(default_factory=list)  # [fast, slow] EMA spans: a second, slower BTC
-                                          # trend filter the sleeve must also pass (research round 49)
-    regime_slow_filter: bool = False      # the book's risk-on also needs that slow filter (round 49)
     rotation_adaptive_lookbacks: List[int] = field(default_factory=list)  # [high-vol, normal]: the
                                           # lookback while BTC's 30-day volatility is above, or not, its
                                           # median over the last 60 days (research round 44)
@@ -188,13 +191,11 @@ class StrategyConfig:
     rotation_donchian_exit: int = 0       # > 0: drop a pick that closes below its lowest low of the
                                           # previous N hours (round 42)
     rotation_donchian_hold: bool = False  # keep held picks until that exit instead of re-ranking (42)
-    book_donchian_exit: int = 0           # > 0: the book exits below the previous N hours' low (42)
     rotation_external_scale: bool = False  # research only: scale the sleeve by the saved "__scale__"
                                           # score of the day (round 41)
     rotation_regime_pair: str = ""        # set: the sleeve's trend filter reads this pair instead (round 38)
     rotation_min_age_hours: int = 0       # > 0: picks need this many hourly bars of history (round 39)
     rotation_top_volume: int = 0          # > 0: picks must rank in this many by 30-day dollar volume (40)
-    book_excludes_rotation: bool = False  # the book does not enter coins the sleeve holds (round 36)
     rotation_corr_lambda: float = 0.0     # > 0: the second pick, among the top 5, maximises the normal score
                                           # of its return minus this x its correlation with the first (36)
     rotation_min_tstat: float = 0.0       # > 0: a pick's lookback log return over its volatility x sqrt(hours)
@@ -203,9 +204,6 @@ class StrategyConfig:
                                           # target weight (round 37)
     rotation_entry_every: int = 0         # > 0: when the filter turns on, re-plan at the next hour divisible
                                           # by this instead of waiting for the daily rebalance (round 35)
-    regime_band: float = 0.0              # > 0: hysteresis on the book's regime: off only below EMA x (1 - b),
-                                          # on only above EMA x (1 + b) (research round 33)
-    trend_exit_band: float = 0.0          # > 0: trend exit only when EMA fast < EMA slow x (1 - b) (round 33)
     rotation_filter_band: float = 0.0     # > 0: hysteresis on the sleeve's trend filter (round 33)
     rotation_ensemble: List[str] = field(default_factory=list)  # research rounds 31+: sub-sleeves, each
                                           # an equal share picking its own top coins: "ret:H" ranks by the
@@ -228,7 +226,6 @@ class StrategyConfig:
     rotation_reentry_hours: int = 0       # > 0: the filter must have been on this long to re-enter (round 25)
     rotation_breadth: float = 0.0         # > 0: market breadth (share of coins with EMA fast > slow) needed
     rotation_breadth_mode: str = "and"    # for the sleeve: "and" with BTC's filter, or "only" (round 24)
-    regime_breadth: float = 0.0           # > 0: the book is risk-on while breadth is at least this (round 24)
     rotation_brake_drawdown: float = 0.0  # > 0: halve the sleeve while the account is this far below its
     rotation_brake_release: float = 0.0   # peak, until it is back within the release (research round 23)
     rotation_equity_ma_hours: int = 0     # > 0: sleeve only while the account is above its average over
@@ -254,7 +251,6 @@ class StrategyConfig:
     rotation_cvar_limit: float = 0.0      # > 0: at each rebalance, scale the sleeve down so its 1-day
                                           # 95% CVaR (from the picks' last rotation_cov_hours of hourly
                                           # returns) is at most this share of total equity
-
 
 @dataclass
 class UniverseConfig:

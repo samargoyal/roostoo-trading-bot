@@ -4,7 +4,8 @@ import unittest
 from bot.config import StrategyConfig
 from bot.indicators import Signal
 from bot.market_data import HOUR_MS
-from bot.strategy import ENTRY, ROTATION, SHORT_ENTRY, Strategy, StrategyState
+from bot.reasons import ROTATION, SHORT_ENTRY
+from bot.strategy import Strategy, StrategyState
 
 UNIVERSE = ["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD", "PAXG/USD"]
 DAY = 24 * HOUR_MS
@@ -175,7 +176,7 @@ class ResidualAndZTest(unittest.TestCase):
         self.assertTrue(all(w >= 0 for w in up.rotation.values()))
 
     def test_volatility_forecast_shrinks_the_sleeve_when_btc_is_wild(self):
-        import math, random
+        import random
         strategy = make(market(), rotation_vol_forecast="har")
         rng = random.Random(4)
         returns = strategy.indicators["BTC/USD"].returns
