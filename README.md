@@ -23,8 +23,14 @@ Two books share the account, trading the 45 most traded crypto pairs on Roostoo 
 - **Momentum rotation, 70% of equity.** Holds the 2 coins with the strongest positive
   2-week return, re-chosen daily at 00:00 UTC, while BTC's 168-hour EMA is above its
   672-hour EMA, and leaves at once when it is not. This is the return engine.
-- **Defensive trend book, 30% of equity.** Low-volatility coins in uptrends, with a market
-  regime filter, trailing stops and a drawdown brake. This is the risk engine.
+- **Long-short trend book, 30% of equity** (the competition account since 5 October 2026,
+  through [`config/comp.json`](config/comp.json)). Every coin long while its 240-hour EMA is
+  above its 960-hour EMA and short while below, weighted by inverse volatility, with a trailing
+  stop on each short and no short where shorts are crowded (negative perpetual funding). See
+  [Rounds 50 to 64](#rounds-50-to-64-long-short).
+- **Defensive trend book**, the code's default book, which held the 30% until 5 October 2026:
+  low-volatility coins in uptrends, with a market regime filter, trailing stops and a drawdown
+  brake.
 
 The split was 40/60 until 4 October 2026. An optimisation of the rotation's share in steps of
 5% (see [The rotation's share](#the-rotations-share-optimised)) gave 50% under a 50% drawdown
@@ -35,7 +41,22 @@ The two books' daily returns are barely correlated (0.18), so together they keep
 rotation's upside with a much smaller drawdown. The competition ranks on return and then
 scores `0.4 x Sortino + 0.3 x Sharpe + 0.3 x Calmar`.
 
-The defensive book's rules:
+Over the six yearly folds, the rotation with the long-short book made +49,404% against
++31,945% with the defensive book, with a worst yearly drawdown of 52% against 58%, and a
+better competition score in 5 of 6 years and in both untouched holdout years.
+
+The long-short book's rules:
+
+| Rule | Detail |
+|---|---|
+| Direction | Long while the coin's 240-hour EMA is above its 960-hour EMA, short while below. PAXG is left out. |
+| Sizing | Each coin's share of the book is its inverse volatility (168 hours) over the sum for all coins, so calmer coins weigh more, and a coin not held leaves its share in cash. Shorts are 1x on Roostoo, so longs plus shorts never exceed the book's 30%. |
+| Short stop | A short is covered once the close rises 10 ATR above its lowest close since entry; no new short in that coin for 24 hours. |
+| Crowding filter | No short in a coin whose Binance perpetual funding rate averaged below zero over the 72 hours to 00:00 UTC: shorts paying longs means crowded shorts, the set-up for a squeeze. Fetched once a day from Binance's USD-M futures API; a coin without a perpetual or without data is not filtered. |
+| Paying for entries | When entries need more cash than is free, the holdings furthest above their targets are trimmed to pay for them. |
+| Activity rule | As below; with no long to adjust, the short furthest from its target is. |
+
+The defensive book's rules (the default book; it held the 30% until 5 October 2026):
 
 | Rule | Detail |
 |---|---|
@@ -960,6 +981,80 @@ yearly composite 2.15 and 3.14 against 1.98 and 2.87, median 14-day composite -1
 against -2.31 and -0.02 (returns +86% and +162% against +54% and +97%, drawdowns 32% and 40%
 against 21% and 29%). 60% had not: it lost the 2019–20 14-day comparison.
 
+### Rounds 50 to 64: long-short
+
+The user asked for a long-short strategy. Roostoo's shorts are 1x: a short locks USD collateral
+equal to its size and pays 0.1% to open and to close, with no borrow fee, so long plus short
+can never exceed the account, and a market-neutral book earns only half its long-short spread.
+Every short tried before (H5, H13, round 19) failed: shorts opened after the trend had turned
+and bear-market rallies squeezed them.
+
+**A screen first** (`research/h50_long_short.py`): 24 variants, each a book of at most 100%
+gross rebalanced daily, judged alone and blended with the bot.
+
+| Idea | Result |
+|---|---|
+| Long the 3 strongest coins, short the 3 weakest (cross-sectional momentum) | The weakest bounce hardest: drawdowns up to 86% |
+| The same on returns net of BTC's beta | The same problem |
+| Short coins listed less than a year ago, in a downtrend (token unlocks) | -91% in 2020–21 |
+| Short the 2 weakest coins while BTC's filter is off (round 19) | Lost money in all six years |
+| Long the calmest coins, short the wildest | Lost in 4 of 6 years |
+| BTC alone, long/short on its trend | -45% in 2022–23 |
+| Altcoins against BTC on the trend of their ratio | Better in 1–3 of 6 years |
+| **Every coin long in its uptrend, short in its downtrend, inverse-volatility weights** | **Positive in 5 of 6 years on its own** |
+
+**Two planner fixes.** A fully invested book could not pay for an entry: the planner kept
+proposing buys with no cash, which never filled, and blocked the activity rule, leaving days
+without a trade. The planner now trims the holdings furthest above their targets to pay for
+entries, and the activity rule falls back to a short (or to a small sale when fully invested).
+The bot as it is backtests identically; the long-short books' first results had been flattered
+by the stuck entries (a crash year of -40% became -54% once fixed).
+
+**In the bot's own backtester**, each design in place of the 30% defensive book unless noted,
+under the rule of rounds 31 on (paired gains in at least 5 of 6 folds, worst drawdown at most 2
+points deeper, neighbours holding in 4 of 6, then both holdout years):
+
+| Round | Hypothesis | Best design | Folds better |
+|---|---|---|---|
+| 50 | The per-coin trend book; regime-aligned; BTC alone; the rotation shorting a basket in bear markets | Trend book (240h/960h EMAs) | 4/6 |
+| 51 | A neutral zone; sizing by trend strength | Either | 3/6 |
+| 52 | Shorts only in confirmed bear markets (BTC below its 200-day average) | Hybrid book | 3/6 |
+| 53 | Squeeze defences: shorts shrunk after wild months; 10-ATR trailing stops; turtle entries and exits; majors only | Stops, or the volatility scaling | 4/6 |
+| **54** | **No short where perpetual funding is negative (crowded shorts)** | **Trend book with stops and the funding filter (R54b)** | **5/6, passed** |
+| 55 | Overlay: the defensive book's idle cash shorts downtrends | With volatility scaling (R55c) | 5/6, passed |
+| 56 | R54b plus volatility scaling; no crowded longs; R55c plus funding | R56a and R56c | 5/6, passed |
+| 57 | Short only where funding is above the median; the rotation skipping crowded picks | — | at most 4/6 |
+| 58 | A three-speed trend vote | The overlay with the vote | 5/6, but weaker than R56c |
+| 59 | Half-size shorts; R54b regime-aligned | — | at most 4/6 |
+| 60 | R54b's unused share in PAXG while gold rises | — | 4/6 |
+| 61, 62 | The rotation's idle share running R54b's book while BTC's filter is off (crash year -36%), also only in confirmed bears | — | 3/6 |
+| 63 | New shorts need funding of 0.005%; no new short below RSI 30 | Both | 5/6, passed, but not better than R54b |
+| 64 | Trailing stops on R54b's longs; shorts on a faster trend than longs | Faster shorts | 5/6, passed, but not better than R54b; the long stops failed the holdout |
+
+R54b, the best: every coin long while its 240-hour EMA is above its 960-hour EMA and short while
+below, weighted by inverse volatility to 100% of the book; a short is covered once the price
+rises 10 ATRs above its lowest close since entry (no new short in that coin for 24 hours); and
+no coin is shorted while its perpetual funding rate has averaged below zero over the last 3
+days, when shorts are crowded and a squeeze is likeliest.
+
+| | 2020–21 | 2021–22 | 2022–23 | 2023–24 | 2024–25 | 2025–26 | 6 years | Worst drawdown |
+|---|---|---|---|---|---|---|---|---|
+| Bot as it is (defensive book) | +1,248% | -56% | +56% | +580% | +265% | +38% | +31,945% | 58% |
+| R54b (long-short book) | +1,614% | -49% | +59% | +626% | +233% | +48% | +49,404% | 52% |
+
+Its neighbours all held (funding over 1 or 7 days, stops at 7 or 14 ATRs, EMAs 168h/672h: 5/6;
+EMAs 336h/1344h: 4/6), and it beat the bot in both holdout years (yearly composite 2.80 and 3.31
+against 2.15 and 3.14; returns +124% and +187% against +86% and +162%), though funding history
+starts in late 2019, so the 2018–19 year tests only the stops. It trades on 99–100% of days.
+With fees doubled it still beat the bot in 5 of 6 years (+24,628% against +15,442%). The
+rotation's share was checked for information: with R54b, 60/40 made +37,056% (worst drawdown
+45%), 70/30 +49,404% (52%) and 80/20 +60,979% (59%); 70/30, the user's choice, was kept.
+Its variants in rounds 55 to 64 landed within a few percent of it, a plateau rather than a
+lucky setting, so the search stopped there and R54b went live on 5 October 2026. Live, the
+funding rates come from Binance's USD-M futures API once a day (`LiveConfig.funding_url`);
+a coin without them is not filtered, and if the API cannot be reached the filter is off for
+the day.
+
 ## How it works
 
 ```
@@ -1122,6 +1217,10 @@ python -m bot.live --account test --config my_settings.json
 ```
 
 Unknown keys are rejected, so a typo cannot silently fall back to a default.
+
+Without `--config`, the live bot uses `config/<account>.json` if it exists, so each account's
+settings are committed and a restart picks them up. `config/comp.json` runs the competition
+account with the long-short book.
 
 `config/shorts.json` turns on the short sleeve (see [Strategy research](#strategy-research)):
 
