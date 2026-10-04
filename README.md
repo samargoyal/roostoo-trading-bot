@@ -713,6 +713,16 @@ so they add little to an account whose returns come from crypto rallies. Searchi
 something passed would only find a lucky fit, so the search stopped here and the bot trades no
 tokenized shares.
 
+Two follow-ups on trading hours (`research/h37_overnight.py`, daily open and close 2016–2026).
+Most of a share's return comes while New York is closed: for the tokenized shares about +26% a
+year from close to next open against +5% from open to close (2011's 40 largest companies: +9.5%
+against +2.3%). Trading them only during US hours keeps the smaller part and pays two trades a
+day, which loses 18–38% a year after fees. Holding only overnight with a predictor fares no
+better: the best of three (overnight momentum, after Lou, Polk and Skouras) picked nights
+earning 0.065% on average for 2011's 40 largest (0.18% for the tokenized shares), against
+0.1–0.2% for the round trip, so it lost 9% a year after limit-order fees and beat simply holding
+in 1 of 10 years.
+
 ### Round 18: funding rates
 
 Binance's perpetual futures charge a funding rate every 8 hours; when longs pay a lot, the
