@@ -723,6 +723,13 @@ earning 0.065% on average for 2011's 40 largest (0.18% for the tokenized shares)
 0.1–0.2% for the round trip, so it lost 9% a year after limit-order fees and beat simply holding
 in 1 of 10 years.
 
+Holding only the shares predicted to beat the cost (`research/h38_overnight_selective.py`: ridge
+and gradient-boosted trees on 14 features, retrained yearly, 2018–2026) did no better. For
+2011's 40 largest companies, the nights predicted above 0.1% then earned 0.028% (ridge) and
+-0.005% (trees) on average: the predictions that cleared the cost were mostly noise, and every
+version lost money after costs. On the tokenized shares the best made +6.7% a year against
++46.8% for holding them.
+
 ### Round 18: funding rates
 
 Binance's perpetual futures charge a funding rate every 8 hours; when longs pay a lot, the
