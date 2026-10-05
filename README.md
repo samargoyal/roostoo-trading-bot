@@ -252,6 +252,7 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 |---|---|---|
 | 4 October 2026, 12:59 | `189ae70` | 70% momentum rotation and 30% defensive trend book, long only |
 | The restart after 18:43, 4 October 2026 | `ccace84` | 70% momentum rotation and 30% long-short trend book (round 54's R54b) |
+| The restart after this push, 6 October 2026 | `5bc0678` | The same, the rotation ranked on 1-, 2- and 3-week returns (round 73); the previous settings are `config/comp_r54b.json` |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
