@@ -9,3 +9,4 @@ statsmodels>=0.14
 torch>=2.0  # research/h21_learning.py only; CPU build: pip install torch --index-url https://download.pytorch.org/whl/cpu
 yfinance>=0.2  # research/h25_stock_proxy.py only
 ta>=0.11  # research/h33_indicators.py only
+pyarrow>=12  # research/klines5m.py and h60_swing_mft.py's 5-minute tests only

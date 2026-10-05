@@ -105,6 +105,11 @@ class StrategyState:
     book_peak: float = 1.0
     book_weights: Dict[str, float] = field(default_factory=dict)       # its last targets
     book_closes: Dict[str, float] = field(default_factory=dict)        # prices when they were set
+    rotation_entry_close: Dict[str, float] = field(default_factory=dict)  # research: each pick's entry price
+    rotation_trimmed: Dict[str, float] = field(default_factory=dict)      # research: share kept after profit
+    window_index: int = -1              # research: the competition window of the profits lock
+    window_equity: float = 0.0          # research: the account's value when that window began
+    profit_locked: bool = False         # research: profits secured for the rest of the window
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -134,6 +139,11 @@ class StrategyState:
             book_peak=float(data.get("book_peak", 1.0)),
             book_weights={p: float(v) for p, v in data.get("book_weights", {}).items()},
             book_closes={p: float(v) for p, v in data.get("book_closes", {}).items()},
+            rotation_entry_close={p: float(v) for p, v in data.get("rotation_entry_close", {}).items()},
+            rotation_trimmed={p: float(v) for p, v in data.get("rotation_trimmed", {}).items()},
+            window_index=int(data.get("window_index", -1)),
+            window_equity=float(data.get("window_equity", 0.0)),
+            profit_locked=bool(data.get("profit_locked", False)),
         )
 
 
@@ -254,7 +264,7 @@ class Strategy(ResearchRules):
             rotation, share = self._research_absorb(rotation, regime, frozen)
             targets, reasons = self._long_short_book(signals, weights, frozen, regime, sides, state, ts)
             return self._merge(ts, risk_on, 1.0, drawdown, state, signals, targets, reasons, {},
-                               rotation, account, frozen, share)
+                               rotation, account, frozen, share, equity)
 
         reasons: Dict[str, str] = {}
         exiting = set()
@@ -327,15 +337,16 @@ class Strategy(ResearchRules):
             self._shorts(ts, signals, scores, weights, state, targets, reasons,
                          set(keep + entries) | set(rotation), frozen)
         return self._merge(ts, risk_on, exposure, drawdown, state, signals, targets, reasons, scores,
-                           rotation, account, frozen)
+                           rotation, account, frozen, equity=equity)
 
     def _merge(self, ts: int, risk_on: bool, exposure: float, drawdown: float, state: StrategyState,
                signals: Dict[str, Signal], targets: Dict[str, float], reasons: Dict[str, str],
                scores: Dict[str, float], rotation: Dict[str, float], account: Dict[str, float],
-               frozen: AbstractSet[str], share: Optional[float] = None) -> Decision:
+               frozen: AbstractSet[str], share: Optional[float] = None, equity: float = 0.0) -> Decision:
         """The book's targets (fractions of its share, by default 1 - rotation_weight) and the
         rotation's, as fractions of equity."""
         c = self.cfg
+        book = targets
         if c.rotation_weight > 0:
             state.book_weights = {p: t for p, t in targets.items() if t != 0.0}
             state.book_closes = {p: signals[p].close for p in state.book_weights if p in signals}
@@ -346,6 +357,8 @@ class Strategy(ResearchRules):
                     reasons[pair] = ROTATION
                 targets[pair] = targets.get(pair, 0.0) + c.rotation_weight * weight
 
+        targets, exposure = self._research_window_lock(ts, equity, targets, book, rotation, signals, exposure,
+                                                       state, frozen, reasons)
         if frozen:
             targets = _hold_frozen(targets, account, frozen, reasons)
         return Decision(ts=ts, risk_on=risk_on, exposure_limit=exposure, drawdown=drawdown,
@@ -440,6 +453,7 @@ class Strategy(ResearchRules):
                 filled = (1.0 - core) * (1.0 if concentrated else len(picks) / c.rotation_top)
                 for pair, weight in self._rotation_weights(picks, signals).items():
                     plan[pair] = filled * weight
+                self._research_reapply_trims(plan, state)
                 self._research_btc_fill(plan, picks, alts, regime, frozen, stuck)
             elif c.rotation_shorts > 0 and self._shorts_allowed(regime):
                 self._research_rotation_shorts(plan, signals, state, frozen, ts)
@@ -454,6 +468,7 @@ class Strategy(ResearchRules):
             state.rotation_plan_ts = ts
         if c.rotation_stop_atr > 0 or c.rotation_stop_pct > 0 or c.rotation_donchian_exit > 0:
             self._rotation_stops(ts, signals, state, frozen)
+        self._research_rotation_exits(ts, signals, state, frozen)
         plan = dict(state.rotation_plan)
         if not trend_on:
             # Leave at once when the trend filter fails; only the defensive part (and any
@@ -576,6 +591,8 @@ class Strategy(ResearchRules):
         if liquid is not None and pair not in liquid:
             return True
         if c.short_exclude_external and self.external_scores and self._external(ts).get(pair, 0.0) < 0:
+            return True
+        if self._research_short_veto(pair, ts):
             return True
         if pair not in held:
             if (c.short_entry_min_funding > 0 and self.external_scores

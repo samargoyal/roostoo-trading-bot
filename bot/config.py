@@ -169,6 +169,34 @@ class StrategyConfig:
     book_excludes_rotation: bool = False  # the book does not enter coins the sleeve holds (round 36)
 
     # Rotation variants (rounds 20-64).
+    rotation_attention_filter: bool = False  # research (round 65): the rotation skips a coin whose saved attention
+    rotation_attention_floor: float = 0.0  # score ("ATT:" + pair, log of 7-day over 90-day Wikipedia views) is
+                                          # below this floor; coins without one are never skipped
+    rotation_attention_key: str = "ATT"   # round 66: "SHR" filters on the coin's share of all crypto attention
+    rotation_attention_rank: float = 0.0  # > 0: rank candidates by the normal score of their return plus this
+                                          # times that of their attention (none: 0); round 66
+    rotation_exit_attention: bool = False  # round 66: a held pick leaves when its attention falls below
+    rotation_exit_attention_floor: float = -0.51  # this (log; -0.51: 40% below normal), cooling down a day
+    rotation_exit_spike: float = 0.0      # > 0: a held pick leaves on a day of this many times its usual views
+    rotation_market_attention: bool = False  # round 66: the rotation is in the market only while attention to
+    rotation_market_attention_floor: float = -0.22  # crypto as a whole is above this (log; -0.22: 20% below)
+    rotation_exhaustion: bool = False     # round 69: skip a candidate whose trend shows exhaustion: within
+    exhaustion_near_high: float = 0.97    # this fraction of its 7-day high with RSI below exhaustion_rsi
+    exhaustion_rsi: float = 60.0          # (weak highs), or up over 3 days on less than exhaustion_volume of
+    exhaustion_volume: float = 0.7        # the previous 3 days' dollar volume (volume divergence)
+    rotation_btc_dip_hours: int = 0       # > 0: while BTC's return over this many hours to the last 00:00 UTC
+    rotation_btc_dip_share: float = 0.5   # close is below zero, the picks keep this share of their weight (round 70)
+    rotation_take_profit: float = 0.0     # > 0: once a pick is this far above its entry, keep only
+    rotation_take_profit_keep: float = 0.5  # this share of it until it leaves the picks (round 68)
+    rotation_profit_trail_after: float = 0.0  # > 0: once a pick has gained this much, a trailing stop this far
+    rotation_profit_trail: float = 0.15   # below its high since entry protects the gain (round 68)
+    rotation_dd_scale: bool = False       # round 68: the sleeve shrinks as the account falls from its high of
+    rotation_dd_hours: int = 720          # the last this many hours: full size until rotation_dd_start below
+    rotation_dd_start: float = 0.05       # it, then in proportion down to rotation_dd_min of its size at
+    rotation_dd_full: float = 0.20        # rotation_dd_full below it
+    rotation_dd_min: float = 0.25
+    short_attention_max: float = 99.0     # < 99: the long-short book does not short a coin whose attention is
+                                          # above this (log): no shorts into retail hype (round 66)
     rotation_max_external: float = 0.0    # > 0: the rotation skips a pick whose external score (funding) is
                                           # above this: crowded longs (round 57)
     rotation_core_share: float = 0.0      # share of the sleeve kept in the regime pair (BTC) while the
@@ -215,6 +243,7 @@ class StrategyConfig:
     rotation_btc_margin: float = 0.0
     rotation_horizons: List[int] = field(default_factory=list)  # rotation_ranking "multi": the
                                           # horizons (hours) whose return ranks are averaged
+    rotation_horizon_weights: List[float] = field(default_factory=list)  # their weights (empty: equal)
     rotation_concentrate: float = 0.0     # > 0: one pick takes the whole sleeve when its return is at least
                                           # this multiple of the second's (research round 27)
     rotation_euphoria: float = 0.0        # > 0: halve the sleeve while BTC's lookback return is above this
@@ -251,6 +280,32 @@ class StrategyConfig:
     rotation_cvar_limit: float = 0.0      # > 0: at each rebalance, scale the sleeve down so its 1-day
                                           # 95% CVaR (from the picks' last rotation_cov_hours of hourly
                                           # returns) is at most this share of total equity
+
+    # Securing profits within the competition window (research/h70_secure_profits.py).
+    # Once the account's gain since the window began exceeds secure_k times the portfolio's
+    # daily volatility times the square root of the days left, every position is scaled to
+    # secure_scale for the rest of the window: the gain is then more than a normal loss over
+    # the remaining time could erase, so the score has more to lose than to win. The volatility
+    # comes from the positions' last secure_vol_hours of hourly returns, measured once a day.
+    # Windows of window_days start at window_start_ms (ms, UTC) and repeat, so a backtest
+    # scores every 14 days; the first counts from window_start_equity when set (the
+    # competition's $100,000), later ones from the equity at their start. Off while secure_k
+    # is 0.
+    secure_k: float = 0.0
+    secure_mode: str = "half"           # "half": every position scaled to secure_scale, the rest in cash;
+                                        # "half_gold": the same, the rest in the defensive pair; "refresh": the
+                                        # rotation's coins are sold into the defensive pair and barred for the
+                                        # rest of the window, so its next pick buys other coins. The others keep
+                                        # the capital invested, moving the rotation's coins into the book
+                                        # ("book"), BTC ("btc"), the defensive pair ("gold") or its top secure_top
+                                        # ("spread")
+    secure_scale: float = 0.5
+    secure_top: int = 5
+    secure_vol_hours: int = 720
+    window_start_ms: int = 0
+    window_days: int = 14
+    window_start_equity: float = 0.0
+
 
 @dataclass
 class UniverseConfig:

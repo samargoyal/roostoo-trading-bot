@@ -18,8 +18,10 @@ python -m research.h50_long_short   # the long-short screen
 | `holdout2018.py` | The untouched holdout, October 2018 to October 2020, for rounds 31 and on |
 | `holdout.py` | The first hold-out check (July to September 2026), run once |
 | `rounds.py` | Rounds 20–64: each design and its neighbours, the adoption rule and the holdout check |
+| `round65_attention.py` – `round72_book_entries_exits.py` | Rounds 65–72, one script each: attention, securing profits, trend exits, entries and exits |
 | `competition_rule.py` | Every design of rounds 20 and on, judged on 14-day windows |
 | `fullbars.py`, `panel.py`, `stocks.py` | Data: full Binance klines, price panels, US share data |
+| `klines5m.py`, `attention.py` | Data: 5-minute Binance candles; daily Wikipedia page views per coin |
 | `sim.py`, `run_variants.py` | A fast simulator used in the first rounds |
 
 **Studies, in order**
@@ -38,6 +40,14 @@ python -m research.h50_long_short   # the long-short screen
 | `h37_overnight.py`, `h38_overnight_selective.py` | Overnight returns of the tokenized stocks |
 | `rotation_weight.py`, `book_exposure.py` | The rotation's share of the account; the book's exposure |
 | `h50_long_short.py` | Long-short books (screen for rounds 50–64; the live long-short book came from round 54) |
+| `h60_swing_mft.py`, `h61_swing.py` | 53 swing and 28 medium-frequency strategies, alone and beside the bot |
+| `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
+| `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
+| `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |
+| `h70_secure_profits.py` | Securing profits within the competition's 14-day window without a fixed target |
+| `h71_timing.py` | Is there a right time to be short? Fast down-signals against the next days' returns |
+| `h72_swings.py` | Trading the account's swings: do its moves revert, and what would selling the tops have made? |
+| `h73_swing_sleeve.py` – `h75_gated_short_swings.py` | A swing sleeve beside the bot, long and short (shorts also only in downtrends): where its capital comes from, how much, which setups |
 
 The scripts read cached data under `data/` (git-ignored) and write results under
 `runs/research/`.

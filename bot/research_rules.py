@@ -16,10 +16,12 @@ from bot.indicators import Signal
 from bot.market_data import HOUR_MS
 from bot.optimize import covariance
 from bot.reasons import (CORE, EXIT_SHORT, EXIT_SHORT_STOP, EXIT_STOP, HOLD_HALTED, HOLD_NO_DATA, LS_SHORT,
-                         SHORT_ENTRY, SHORT_HOLD)
+                         ROTATION, SHORT_ENTRY, SHORT_HOLD)
 
 if TYPE_CHECKING:  # type hints only: bot.strategy imports this module
     from bot.strategy import StrategyState
+
+DAY_MS = 24 * HOUR_MS
 
 
 class ResearchRules:
@@ -35,6 +37,13 @@ class ResearchRules:
                             if w > 0 and p != c.defensive_pair else w) for p, w in rotation.items()}
         if c.rotation_brake_drawdown > 0 or c.rotation_equity_ma_hours > 0:
             rotation = self._rotation_risk(rotation, equity, state, frozen)
+        if c.rotation_dd_scale:
+            # Round 68: shrink the sleeve in proportion to the account's fall from its recent high.
+            state.equity_history = (state.equity_history + [equity])[-c.rotation_dd_hours:]
+            dd = 1.0 - equity / max(state.equity_history)
+            span = max(c.rotation_dd_full - c.rotation_dd_start, 1e-9)
+            scale = 1.0 - (1.0 - c.rotation_dd_min) * min(max((dd - c.rotation_dd_start) / span, 0.0), 1.0)
+            rotation = {p: w if p in frozen else w * scale for p, w in rotation.items()}
         return rotation
 
     def _research_regime(self, risk_on, regime, signals, state):
@@ -79,6 +88,10 @@ class ResearchRules:
             trend_on = (trend_on and wide) if c.rotation_breadth_mode == "and" else wide
         if c.rotation_exit_sma > 0 and trend_on:
             trend_on = self._above_sma(c.regime_pair, c.rotation_exit_sma)
+        if c.rotation_market_attention and self.external_scores:
+            market = self._external(ts).get("ATT:MARKET")
+            if market is not None and market < c.rotation_market_attention_floor:
+                trend_on = False
         if c.rotation_reentry_hours > 0:
             if not trend_on:
                 state.rotation_on_since = 0
@@ -141,6 +154,19 @@ class ResearchRules:
         if c.rotation_exclude_external and self.external_scores:
             table = self._external(ts)
             rising = {p: r for p, r in rising.items() if table.get(p, 1.0) >= 0}
+        if c.rotation_attention_filter and self.external_scores:
+            table = self._external(ts)
+            key = c.rotation_attention_key + ":"
+            rising = {p: r for p, r in rising.items() if table.get(key + p, c.rotation_attention_floor)
+                      >= c.rotation_attention_floor}
+        if c.rotation_exhaustion:
+            rising = {p: r for p, r in rising.items() if not self._exhausted(p, signals[p])}
+        if c.rotation_attention_rank > 0 and self.external_scores and len(rising) > 1:
+            table = self._external(ts)
+            z_ret = _normal_scores(rising)
+            att = {p: table["ATT:" + p] for p in rising if "ATT:" + p in table}
+            z_att = _normal_scores(att) if len(att) > 1 else {}
+            rising = {p: z_ret[p] + c.rotation_attention_rank * z_att.get(p, 0.0) for p in rising}
         if c.rotation_max_external > 0 and self.external_scores:
             table = self._external(ts)
             rising = {p: r for p, r in rising.items() if table.get(p, 0.0) <= c.rotation_max_external}
@@ -251,6 +277,9 @@ class ResearchRules:
         if c.rotation_vol_forecast and plan:
             scale = self._vol_scale(c.rotation_vol_forecast)
             plan = {p: w * scale for p, w in plan.items()}
+        if c.rotation_btc_dip_hours > 0 and plan and self._btc_dipping(ts):
+            plan = {p: w if p in frozen or p == c.defensive_pair else w * c.rotation_btc_dip_share
+                    for p, w in plan.items()}
         return plan
 
     def _research_ls_side(self, pair, s, side, state, ts, reasons, trend_on, sides, shorts_ok):
@@ -302,7 +331,196 @@ class ResearchRules:
                 targets[c.defensive_pair] = idle
                 reasons[c.defensive_pair] = CORE
 
+    def _research_rotation_exits(self, ts, signals, state, frozen):
+        """Round 66: a held pick leaves when its attention collapses or spikes (a blow-off), and
+        cools down for stop_cooldown_hours."""
+        c = self.cfg
+        if c.rotation_take_profit > 0 or c.rotation_profit_trail_after > 0:
+            self._research_secure_profits(ts, signals, state, frozen)
+        if not (c.rotation_exit_attention or c.rotation_exit_spike > 0) or not self.external_scores:
+            return
+        table = self._external(ts)
+        for pair, w in list(state.rotation_plan.items()):
+            if w <= 0 or pair == c.defensive_pair or pair in frozen:
+                continue
+            att, spike = table.get("ATT:" + pair), table.get("SPK:" + pair)
+            if ((c.rotation_exit_attention and att is not None and att < c.rotation_exit_attention_floor)
+                    or (c.rotation_exit_spike > 0 and spike is not None and spike > c.rotation_exit_spike)):
+                del state.rotation_plan[pair]
+                state.rotation_cooldown[pair] = ts + c.stop_cooldown_hours * HOUR_MS
+
+    def _research_secure_profits(self, ts, signals, state, frozen):
+        """Round 68: track each pick's entry price; once it is up rotation_take_profit keep only
+        part of it (until it leaves the picks), and once up rotation_profit_trail_after trail it."""
+        c = self.cfg
+        held = {p for p, w in state.rotation_plan.items() if w > 0 and p != c.defensive_pair}
+        for book in (state.rotation_entry_close, state.rotation_trimmed):
+            for pair in [p for p in book if p not in held]:
+                del book[pair]
+        for pair in sorted(held):
+            s = signals.get(pair)
+            if s is None or pair in frozen:
+                continue
+            entry = state.rotation_entry_close.setdefault(pair, s.close)
+            if c.rotation_take_profit > 0 and pair not in state.rotation_trimmed and s.close >= entry * (1 + c.rotation_take_profit):
+                state.rotation_plan[pair] *= c.rotation_take_profit_keep
+                state.rotation_trimmed[pair] = c.rotation_take_profit_keep
+            if c.rotation_profit_trail_after > 0:
+                high = max(state.rotation_highs.get(pair, s.close), s.close)
+                state.rotation_highs[pair] = high
+                if high >= entry * (1 + c.rotation_profit_trail_after) and s.close <= high * (1 - c.rotation_profit_trail):
+                    del state.rotation_plan[pair]
+                    state.rotation_highs.pop(pair, None)
+                    state.rotation_cooldown[pair] = ts + c.stop_cooldown_hours * HOUR_MS
+
+    def _research_reapply_trims(self, plan, state):
+        """Round 68: a pick whose profit was taken keeps its reduced share at the daily re-pick."""
+        for pair, keep in state.rotation_trimmed.items():
+            if pair in plan:
+                plan[pair] *= keep
+
+    def _research_short_veto(self, pair, ts):
+        """Round 66: no short into rising retail attention."""
+        c = self.cfg
+        if c.short_attention_max >= 99 or not self.external_scores:
+            return False
+        att = self._external(ts).get("ATT:" + pair)
+        return att is not None and att > c.short_attention_max
+
+    def _research_window_lock(self, ts, equity, targets, book, rotation, signals, exposure, state, frozen, reasons):
+        """H70 (research/h70_secure_profits.py): securing profits within the competition window,
+        as secure_mode says; the targets and the exposure limit."""
+        c = self.cfg
+        was_locked = state.profit_locked
+        if not self._window_lock_on(ts, equity, targets, state):
+            return targets, exposure
+        if c.secure_mode == "refresh":
+            if not was_locked and c.rotation_weight > 0:
+                targets = self._refresh_rotation(targets, rotation, state, frozen, reasons)
+        elif c.secure_mode == "half":
+            targets = {p: w * c.secure_scale for p, w in targets.items()}
+            exposure *= c.secure_scale
+        elif c.secure_mode == "half_gold":
+            gross = sum(abs(w) for p, w in targets.items() if p not in frozen)
+            targets = {p: w if p in frozen else w * c.secure_scale for p, w in targets.items()}
+            if c.defensive_pair not in frozen:
+                targets[c.defensive_pair] = targets.get(c.defensive_pair, 0.0) + (1.0 - c.secure_scale) * gross
+                reasons.setdefault(c.defensive_pair, ROTATION)
+        elif c.rotation_weight > 0:
+            targets = self._locked_targets(targets, book, rotation, signals, frozen, reasons)
+        return targets, exposure
+
     # ---- helpers of the research options ----
+
+    def _btc_dipping(self, ts):
+        """Round 70: BTC's return over rotation_btc_dip_hours to the last 00:00 UTC close is below
+        zero, so the sleeve changes size only at the daily close (research/round70_btc_dip.py)."""
+        c = self.cfg
+        ind = self.indicators.get(c.regime_pair)
+        back = (ts // HOUR_MS) % 24                 # bars since the one that closed at 00:00 UTC
+        hours = c.rotation_btc_dip_hours
+        if ind is None or len(ind.closes) < back + hours + 1:
+            return False
+        closes = list(ind.closes)
+        return closes[-1 - back] < closes[-1 - back - hours]
+
+    def _exhausted(self, pair, s):
+        """Round 69 (research/h69_trend_exit.py): weak highs or volume divergence, the two warnings
+        that predicted a lower next 3 days in all six folds."""
+        c = self.cfg
+        ind = self.indicators[pair]
+        closes = list(ind.closes)
+        dollar = list(ind.dollar)
+        if len(closes) < 169 or len(dollar) < 144:
+            return False
+        weak_high = s.close >= c.exhaustion_near_high * max(closes[-168:]) and s.rsi < c.exhaustion_rsi
+        rising = s.close > closes[-73]
+        thin = sum(dollar[-72:]) < c.exhaustion_volume * sum(dollar[-144:-72])
+        return weak_high or (rising and thin)
+
+    def _locked_targets(self, targets, book, rotation, signals, frozen, reasons):
+        """The capital stays invested while profits are secured: the rotation's coins move into
+        the book, BTC, the defensive pair or the rotation's top secure_top coins (secure_mode)."""
+        c = self.cfg
+        coins = {p: w for p, w in rotation.items() if w > 0 and p != c.defensive_pair and p not in frozen}
+        freed = c.rotation_weight * sum(coins.values())
+        if freed <= 0:
+            return targets                    # the rotation holds no coins (its filter is off)
+        out = dict(targets)
+        for pair, weight in coins.items():
+            out[pair] -= c.rotation_weight * weight
+        if c.secure_mode == "book":
+            into = dict(book)
+        elif c.secure_mode == "btc":
+            into = {c.regime_pair: 1.0}
+        elif c.secure_mode == "gold":
+            into = {c.defensive_pair: 1.0}
+        else:
+            ranked = sorted((p for p, s in signals.items() if p != c.defensive_pair and p not in frozen
+                             and s.return_rotation > 0), key=lambda p: signals[p].return_rotation, reverse=True)
+            into = self._rotation_weights(ranked[:c.secure_top], signals)
+        for pair, weight in into.items():
+            out[pair] = out.get(pair, 0.0) + freed * weight
+            reasons.setdefault(pair, ROTATION)
+        return out
+
+    def _refresh_rotation(self, targets, rotation, state, frozen, reasons):
+        """Profits secured by rotating (secure_mode "refresh"): the rotation's coins are sold into
+        the defensive pair and barred until the window ends, so its next daily pick puts the money
+        into other coins."""
+        c = self.cfg
+        coins = {p: w for p, w in rotation.items() if w > 0 and p != c.defensive_pair and p not in frozen}
+        if not coins:
+            return targets
+        end = c.window_start_ms + (state.window_index + 1) * c.window_days * DAY_MS
+        out = dict(targets)
+        for pair, weight in coins.items():
+            out[pair] -= c.rotation_weight * weight
+            state.rotation_plan.pop(pair, None)
+            state.rotation_cooldown[pair] = end
+        freed = sum(coins.values())
+        state.rotation_plan[c.defensive_pair] = state.rotation_plan.get(c.defensive_pair, 0.0) + freed
+        out[c.defensive_pair] = out.get(c.defensive_pair, 0.0) + c.rotation_weight * freed
+        reasons.setdefault(c.defensive_pair, ROTATION)
+        return out
+
+    def _window_lock_on(self, ts, equity, targets, state):
+        """Whether profits are secured: once the gain in the current window exceeds secure_k
+        daily volatilities times the square root of the days left, until the window ends."""
+        c = self.cfg
+        if c.secure_k <= 0 or c.window_start_ms <= 0 or ts < c.window_start_ms or equity <= 0:
+            return False
+        length = c.window_days * DAY_MS
+        index = (ts - c.window_start_ms) // length
+        if index != state.window_index:
+            state.window_index = index
+            first = index == 0 and c.window_start_equity > 0
+            state.window_equity = c.window_start_equity if first else equity
+            state.profit_locked = False
+        gain = equity / state.window_equity - 1.0 if state.window_equity > 0 else 0.0
+        if not state.profit_locked and gain > 0:
+            days_left = (c.window_start_ms + (index + 1) * length - ts) / DAY_MS
+            sigma = self._portfolio_volatility(ts, targets)
+            state.profit_locked = sigma > 0 and gain >= c.secure_k * sigma * math.sqrt(days_left)
+        return state.profit_locked
+
+    def _portfolio_volatility(self, ts, targets):
+        """Daily volatility of the target portfolio from its positions' last secure_vol_hours of
+        hourly log returns (a short counts against it), measured once a day; 0 without data."""
+        day = ts // DAY_MS
+        if getattr(self, "_volatility_day", None) == day:
+            return self._volatility
+        series = {p: list(self.indicators[p].returns)[-self.cfg.secure_vol_hours:]
+                  for p, w in targets.items() if w != 0.0 and p in self.indicators}
+        series = {p: r for p, r in series.items() if len(r) >= 48}
+        sigma = 0.0
+        if series:
+            length = min(len(r) for r in series.values())
+            portfolio = [sum(targets[p] * r[len(r) - length + i] for p, r in series.items()) for i in range(length)]
+            mean = sum(portfolio) / length
+            sigma = math.sqrt(sum((x - mean) ** 2 for x in portfolio) / (length - 1) * 24)
+        self._volatility_day, self._volatility = day, sigma
+        return sigma
 
     def _channel(self, pair: str, hours: int, high: bool) -> float:
         """Highest high (or lowest low) of the `hours` bars before the latest one; a value that
@@ -314,13 +532,11 @@ class ResearchRules:
         window = list(series)[-hours - 1:-1]
         return max(window) if high else min(window)
 
-
     def _horizon_return(self, pair: str, hours: int) -> Optional[float]:
         r = self.indicators[pair].returns
         if len(r) < hours:
             return None
         return math.exp(sum(list(r)[-hours:])) - 1.0
-
 
     def _ensemble_plan(self, signals: Dict[str, Signal], frozen: AbstractSet[str],
                        specs: Optional[List[str]] = None) -> Dict[str, float]:
@@ -357,7 +573,6 @@ class ResearchRules:
                 plan[c.defensive_pair] = plan.get(c.defensive_pair, 0.0) + empty
         return plan
 
-
     def _rotation_risk(self, plan: Dict[str, float], equity: float, state: StrategyState,
                        frozen: AbstractSet[str]) -> Dict[str, float]:
         """Account-level controls on the sleeve: a brake on the account's drawdown, and a filter
@@ -378,7 +593,6 @@ class ResearchRules:
                 plan = {p: w if p in frozen else w * 0.5 for p, w in plan.items()}
         return plan
 
-
     def _above_sma(self, pair: str, hours: int) -> bool:
         """True while the pair's close is at or above its simple average over `hours` closes
         (closes rebuilt from the hourly log returns)."""
@@ -392,20 +606,19 @@ class ResearchRules:
             total += math.exp(level)
         return total / hours <= 1.0
 
-
     def _multi_horizon(self, pairs: List[str]) -> Dict[str, float]:
         """Sum of the normal scores of each coin's rank by return over each horizon in
         rotation_horizons (from its hourly log returns)."""
         total = {p: 0.0 for p in pairs}
-        for h in self.cfg.rotation_horizons:
+        weights = self.cfg.rotation_horizon_weights or [1.0] * len(self.cfg.rotation_horizons)
+        for h, w in zip(self.cfg.rotation_horizons, weights):
             values = {}
             for p in pairs:
                 r = self.indicators[p].returns
                 values[p] = sum(list(r)[-h:]) if len(r) >= h else 0.0
             for p, z in _normal_scores(values).items():
-                total[p] += z
+                total[p] += w * z
         return total
-
 
     def _rotation_stops(self, ts: int, signals: Dict[str, Signal], state: StrategyState,
                         frozen: AbstractSet[str]) -> None:
@@ -431,7 +644,6 @@ class ResearchRules:
                 state.rotation_cooldown[pair] = ts + c.stop_cooldown_hours * HOUR_MS
         for pair in [p for p, until in state.rotation_cooldown.items() if until <= ts]:
             del state.rotation_cooldown[pair]
-
 
     def _vol_scale(self, method: str) -> float:
         """min(1, typical / forecast) for BTC's daily volatility: the forecast from the last 30
@@ -459,7 +671,6 @@ class ResearchRules:
         typical = history[len(history) // 2]
         return min(1.0, math.sqrt(typical / now)) if now > 0 else 1.0
 
-
     def _residual_return(self, pair: str, raw: float) -> float:
         """The lookback return left after removing the part explained by the coin's beta to the
         regime pair: log(1 + r) - beta * log(1 + r_btc), with beta from the same hourly window."""
@@ -476,7 +687,6 @@ class ResearchRules:
         beta = sum((x - mean_c) * (y - mean_b) for x, y in zip(coin, btc)) / var_b if var_b > 0 else 1.0
         return sum(coin) - beta * sum(btc)
 
-
     def _daily_cvar(self, weights: Dict[str, float], level: float = 0.95) -> float:
         """Historical 1-day CVaR of the given holdings: the average loss over the worst
         (1 - level) of overlapping 24-hour windows in the last rotation_cov_hours."""
@@ -489,7 +699,6 @@ class ResearchRules:
         tail = daily[:max(1, int(len(daily) * (1 - level)))]
         return max(0.0, -sum(tail) / len(tail))
 
-
     def _zscore(self, pair: str) -> float:
         """How many standard deviations the latest close is above its mean over rotation_z_hours."""
         closes = list(self.indicators[pair].closes)[-self.cfg.rotation_z_hours:]
@@ -499,7 +708,6 @@ class ResearchRules:
         mean = sum(closes) / n
         sd = math.sqrt(sum((x - mean) ** 2 for x in closes) / (n - 1))
         return (closes[-1] - mean) / sd if sd > 0 else 0.0
-
 
     def _overlay(self, ts: int, signals: Dict[str, Signal], weights: Dict[str, float], state: StrategyState,
                  targets: Dict[str, float], reasons: Dict[str, str], regime: Optional[Signal],
@@ -517,7 +725,6 @@ class ResearchRules:
                 reasons[pair] = why.get(pair, LS_SHORT)
             elif why.get(pair) in (EXIT_SHORT_STOP, EXIT_SHORT) and targets.get(pair, 0.0) == 0:
                 reasons[pair] = why[pair]
-
 
     def _shorts(self, ts: int, signals: Dict[str, Signal], scores: Dict[str, float],
                 weights: Dict[str, float], state: StrategyState, targets: Dict[str, float],
@@ -569,7 +776,6 @@ class ResearchRules:
             targets[pair] = -weight
             reasons[pair] = SHORT_HOLD if pair in state.shorts else SHORT_ENTRY
 
-
     def _bear(self, regime: Optional[Signal]) -> bool:
         """A confirmed bear market: the rotation's BTC filter off and, with short_regime_hours,
         BTC below its long simple average (never before that average is ready)."""
@@ -578,10 +784,8 @@ class ResearchRules:
             return False
         return c.short_regime_hours <= 0 or 0 < regime.close < regime.sma_long
 
-
     def _shorts_allowed(self, regime: Optional[Signal]) -> bool:
         return self.cfg.short_regime_hours <= 0 or self._bear(regime)
-
 
     def _long_stopped(self, pair: str, s: Signal, state: Optional[StrategyState], ts: int,
                       reasons: Dict[str, str]) -> bool:
@@ -600,7 +804,6 @@ class ResearchRules:
             reasons[pair] = EXIT_STOP
             return True
         return False
-
 
     def _short_vol_scale(self) -> float:
         """base / recent volatility of the regime pair's hourly returns, at most 1."""

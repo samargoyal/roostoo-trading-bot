@@ -209,6 +209,12 @@ def run(job):
     if "BTC/USD" not in bars:
         bars["BTC/USD"] = load_history(client, "BTC/USD", warm, e, cfg.backtest.data_dir)
     external = funding_table(extra["funding_hours"]) if extra.get("funding_hours") else None
+    if extra.get("attention"):
+        from research.attention import attention_table
+        merged = {day: dict(v) for day, v in (external or {}).items()}
+        for day, v in attention_table().items():
+            merged.setdefault(day, {}).update(v)
+        external = merged
     result = run_backtest(cfg, bars, s, e, cfg.backtest.taker_fee, cfg.backtest.taker_slippage,
                           "taker", monthly_universe=True, slippage_by_pair=slippage, external_scores=external)
     btc = [b.close for b in bars["BTC/USD"] if s <= b.ts < e]

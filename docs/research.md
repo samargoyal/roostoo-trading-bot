@@ -899,3 +899,302 @@ lucky setting, so the search stopped there and R54b went live on 5 October 2026.
 funding rates come from Binance's USD-M futures API once a day (`LiveConfig.funding_url`);
 a coin without them is not filtered, and if the API cannot be reached the filter is off for
 the day.
+
+## Swing and medium-frequency strategies
+
+The user asked for swing and medium-frequency strategies, each with a real hypothesis. Every
+one below was written down with its hypothesis before it ran, then judged in two stages. In
+Stage A it trades alone, after the fee and half the Roostoo spread, and its net return and
+yearly composite must be positive in at least 5 of the 6 folds. In Stage B it must improve the
+bot, either in place of the long-short book (B1: 70% rotation, 30% this) or as a 20% slice
+beside the bot (B2), in at least 5 of 6 folds and both holdout years.
+
+- **`research/h60_swing_mft.py`: 23 swing strategies (days to weeks) and 28 medium-frequency
+  ones (minutes to hours, on 5-minute candles from `research/klines5m.py`).**
+  - Swing: one passed Stage A, buying dips in the market's leaders. One of its neighbours
+    broke, and as 20% of the bot it improved only 2 of 6 years.
+  - Medium-frequency: six had a gross edge in every fold at a maker's cost, and none survived
+    the taker fee and spread. Hourly reversal in meme coins made +432% in 2020–21, then lost
+    92–93% a year in 2024–26.
+- **`research/h61_swing.py`: 30 more swing strategies.**
+  - Nine passed Stage A: breakout and retest, volatility contraction near highs, relative
+    strength on BTC's down days, Darvas boxes, all-time-high breakouts, negative funding in a
+    bull market, the hottest meme coin, meme hype phases and the golden cross.
+  - Their equal-weight ensemble rose in every year (+4% to +121%, worst drawdown 25%).
+  - None improved the bot: B1 in at most 3 of 6 years, B2 in at most 4, and each in 0 or 1 of
+    the 2 holdout years.
+  - The rotation already holds the strongest trends, so a second trend book mostly buys the
+    same coins later.
+
+## Retail attention: Wikipedia page views (rounds 65 to 67)
+
+Retail attention is the usual explanation for coins that move on social media. Tweets are
+neither free nor available years back, but Wikipedia page views are (Kristoufek 2013).
+`research/attention.py` collects them daily since July 2015 for 34 of the coins, with
+"Cryptocurrency" standing for the whole market. Each day's scores use views up to the day
+before.
+
+**The study.** `research/h62_attention.py` tested 14 strategies:
+- Two passed Stage A: attention flowing into rising coins, and broad participation.
+- Neither improved the bot: B1 and B2 in 2 of 6 years, and 0 or 1 of the holdout years.
+
+**Inside the live bot**, judged as rounds 50 to 64 were:
+
+| Design | 6 years | Folds better | Result |
+|---|---|---|---|
+| Live bot (R54b) | +49,404% | | |
+| R65a skip coins whose attention is fading | +54,574% | 3/6 | fail |
+| R65b only coins with normal or rising attention | +64,190% | 4/6 | fail |
+| R66a rank by return plus half the attention score | +35,421% | 1/6 | fail |
+| R66b R65b on the coin's share of all crypto attention | +56,382% | 5/6 | a neighbour broke (1/6) |
+| R66c leave a pick when its attention collapses | +50,418% | 1/6 | fail |
+| R66d leave after a day of 5 times the usual views | +23,760% | 2/6 | fail |
+| R66e invest only while crypto's attention is near normal | +24,161% | 3/6 | fail |
+| R66f no shorts into rising attention | +49,715% | 4/6 | fail |
+
+**Round 67** (`research/round67_attention.py`) ran R66b's other neighbour (a share floor of
+-0.1) as its own design:
+- It beat the bot in all 6 folds (+77,012% over 6 years, worst drawdown 50%), and its
+  neighbours held (-0.2: 4/6; 0.0: 5/6).
+- It lost the 2018–19 holdout year (+103% against +124%).
+- It was not adopted. A design picked after seeing the folds has to win both holdout years.
+
+## Securing profits (rounds 68 to 70)
+
+The user asked for a way to secure profits that also raises the Sharpe ratio. The difficulty:
+the rotation's returns come from a few very large winners.
+
+**Fixed rules (round 68)**, each on top of R54b:
+
+| Design | 6 years | Worst drawdown | Folds better |
+|---|---|---|---|
+| Live bot (R54b) | +49,404% | 52% | |
+| R68b keep half of a pick once it is 40% above its entry | +17,503% | 52% | 0/6 |
+| R68c a 15% trailing stop once a pick is up 25% | +11,557% | 52% | 0/6 |
+| R68d the sleeve shrinks as the account falls from its 30-day high | +6,767% | 43% | 0/6 |
+
+**A lock-in for the competition's own horizon** (`research/h68_lock_in.py`). Every 14-day
+window was replayed with one rule: once the account is up 10% in the window, halve the
+exposure.
+- The median 14-day composite rose in all 6 folds (3.19 to 5.88) and in both holdout years.
+- The mean window return fell from +5.7% to +3.7%.
+- It trades expected return for a steadier score.
+- Not adopted: the user did not want profits secured by a fixed target.
+
+**Exits when a trend tires** (`research/h69_trend_exit.py`). The user's idea: leave a coin when
+most indicators say its trend is over or turning choppy, rather than at a fixed target. First
+came the evidence. Each day, twelve warnings were measured on the rotation's candidates (the
+top 5 by 14-day return, 5,688 candidate-days in 2020–26) against their next 3 days:
+
+| Warning | Next 72 hours when on | When off | Lower when on |
+|---|---|---|---|
+| Weak highs: within 3% of the 7-day high with RSI(14) below 60 | +0.16% | +2.63% | 6/6 |
+| Volume divergence: up over 3 days on under 70% of the previous 3 days' volume | +0.44% | +2.61% | 6/6 |
+| Momentum turned: 3-day return below zero | +1.69% | +2.76% | 6/6 |
+| Sellers in charge: taker-buy share below half over 24 hours | +1.76% | +3.17% | 6/6 |
+| Lagging BTC over 3 days | +1.78% | +2.76% | 6/6 |
+| Below the 72-hour EMA; Kaufman efficiency under 0.25; ADX under 20 | +1.6% to +2.0% | +2.7% to +4.5% | 5/6 |
+| Choppiness Index above 61.8 | +1.78% | +2.43% | 4/6 |
+| Overextended, crowded longs, a volatility jump on a falling day | +4.0% to +7.0% | about +2.1% | 0–2/6 |
+
+**What the evidence ruled out.**
+- A vote did not predict: leaving at 6 or more warnings lowered the forward return in only 4
+  of 6 folds.
+- Neither did machine learning. Gradient-boosted trees on the continuous indicators, trained
+  walk-forward, scored an AUC of about 0.53.
+- Warned coins still rose on average, so selling them for cash would lose. A warning is worth
+  acting on only if the next healthy candidate does better.
+- Swapping warned picks for the next healthy candidate improved the 2 picks' next 24 hours in
+  all 6 folds for the two strongest warnings. The votes and the trees managed at most 3.
+
+**Round 69** put the swap into the bot. At the daily re-pick, a candidate showing either warning
+is skipped and the next healthy one takes its slot:
+
+| Design | 6 years | Worst drawdown | Folds better | 14-day windows better |
+|---|---|---|---|---|
+| R69a swap on either warning | +104,339% | 53% | 5/6 | 2/6 |
+| R69b volume divergence only | +101,852% | 54% | 5/6, drawdown over the limit | 3/6 |
+| R69c weak highs only | +59,650% | 50% | 4/6 | 2/6 |
+
+R69a was not adopted:
+- Its stricter neighbour held (5/6), but its looser one broke (3/6).
+- Its median 14-day window, the competition's horizon, was worse in 4 of 6 years. The yearly
+  gain came from a few large windows.
+
+**Round 70** asked the same of the market, with nine warnings on BTC and on all coins:
+- The more warnings were on, the worse the rotation's next day (0–1 warnings: +2.45%; 6 or
+  more: +0.26%).
+- Even the worst bucket was positive, so going to cash on the vote lost (2 or 3 of 6 folds
+  better).
+- One warning stood out: BTC's 3-day return below zero (the rotation's next day +0.33%
+  against +1.52%, lower in all 6 folds). The next step tested it.
+
+| Design | 6 years | Worst drawdown | Folds better | 14-day windows better |
+|---|---|---|---|---|
+| R70a the rotation at half size while BTC's 3-day return is negative | +32,686% | 44% | 4/6 | 1/6 |
+| R70b out of the rotation then | +17,282% | 46% | 3/6 | 1/6 |
+
+- Halving cut the worst drawdown by 8 points, but cost much of 2023–24's rally (+389% against
+  +626%).
+- Neither was adopted.
+
+**What rounds 68 to 70 found.**
+- The signs that a trend is tiring are real, but none pays inside this bot over a year. Its
+  returns come from staying in the strongest trends. Every exit tried, fixed or
+  indicator-driven, gave up more of the large winners than it saved.
+- Every option of rounds 65 to 70 is off by default in `bot/research_rules.py`. With them off,
+  the bot reproduces R54b's backtests exactly in all 8 years (folds and holdout).
+
+**A risk-scaled lock-in for the competition window** (`research/h70_secure_profits.py`). The
+competition scores one 14-day window, and its composite punishes a late drawdown more than it
+rewards a late gain. So the last question was whether securing gains within the window pays,
+without a fixed profit target. Each rule halves every position once, for the rest of the window.
+Tested on every 14-day window of the live bot, 2020–26:
+
+| Rule | Score better | Sharpe better | Mean 14-day return |
+|---|---|---|---|
+| None (the live bot) | | | +5.8% |
+| h68: once up 10%, halve | 6/6 | 6/6 | +3.7% |
+| **S1: once the gain exceeds one daily volatility times the square root of the days left** | **6/6** | **6/6** | **+4.2%** |
+| S2: once up one volatility, halve on giving back half the peak gain | 5/6 | 5/6 | +4.0% |
+| S3: while in profit, halve when BTC's 3-day return turns negative | 5/6 | 5/6 | +3.9% |
+
+- S1's bar adapts to volatility and to the time left: early in the window it needs a large
+  gain, near the end a small one, since a gain is then more than a normal loss over the
+  remaining days could erase.
+- Every rule cut the mean window return by more than the tenth allowed, so none passed
+  outright. Securing gains always gives up part of the large runs.
+- S1's benefit was robust. Settings from 0.75 to 3 volatilities raised the score in 5 or 6 of
+  6 years and the Sharpe ratio in 5 or 6, and every setting raised both in the two holdout
+  years.
+- In the bot's own backtester (`--bot`: the rule as `StrategyConfig.secure_k` runs it, the
+  window restarting every 14 days, 26 windows a year), k = 1 raised the median window score
+  in 5 of 6 years and both holdout years, and the median window Sharpe ratio in all 8. The
+  mean window return fell from +5.2% to +4.2%. Settings of 1.5 and 2 raised the score in only
+  4 of 6 years.
+- The user decided not to use it on the competition account. `secure_k` and `secure_mode`
+  stay among the research options in `bot/research_rules.py`, off by default.
+
+**Is there a right time to be short?** (`research/h71_timing.py`). The account's day-to-day
+swings led the user to ask for longs and shorts timed faster. Six fast "market turning down"
+signals were measured at each UTC day's close, 2020–26, against what followed:
+
+| Signal | On | BTC's next 24 hours | BTC fell in | Market's next 24 hours |
+|---|---|---|---|---|
+| BTC's 3-day return below zero | 47% | +0.09% | 2/6 years | +0.06% |
+| BTC down over 3% in a day | 10% | +0.47% | 1/6 | +1.12% |
+| BTC's 24-hour EMA below its 72-hour EMA | 48% | +0.06% | 2/6 | +0.05% |
+| BTC below its 72-hour EMA | 47% | +0.08% | 3/6 | +0.11% |
+| BTC's 7-day EMA below its 28-day (the live filter off) | 47% | +0.03% | 2/6 | +0.01% |
+| Under half the coins above their 240-hour EMA | 57% | +0.13% | 2/6 | +0.08% |
+
+- None of them was followed by falling prices in most years. After sharp drops prices
+  rebounded, so shorting on any of these signals would have lost money even before fees.
+- Hedging the rotation's coins with a BTC short on these signals earned less than simply
+  holding less of them, since BTC usually rose.
+- Shorts pay only in lasting downtrends. The bot already acts on those at the slow speed: the
+  rotation leaves when BTC's filter fails, and the long-short book shorts coins in downtrends.
+
+**Trading the account's swings** (`research/h72_swings.py`). Two days in, the account had
+swung between +1% and +3% three times, and the user asked what selling near each top and buying
+back lower would have made. On the live bot's own hourly equity, 2018–26:
+- What followed a move was unrelated to it: the correlation between the last and the next 6
+  to 72 hours was between -0.13 and +0.14 in every year, and after a 2% rise in a day the next
+  day still rose on average in most years.
+- The rule (sell once up 2% from the 24-hour low, buy back after a 1.5% pullback, or after a
+  further 3% rise so as not to miss a trend) made less than holding in 7 of 8 years: -36%
+  against +234% in 2024–25, with about 700 trades a year. Selling half, or other thresholds,
+  did the same.
+- A separate swing sleeve did less harm: h61's nine swing strategies that passed Stage A,
+  equally weighted, as 10% of the account cut the worst drawdown from 52% to 48% and the mean
+  14-day return from +5.2% to +4.9%, and raised the median 14-day score in only 2 of 6 years.
+
+**A swing sleeve, long and short** (`research/h73_swing_sleeve.py`, `research/h74_long_short_swings.py`).
+The user asked for more experiments on that sleeve, and for short swings as well as long ones.
+The bot was modelled as its sleeves rebalanced daily (70% the rotation alone, 30% the long-short
+book alone), which tracks it closely (+1,638% against +1,615% in 2020–21, the same 52% worst
+drawdown), and each variant was judged against that model:
+
+| Swing sleeve (h61's nine long survivors) | Years better | Worst drawdown | 14-day score better | Mean 14-day return |
+|---|---|---|---|---|
+| None (the model of the live bot) | | 52% | | +5.2% |
+| 10% from both books | 3/6 | 48% | 2/6 | +4.9% |
+| 10% from the long-short book | 2/6 | 53% | 2/6 | +5.1% |
+| 10% from the rotation | 3/6 | 46% | 1/6 | +4.7% |
+| 5%, 20%, or inverse-volatility weights | 3/6 | 45–50% | 0–2/6 | +4.5–5.0% |
+| The rotation's idle share while BTC's filter is off | 3/6 | 49% | 4/6 | +5.2% |
+
+- None passed. Swings in the rotation's idle share came closest: the same mean 14-day return,
+  a better 14-day score and Sharpe ratio in 4 of 6 years and both holdout years, but worse
+  years in 2023–26 (+188% against +228% in 2024–25).
+- Short swings: nine short setups, the mirrors of the long survivors (breakdowns and retests,
+  contraction near lows, weakness on BTC's up days, Darvas breakdowns, new lows, crowded longs
+  in a bear market, the death cross) and two of their own (failed breakouts, bear-market
+  rallies). All nine failed Stage A, losing in most years even in 2021–22's crash: rallies
+  inside downtrends squeezed them (failed breakouts lost 96% in 2020–21). So a long-short swing
+  book is the long one, and only slow trend-following shorts (the live book's) have paid.
+- Shorts only in downtrends (`research/h75_gated_short_swings.py`): the same nine, entering
+  only while BTC's 7-day EMA was below its 28-day and covered when it turned back, cut their
+  losses (failed breakouts went from 1/6 to 4/6 years), but only one passed Stage A
+  (relative weakness on BTC's up days), and both its neighbours broke. Even then it lost 25% in
+  2021–22's crash. Run with the rotation's idle 70%, the long and short swings together kept
+  the mean 14-day return (+5.3% against +5.2%) and raised the 14-day Sharpe ratio in 5 of 6
+  years, but were better in only 3 of 6 years and not on the 14-day score in the holdout.
+
+**Keeping the capital invested** (`--modes`). The user asked not to cut the capital. So with the
+same trigger (k = 1), the rotation's coins instead moved somewhere calmer, in the bot's backtester:
+
+| Once secured | Score better | Sharpe better | Holdout: score, Sharpe | Mean 14-day return |
+|---|---|---|---|---|
+| Nothing (the live bot) | | | | +5.2% |
+| Halve every position, the rest in cash | 5/6 | 6/6 | 2/2, 2/2 | +4.2% |
+| The rotation into the long-short book | 3/6 | 4/6 | 1/2, 1/2 | +3.8% |
+| The rotation into BTC | 2/6 | 3/6 | 1/2, 2/2 | +3.8% |
+| The rotation spread over its top 5 coins | 4/6 | 4/6 | 1/2, 2/2 | +5.7% |
+| The rotation into PAXG | 4/6 | 5/6 | 2/2, 2/2 | +3.1% |
+| Halve every position, the rest in PAXG | 4/6 | 6/6 | 2/2, 2/2 | +3.9% |
+| The rotation's coins sold into PAXG and barred, the next pick buying others | 3/6 | 2/6 | 2/2, 2/2 | +5.7% |
+| The same with k = 2 | 2/6 | 3/6 | 1/2, 1/2 | +4.4% |
+
+- Moving into other crypto did not protect the score: BTC, the long-short book and a wider
+  rotation all fall with the market. Only holding less crypto did.
+- Halving into PAXG keeps every dollar invested and still raised the Sharpe ratio in all 6
+  years and both holdout years. Halving into cash did slightly better on every measure, since
+  gold has its own swings and costs.
+- The user's design, selling the coins that made the gain into PAXG and buying other coins at
+  the next pick, kept the full risk and lowered the median Sharpe ratio in 4 of 6 years. Its
+  mean window return rose in the folds (+5.7%) but fell in the holdout (+2.9% against +4.7%):
+  the coins sold often kept rising, and the ones bought instead fell with the market.
+
+## Entries and exits, re-tested on the live bot (rounds 71 and 72)
+
+The user asked for better entry and exit points, for longs and shorts. Most such rules had been
+tested in rounds 20–48 on the bot of that time; rounds 71 (`research/round71_entries_exits.py`,
+the rotation) and 72 (`research/round72_book_entries_exits.py`, the long-short book's longs and
+shorts) tested them again on R54b, under the rule of rounds 65–70.
+
+| Rule | 6 years | Worst drawdown | Years better | Result |
+|---|---|---|---|---|
+| Live bot (R54b) | +49,404% | 52% | | |
+| Rotation: trailing stop 8 ATRs / 15% | +26,744% / +11,557% | 55% / 53% | 2/6, 0/6 | fail |
+| Rotation: exit below the 72-hour low | +9,780% | 55% | 1/6 | fail |
+| **Rotation: keep a held pick while it ranks in the top 3** | **+99,308%** | **51%** | **5/6** | **top 4 held (4/6), top 5 broke (3/6)** |
+| **Rotation: rank on 7-, 14- and 21-day returns together** | **+84,839%** | **50%** | **5/6** | **7+14 held (5/6), 14+21+30 broke (3/6)** |
+| Rotation: buy only at a 72-hour high | +473% | 29% | 1/6 | fail |
+| Rotation: own uptrend, not overextended, steady climb | +15,106% to +36,253% | 51–57% | 0–2/6 | fail |
+| Rotation: re-entry delay, filter hysteresis | +37,618%, +54,836% | 52%, 50% | 2/6, 3/6 | fail |
+| Book: neutral band, size by trend strength | +46,207%, +39,115% | 52%, 53% | 0/6 | fail |
+| Book longs: trailing stops (round 64) | +44,878% | 52% | 2/6 | fail |
+| Book shorts: turtle entries and exits, 6-ATR stop, bear markets only | +42,123% to +47,341% | 54–56% | 1–3/6 | fail |
+| Book shorts: funding margin, not when oversold, faster trend (rounds 63–64) | +49,224% to +50,795% | 51–52% | 2–4/6 | fail |
+
+- Stops and channel exits cut the rotation's winners, as in round 20; breakout entries kept
+  it out of most of the trend.
+- Two rules passed the folds and broke on one neighbour: holding a pick until it leaves the
+  top 3 (fewer swaps), and ranking on several horizons (round 21's near miss again). Both
+  make the rotation trade less, not more. Not adopted by the rule.
+- The user judged the far neighbours' misses unimportant, so the holdout was then run for both:
+  the rank buffer beat the bot in both years (yearly score 3.28 and 3.82 against 2.80 and 3.31,
+  worst drawdown 21% and 38% against 31% and 41%, and the median 14-day score too), as did the
+  multi-horizon ranking (3.23 and 3.46). Both together did no better than the buffer alone in
+  2020–26 (+77,163%, 14-day score better in 3 of 6 years).
