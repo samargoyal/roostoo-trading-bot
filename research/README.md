@@ -18,7 +18,7 @@ python -m research.h50_long_short   # the long-short screen
 | `holdout2018.py` | The untouched holdout, October 2018 to October 2020, for rounds 31 and on |
 | `holdout.py` | The first hold-out check (July to September 2026), run once |
 | `rounds.py` | Rounds 20–64: each design and its neighbours, the adoption rule and the holdout check |
-| `round65_attention.py` – `round72_book_entries_exits.py` | Rounds 65–72, one script each: attention, securing profits, trend exits, entries and exits |
+| `round65_attention.py` – `round73_ranking.py` | Rounds 65–73, one script each: attention, securing profits, trend exits, entries and exits, the multi-horizon ranking |
 | `competition_rule.py` | Every design of rounds 20 and on, judged on 14-day windows |
 | `fullbars.py`, `panel.py`, `stocks.py` | Data: full Binance klines, price panels, US share data |
 | `klines5m.py`, `attention.py` | Data: 5-minute Binance candles; daily Wikipedia page views per coin |

@@ -1166,7 +1166,7 @@ same trigger (k = 1), the rotation's coins instead moved somewhere calmer, in th
   mean window return rose in the folds (+5.7%) but fell in the holdout (+2.9% against +4.7%):
   the coins sold often kept rising, and the ones bought instead fell with the market.
 
-## Entries and exits, re-tested on the live bot (rounds 71 and 72)
+## Entries and exits, re-tested on the live bot (rounds 71 to 73)
 
 The user asked for better entry and exit points, for longs and shorts. Most such rules had been
 tested in rounds 20–48 on the bot of that time; rounds 71 (`research/round71_entries_exits.py`,
@@ -1198,3 +1198,24 @@ shorts) tested them again on R54b, under the rule of rounds 65–70.
   worst drawdown 21% and 38% against 31% and 41%, and the median 14-day score too), as did the
   multi-horizon ranking (3.23 and 3.46). Both together did no better than the buffer alone in
   2020–26 (+77,163%, 14-day score better in 3 of 6 years).
+
+**Round 73: the multi-horizon ranking, adopted** (`research/round73_ranking.py`). The user
+chose the multi-horizon ranking, as the more responsive of the two, and asked whether to
+re-pick more often than daily and whether to weight the horizons:
+
+| Multi-horizon ranking | 2020–26 | Worst drawdown | Years better | 14-day score better | Holdout |
+|---|---|---|---|---|---|
+| Re-picked daily, horizons equal | +84,839% | 50% | 5/6 | 3/6 | both years |
+| Re-picked every 12, 8, 6 or 4 hours | +34,482% to +82,895% | 53–61% | 1–4/6 | 1–3/6 | mixed |
+| **Daily, the 1-week rank counted twice (2/1/1)** | **+123,592%** | **51%** | **5/6** | **3/6** | **both years** |
+| Daily, weighted 3/2/1 | +139,284% | 51% | 5/6 | 3/6 | both years |
+| Daily, weighted 1/1/2 | +89,032% | 55% | 4/6 | 3/6 | both years |
+| Daily, the two picks by inverse volatility or equal risk | +66,408% to +66,732% | 49–50% | 3–4/6 | 3/6 | both years |
+
+- Re-picking within the day swapped coins on noise: the horizons barely move in hours.
+- Counting the last week more helped, at 2/1/1 and 3/2/1 alike.
+- Adopted on 6 October 2026 by the user's choice: the 2/1/1 ranking, re-picked daily
+  (`config/comp.json`; the previous settings are kept in `config/comp_r54b.json`). It failed
+  round 71's neighbour test and was chosen after the holdout had been looked at, so expect
+  less than the backtest: it beat the old ranking on the median 14-day window in only 3 of 6
+  years, and lost in 2024–25 (+82% against +233%), a year that rewarded the 2-week leaders.

@@ -21,9 +21,11 @@ strategy, and every order, decision and hourly equity point is recorded.
 Two books share the account, trading the 45 most traded crypto pairs on Roostoo plus PAXG
 (gold-backed):
 
-- **Momentum rotation, 70% of equity.** Holds the 2 coins with the strongest positive
-  2-week return, re-chosen daily at 00:00 UTC, while BTC's 168-hour EMA is above its
-  672-hour EMA, and leaves at once when it is not. This is the return engine.
+- **Momentum rotation, 70% of equity.** Holds the 2 coins that rank best on their 1-, 2- and
+  3-week returns together (the 1-week rank counted twice; each needs a positive 2-week
+  return), re-chosen daily at 00:00 UTC, while BTC's 168-hour EMA is above its 672-hour EMA,
+  and leaves at once when it is not. This is the return engine. Until 6 October 2026 it ranked
+  on the 2-week return alone ([round 73](docs/research.md#entries-and-exits-re-tested-on-the-live-bot-rounds-71-to-73)).
 - **Long-short trend book, 30% of equity** (the competition account since 5 October 2026,
   through [`config/comp.json`](config/comp.json)). Every coin long while its 240-hour EMA is
   above its 960-hour EMA and short while below, weighted by inverse volatility, with a trailing
@@ -44,7 +46,10 @@ scores `0.4 x Sortino + 0.3 x Sharpe + 0.3 x Calmar`.
 
 Over the six yearly folds, the rotation with the long-short book made +49,404% against
 +31,945% with the defensive book, with a worst yearly drawdown of 52% against 58%, and a
-better competition score in 5 of 6 years and in both untouched holdout years.
+better competition score in 5 of 6 years and in both untouched holdout years. Ranking the
+rotation on several horizons then made +123,592%, with a worst yearly drawdown of 51% and a
+better score in 5 of 6 years and both holdout years, though in only 3 of 6 years on the
+median 14-day window, and worse in 2024–25 (+82% against +233%).
 
 The long-short book's rules:
 
@@ -161,7 +166,7 @@ other stop widths did no better in both years; three risk-off positions did.
 ## Strategy research
 
 Every rule above was chosen by tests fixed in advance, not by tuning until a backtest looked
-good. The full log of 64 research rounds is in [docs/research.md](docs/research.md), with the
+good. The full log of 73 research rounds is in [docs/research.md](docs/research.md), with the
 scripts in [`research/`](research/). In short:
 
 - **Method.** Six one-year folds (October 2020 to October 2026) run through the bot's own
@@ -175,8 +180,11 @@ scripts in [`research/`](research/). In short:
   says when to be in the market (the rotation's filter); and per-coin trend following, long
   and short, with the shorts defended against squeezes, beat the defensive book (rounds 50–64).
 - **What did not.** Statistical arbitrage (VECM), machine learning and neural networks, order
-  flow and ICT concepts, TradingView indicators, sentiment, tokenized stocks, and most short
-  selling: shorts opened late, into crowded squeezes, failed.
+  flow and ICT concepts, TradingView indicators, sentiment and retail attention, tokenized
+  stocks, 81 swing and medium-frequency strategies, and most short selling: shorts opened late,
+  into crowded squeezes, failed. Nor did any rule for securing profits, fixed or driven by
+  indicators (rounds 68–70): the returns come from a few large winners, and every exit cut
+  them by more than it saved.
 
 ## How it works
 
@@ -267,7 +275,8 @@ year starting in October.
 
 | | 2020–21 | 2021–22 | 2022–23 | 2023–24 | 2024–25 | 2025–26 | Six years |
 |---|---|---|---|---|---|---|---|
-| **Bot as live (70% rotation, long-short trend book)** | **+1,614%** (38%) | **-49%** (52%) | **+59%** (46%) | **+626%** (37%) | **+233%** (42%) | **+48%** (34%) | **+49,404%** |
+| **Bot as live (rotation ranked on 1, 2 and 3 weeks, long-short trend book)** | **+3,239%** (33%) | **-44%** (51%) | **+96%** (50%) | **+946%** (43%) | **+82%** (48%) | **+79%** (33%) | **+123,592%** |
+| Bot until 6 October 2026 (rotation ranked on 2 weeks) | +1,614% (38%) | -49% (52%) | +59% (46%) | +626% (37%) | +233% (42%) | +48% (34%) | +49,404% |
 | Bot with the defensive book (until 5 October 2026) | +1,248% (36%) | -56% (58%) | +56% (46%) | +580% (38%) | +265% (43%) | +38% (37%) | +31,945% |
 | Bot with 60% rotation | +973% (34%) | -51% (54%) | +52% (42%) | +431% (33%) | +228% (39%) | +36% (32%) | +18,756% |
 | Bot with 50% rotation (the optimised share under a 50% drawdown limit) | +795% (30%) | -45% (48%) | +44% (38%) | +323% (29%) | +209% (35%) | +38% (28%) | +12,696% |
@@ -379,7 +388,10 @@ Unknown keys are rejected, so a typo cannot silently fall back to a default.
 
 Without `--config`, the live bot uses `config/<account>.json` if it exists, so each account's
 settings are committed and a restart picks them up. `config/comp.json` runs the competition
-account with the long-short book.
+account with the long-short book and the multi-horizon ranking. `config/comp_r54b.json` keeps
+the settings it ran with before 6 October 2026 (the rotation ranked on 2-week returns). To go
+back to them, copy it over `config/comp.json`, commit, push and restart, so the change is in
+the history; or, at once, `scripts/run_bot.sh comp --config config/comp_r54b.json`.
 
 `config/shorts.json` turns on the short sleeve (see [Strategy research](#strategy-research)):
 

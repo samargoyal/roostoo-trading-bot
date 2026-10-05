@@ -248,3 +248,32 @@ class CvarCapTest(unittest.TestCase):
         self.assertLess(sum(d_cap.rotation.values()), 1.0)
         cvar = capped._daily_cvar(d_cap.rotation)
         self.assertAlmostEqual(cvar * 0.4, 0.02, places=6)
+
+
+class MultiHorizonTest(unittest.TestCase):
+    """rotation_ranking "multi" (config/comp.json): ranks on several horizons, optionally weighted."""
+
+    def strategy(self, weights):
+        s = Strategy(StrategyConfig(universe=["BTC/USD", "ETH/USD", "SOL/USD"], rotation_ranking="multi",
+                                    rotation_horizons=[2, 4], rotation_horizon_weights=weights))
+        # ETH leads over the last 2 hours, SOL over the last 4.
+        s.indicators["ETH/USD"].returns.extend([0.0, 0.0, 0.03, 0.03])
+        s.indicators["SOL/USD"].returns.extend([0.05, 0.05, 0.0, 0.01])
+        s.indicators["BTC/USD"].returns.extend([0.0, 0.0, 0.0, 0.0])
+        return s
+
+    def test_equal_weights_balance_the_horizons(self):
+        scores = self.strategy([])._multi_horizon(["BTC/USD", "ETH/USD", "SOL/USD"])
+        self.assertAlmostEqual(scores["ETH/USD"], scores["SOL/USD"])
+        self.assertLess(scores["BTC/USD"], scores["ETH/USD"])
+
+    def test_weighting_the_short_horizon_favours_the_recent_leader(self):
+        scores = self.strategy([2.0, 1.0])._multi_horizon(["BTC/USD", "ETH/USD", "SOL/USD"])
+        self.assertGreater(scores["ETH/USD"], scores["SOL/USD"])
+
+    def test_the_competition_config_loads_its_ranking(self):
+        from bot.config import load_config
+        c = load_config("config/comp.json").strategy
+        self.assertEqual((c.rotation_ranking, c.rotation_horizons, c.rotation_horizon_weights),
+                         ("multi", [168, 336, 504], [2.0, 1.0, 1.0]))
+        self.assertEqual(load_config("config/comp_r54b.json").strategy.rotation_ranking, "return")
