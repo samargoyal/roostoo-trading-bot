@@ -1214,8 +1214,8 @@ re-pick more often than daily and whether to weight the horizons:
 
 - Re-picking within the day swapped coins on noise: the horizons barely move in hours.
 - Counting the last week more helped, at 2/1/1 and 3/2/1 alike.
-- Adopted on 6 October 2026 by the user's choice: the 2/1/1 ranking, re-picked daily
-  (`config/comp.json`; the previous settings are kept in `config/comp_r54b.json`). It failed
+- Chosen by the user on 6 October 2026: the 2/1/1 ranking, re-picked daily. The same day the
+  user decided to stay on R54b, so it is kept ready in `config/comp_multi.json`. It failed
   round 71's neighbour test and was chosen after the holdout had been looked at, so expect
   less than the backtest: it beat the old ranking on the median 14-day window in only 3 of 6
   years, and lost in 2024–25 (+82% against +233%), a year that rewarded the 2-week leaders.

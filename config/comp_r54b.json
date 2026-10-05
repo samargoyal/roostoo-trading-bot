@@ -1,8 +1,0 @@
-{
-  "strategy": {
-    "book_mode": "long_short",
-    "ls_trend": [240, 960],
-    "short_stop_atr": 10.0,
-    "short_exclude_external": true
-  }
-}
