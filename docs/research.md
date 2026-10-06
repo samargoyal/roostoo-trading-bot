@@ -1879,3 +1879,15 @@ was the only one to make more than the live bot (+140,058%), at a deeper drawdow
 worse 14-day yardstick in 5 of 6 folds. A10, in effect a larger efficiency book, came nearest
 on the rule (4 of 6, both holdout years, a shallower drawdown) for well under half the return.
 On their own the aggressive sleeves drew down 62–85% (A3 lost money over the six years).
+
+## A dollar-neutral book (round 103)
+
+The user asked about a dollar-neutral book. `research/round103_dollar_neutral.py` (option
+`ls_neutral`, off): the book's longs and shorts each scaled to half its gross (DN1), or long the
+stronger half of the coins by trend and short the weaker half (DN2), no short where funding is
+negative. On the efficiency book alone DN1 made +109% over six years and DN2 -25%, against
++6,666%, with deeper drawdowns (46% and 36% against 31%); in the live bot +23,564% and +14,041%
+against +102,471%, both with a worse crash year (-36% and -34% against -17%). Neutral, the book
+gave up both of its jobs: riding the market in bull years and shorting it in bear years. Its
+edge is the direction of each coin's trend, not one coin against another; the weak half of
+crypto bounces too often to short as a hedge.

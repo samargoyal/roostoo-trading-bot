@@ -380,6 +380,12 @@ class ResearchRules:
             return None
         if abs(gap) < c.ls_band:
             return None
+        if c.ls_neutral == "rank":                                        # round 103
+            z = getattr(self, "_ls_rank_z", {})
+            if pair in z:
+                side = 1.0 if z[pair] >= self._ls_rank_median else -1.0
+                if side < 0 and c.short_exclude_external and self.external_scores                         and self._external(ts).get(pair, 0.0) < 0:
+                    return None                                           # crowded shorts, as for the book
         if c.ls_breadth_align > 0 and (side > 0) != (self._ls_breadth >= c.ls_breadth_align):
             return None                                                   # round 89
         if c.short_btc_crash > 0 and side < 0 and self._btc_crashed:
@@ -561,6 +567,12 @@ class ResearchRules:
                 raw = {p: v * min(er.get(p, 0.0) / mean, c.ls_sizing_cap) for p, v in raw.items()}
                 after = sum(abs(v) for v in raw.values())
                 raw = {p: v * before / after for p, v in raw.items()} if after > 0 else raw
+        if c.ls_neutral and raw:                                          # round 103: dollar neutral
+            gross = sum(abs(v) for v in raw.values())
+            longs = sum(v for v in raw.values() if v > 0)
+            shorts = -sum(v for v in raw.values() if v < 0)
+            raw = {p: v * (gross / 2 / longs if v > 0 else gross / 2 / shorts)
+                   for p, v in raw.items() if (longs if v > 0 else shorts) > 0}
         if c.ls_rel_fill and raw:                                         # round 93: fill the left-out share
             self._ls_fill = True
         if (c.ls_top_n > 0 or c.ls_fresh_days > 0) and raw:              # round 92
@@ -987,6 +999,12 @@ class ResearchRules:
             self._ls_breadth = sum(trends) / len(trends) if trends else 0.5
         if c.ls_corr_cut > 0:
             self._ls_corr_high = self._mean_correlation(signals) > c.ls_corr_cut
+        if c.ls_neutral == "rank":                                        # round 103
+            z = {p: math.log(s.ls_fast / s.ls_slow) / s.volatility for p, s in signals.items()
+                 if p != c.defensive_pair and s.ls_fast > 0 and s.ls_slow > 0 and s.volatility > 0}
+            self._ls_rank_z = z
+            vals = sorted(z.values())
+            self._ls_rank_median = vals[len(vals) // 2] if vals else 0.0
         if c.short_btc_crash > 0:
             r = self._horizon_return(c.regime_pair, 720) if c.regime_pair in self.indicators else None
             self._btc_crashed = r is not None and r < -c.short_btc_crash

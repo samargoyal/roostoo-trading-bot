@@ -197,6 +197,10 @@ class StrategyConfig:
                                           # log price over this many hours, like ls_er_hours (round 96)
     ls_regime_tilt: float = 0.0           # > 0: the side against the rotation's BTC filter at this
                                           # fraction of its weight, the rest in cash (round 96)
+    ls_neutral: str = ""                  # round 103, dollar neutral: "scale", the longs and the shorts each
+                                          # half the book's gross (an empty side's half in cash); "rank",
+                                          # long the stronger half of the coins by trend (EMA gap over
+                                          # volatility) and short the weaker half, each half the gross
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day
