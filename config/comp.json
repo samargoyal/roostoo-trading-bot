@@ -3,6 +3,9 @@
     "book_mode": "long_short",
     "ls_trend": [240, 960],
     "short_stop_atr": 10.0,
-    "short_exclude_external": true
+    "short_exclude_external": true,
+    "rotation_ranking": "multi",
+    "rotation_horizons": [168, 336, 504],
+    "rotation_horizon_weights": [2.0, 2.0, 1.0]
   }
 }

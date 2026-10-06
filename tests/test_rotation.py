@@ -271,9 +271,10 @@ class MultiHorizonTest(unittest.TestCase):
         scores = self.strategy([2.0, 1.0])._multi_horizon(["BTC/USD", "ETH/USD", "SOL/USD"])
         self.assertGreater(scores["ETH/USD"], scores["SOL/USD"])
 
-    def test_the_ready_config_loads_its_ranking(self):
+    def test_the_competition_configs_load_their_rankings(self):
         from bot.config import load_config
-        c = load_config("config/comp_multi.json").strategy
-        self.assertEqual((c.rotation_ranking, c.rotation_horizons, c.rotation_horizon_weights),
-                         ("multi", [168, 336, 504], [2.0, 1.0, 1.0]))
-        self.assertEqual(load_config("config/comp.json").strategy.rotation_ranking, "return")
+        for path, weights in (("config/comp.json", [2.0, 2.0, 1.0]), ("config/comp_multi.json", [2.0, 1.0, 1.0])):
+            c = load_config(path).strategy
+            self.assertEqual((c.rotation_ranking, c.rotation_horizons, c.rotation_horizon_weights),
+                             ("multi", [168, 336, 504], weights))
+        self.assertEqual(load_config("config/comp_r54b.json").strategy.rotation_ranking, "return")

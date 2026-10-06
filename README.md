@@ -21,12 +21,12 @@ strategy, and every order, decision and hourly equity point is recorded.
 Two books share the account, trading the 45 most traded crypto pairs on Roostoo plus PAXG
 (gold-backed):
 
-- **Momentum rotation, 70% of equity.** Holds the 2 coins with the strongest positive
-  2-week return, re-chosen daily at 00:00 UTC, while BTC's 168-hour EMA is above its
-  672-hour EMA, and leaves at once when it is not. This is the return engine. A version that
-  ranks on 1-, 2- and 3-week returns together is ready in
-  [`config/comp_multi.json`](config/comp_multi.json) but not live
-  ([round 73](docs/research.md#entries-and-exits-re-tested-on-the-live-bot-rounds-71-to-73)).
+- **Momentum rotation, 70% of equity.** Holds the 2 coins that rank best on their 1-, 2- and
+  3-week returns together, weighted 2/2/1 (each needs a positive 2-week return), re-chosen
+  daily at 00:00 UTC, while BTC's 168-hour EMA is above its 672-hour EMA, and leaves at once
+  when it is not. This is the return engine. Until 6 October 2026 it ranked on the 2-week
+  return alone (R54b, kept in [`config/comp_r54b.json`](config/comp_r54b.json)); the ranking
+  sums that one's score and the multi-horizon bot's (round 82).
 - **Long-short trend book, 30% of equity** (the competition account since 5 October 2026,
   through [`config/comp.json`](config/comp.json)). Every coin long while its 240-hour EMA is
   above its 960-hour EMA and short while below, weighted by inverse volatility, with a trailing
@@ -48,9 +48,10 @@ scores `0.4 x Sortino + 0.3 x Sharpe + 0.3 x Calmar`.
 Over the six yearly folds, the rotation with the long-short book made +49,404% against
 +31,945% with the defensive book, with a worst yearly drawdown of 52% against 58%, and a
 better competition score in 5 of 6 years and in both untouched holdout years. Ranking the
-rotation on several horizons (ready, not live) made +123,592%, with a worst yearly drawdown of 51% and a
-better score in 5 of 6 years and both holdout years, though in only 3 of 6 years on the
-median 14-day window, and worse in 2024–25 (+82% against +233%).
+rotation on several horizons as it is live now made +105,989%, more than R54b in 5 of 6
+years, with the mildest crash year of any version (-36% against -49%) and a better yearly and
+14-day score in both holdout years; but its median 14-day window beat R54b's in only 3 of the
+6 folds, and it lagged in 2024–25 (+94% against +233%).
 
 The long-short book's rules:
 
@@ -254,6 +255,7 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | 4 October 2026, 12:59 | `189ae70` | 70% momentum rotation and 30% defensive trend book, long only |
 | The restart after 18:43, 4 October 2026 | `ccace84` | 70% momentum rotation and 30% long-short trend book (round 54's R54b) |
 | Not deployed | `5bc0678` | `config/comp.json` switched to the multi-horizon ranking, but the server was not updated and the account kept trading R54b; the next commit put R54b back in `config/comp.json` and the ranking in `config/comp_multi.json` |
+| The restart after this push, 6 October 2026 | the commit that adds this row | R54b with the rotation ranked on 1-, 2- and 3-week returns weighted 2/2/1 (round 82's K2); R54b's settings are kept in `config/comp_r54b.json` |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -277,8 +279,9 @@ year starting in October.
 
 | | 2020–21 | 2021–22 | 2022–23 | 2023–24 | 2024–25 | 2025–26 | Six years |
 |---|---|---|---|---|---|---|---|
-| **Bot as live (70% rotation, long-short trend book)** | **+1,614%** (38%) | **-49%** (52%) | **+59%** (46%) | **+626%** (37%) | **+233%** (42%) | **+48%** (34%) | **+49,404%** |
-| The rotation ranked on 1, 2 and 3 weeks (`config/comp_multi.json`, not live) | +3,239% (33%) | -44% (51%) | +96% (50%) | +946% (43%) | +82% (48%) | +79% (33%) | +123,592% |
+| **Bot as live (rotation ranked on 1, 2 and 3 weeks, 2/2/1; long-short trend book)** | **+2,727%** (34%) | **-36%** (45%) | **+90%** (52%) | **+792%** (42%) | **+94%** (47%) | **+78%** (34%) | **+105,989%** |
+| R54b, the rotation ranked on 2 weeks (until 6 October 2026, `config/comp_r54b.json`) | +1,614% (38%) | -49% (52%) | +59% (46%) | +626% (37%) | +233% (42%) | +48% (34%) | +49,404% |
+| The rotation ranked on 1, 2 and 3 weeks, 2/1/1 (`config/comp_multi.json`, not live) | +3,239% (33%) | -44% (51%) | +96% (50%) | +946% (43%) | +82% (48%) | +79% (33%) | +123,592% |
 | Bot with the defensive book (until 5 October 2026) | +1,248% (36%) | -56% (58%) | +56% (46%) | +580% (38%) | +265% (43%) | +38% (37%) | +31,945% |
 | Bot with 60% rotation | +973% (34%) | -51% (54%) | +52% (42%) | +431% (33%) | +228% (39%) | +36% (32%) | +18,756% |
 | Bot with 50% rotation (the optimised share under a 50% drawdown limit) | +795% (30%) | -45% (48%) | +44% (38%) | +323% (29%) | +209% (35%) | +38% (28%) | +12,696% |
@@ -390,9 +393,11 @@ Unknown keys are rejected, so a typo cannot silently fall back to a default.
 
 Without `--config`, the live bot uses `config/<account>.json` if it exists, so each account's
 settings are committed and a restart picks them up. `config/comp.json` runs the competition
-account with the long-short book. `config/comp_multi.json` is the same with the rotation ranked
-on 1-, 2- and 3-week returns (round 73), ready but not live. To switch to it, copy it over
-`config/comp.json`, commit, push and restart, so the change is in the history.
+account: the long-short book, and the rotation ranked on 1-, 2- and 3-week returns weighted
+2/2/1. Two alternatives are kept: `config/comp_r54b.json`, the settings before 6 October 2026
+(the rotation ranked on 2-week returns), and `config/comp_multi.json` (weighted 2/1/1). To
+switch, copy one over `config/comp.json`, commit, push and restart, so the change is in the
+history.
 
 `config/shorts.json` turns on the short sleeve (see [Strategy research](#strategy-research)):
 

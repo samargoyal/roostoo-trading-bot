@@ -1439,6 +1439,13 @@ Neither passed C1 against either bot. Both land between the two, as a blend woul
 than R54b in 5 of 6 years and had the mildest crash year of any version (-36%), but its median
 14-day window beat R54b's in only 3 of 6 years.
 
+The user chose K2 for the competition account on 6 October 2026 (`config/comp.json`; R54b kept
+in `config/comp_r54b.json`). Its holdout, run then: +136% and +191% against R54b's +124% and
++187%, with a better yearly composite (3.00 and 3.49 against 2.80 and 3.31) and median 14-day
+composite (6.10 and 5.33 against 5.21 and 3.10) in both years. Before the switch, the bot with
+every research option off reproduced R54b's backtests exactly in all 8 years, and the new
+config file reproduced K2's.
+
 **The queue, in sum.** Nothing from parts B, C or E passed C1–C5 on either bot (the nearest, E5's
 capitulation buys, failed the holdout and moved returns by a few points). The validation audit
 found a real trend-following edge, strongest in trending markets and weaker in the last two

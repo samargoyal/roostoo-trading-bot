@@ -30,10 +30,11 @@ DEFAULT_UNIVERSE = [
 class StrategyConfig:
     """The strategy. The first groups are what the bot trades with: the defaults run the
     rotation beside the defensive book, and config/comp.json switches the competition account's
-    book to the long-short trend book. config/comp_multi.json, ready but not live, also ranks the
-    rotation on several horizons (the research options rotation_ranking "multi",
-    rotation_horizons and rotation_horizon_weights). Everything else under "Research options" is
-    off by default and used only by research/ (see docs/research.md)."""
+    book to the long-short trend book and ranks its rotation on several horizons (the research
+    options rotation_ranking "multi", rotation_horizons and rotation_horizon_weights; the
+    alternatives kept are config/comp_r54b.json and config/comp_multi.json). Everything else
+    under "Research options" is off by default and used only by research/ (see
+    docs/research.md)."""
     universe: List[str] = field(default_factory=lambda: list(DEFAULT_UNIVERSE))
 
     # ---- Both books ------------------------------------------------------------------
@@ -255,7 +256,7 @@ class StrategyConfig:
     rotation_horizons: List[int] = field(default_factory=list)  # rotation_ranking "multi": the
                                           # horizons (hours) whose return ranks are averaged
     rotation_horizon_weights: List[float] = field(default_factory=list)  # their weights (empty: equal);
-                                          # config/comp_multi.json: 7, 14 and 21 days weighted 2/1/1 (round 73)
+                                          # config/comp.json: 7, 14 and 21 days weighted 2/2/1 (round 82)
     rotation_concentrate: float = 0.0     # > 0: one pick takes the whole sleeve when its return is at least
                                           # this multiple of the second's (research round 27)
     rotation_euphoria: float = 0.0        # > 0: halve the sleeve while BTC's lookback return is above this
