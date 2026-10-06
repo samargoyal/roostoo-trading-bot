@@ -25,6 +25,8 @@ BOTS = {name: json.load(open(path))["strategy"] for name, path in
          ("live (K2)", "config/comp_k2.json"))}
 DEFAULT_BOTS = ["multi-horizon", "live (R54b)"]       # rounds 75-82 ran on these two
 BOTS["K2, 3 coins"] = dict(BOTS["live (K2)"], rotation_top=3)      # the user's choice, round 85
+BOTS["live (K2, 3 coins, 75%)"] = json.load(open("config/comp.json"))["strategy"]   # since 6 October 2026
+BOTS["the live book alone"] = dict(BOTS["live (K2, 3 coins, 75%)"], rotation_weight=0.0)   # round 87
 
 
 def design(bot: str, **opts) -> dict:

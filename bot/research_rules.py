@@ -134,6 +134,9 @@ class ResearchRules:
         if c.rotation_donchian_entry > 0:
             rising = {p: r for p, r in rising.items()
                       if signals[p].close >= self._channel(p, c.rotation_donchian_entry, high=True)}
+        if c.rotation_wr_hours > 0 and c.rotation_wr_entry > -100:           # round 86
+            rising = {p: r for p, r in rising.items()
+                      if self._williams_r(p, signals[p].close, c.rotation_wr_hours) >= c.rotation_wr_entry}
         if c.rotation_min_age_hours > 0:
             rising = {p: r for p, r in rising.items()
                       if self.indicators[p].bars_seen >= c.rotation_min_age_hours}
@@ -377,12 +380,86 @@ class ResearchRules:
             return None
         if abs(gap) < c.ls_band:
             return None
+        if c.ls_breadth_align > 0 and (side > 0) != (self._ls_breadth >= c.ls_breadth_align):
+            return None                                                   # round 89
+        if c.short_btc_crash > 0 and side < 0 and self._btc_crashed:
+            return None
+        if c.ls_corr_cut > 0 and c.ls_corr_mode == "shorts" and side < 0 and self._ls_corr_high:
+            return None                                                   # round 90
+        if c.ls_hysteresis > 0:                                           # round 94
+            prev = self.__dict__.setdefault("_ls_prev_side", {})
+            g = s.ls_fast / s.ls_slow - 1.0
+            if pair in prev and prev[pair] != side and abs(g) < c.ls_hysteresis:
+                side = prev[pair]
+            prev[pair] = side
+        r2_cache = self.__dict__.setdefault("_r2_cache", {})
+        if c.ls_r2_hours > 0 and (pair, ts // (6 * HOUR_MS)) in r2_cache:   # round 96, every 6 hours
+            self.__dict__.setdefault("_ls_er", {})[pair] = r2_cache[(pair, ts // (6 * HOUR_MS))]
+        elif c.ls_r2_hours > 0:
+            r = list(self.indicators[pair].returns)[-c.ls_r2_hours:]
+            n = len(r)
+            y, acc = [], 0.0
+            for x in r:
+                acc += x
+                y.append(acc)
+            if n > 2:
+                tm, ym = (n - 1) / 2.0, sum(y) / n
+                sty = sum((t - tm) * (v - ym) for t, v in enumerate(y))
+                stt = sum((t - tm) ** 2 for t in range(n))
+                syy = sum((v - ym) ** 2 for v in y)
+                r2 = sty * sty / (stt * syy) if stt > 0 and syy > 0 else 0.0
+            else:
+                r2 = 0.0
+            self.__dict__.setdefault("_ls_er", {})[pair] = r2
+            if len(r2_cache) > 20000:
+                r2_cache.clear()
+            r2_cache[(pair, ts // (6 * HOUR_MS))] = r2
+        if c.ls_regime_tilt > 0 and (side > 0) != trend_on:
+            side *= c.ls_regime_tilt
+        if c.ls_er_hours > 0:
+            r = list(self.indicators[pair].returns)[-c.ls_er_hours:]
+            path = sum(abs(x) for x in r)
+            self.__dict__.setdefault("_ls_er", {})[pair] = abs(sum(r)) / path if path > 0 else 0.0
+        if c.ls_rel_hours > 0 and pair != c.regime_pair:                  # round 93
+            mine = list(self.indicators[pair].returns)[-c.ls_rel_hours:]
+            btc = list(self.indicators[c.regime_pair].returns)[-c.ls_rel_hours:] if c.regime_pair in self.indicators else []
+            if len(mine) == c.ls_rel_hours and len(btc) == c.ls_rel_hours and (sum(mine) > sum(btc)) != (side > 0):
+                return None
+        if c.ls_top_n > 0 or c.ls_fresh_days > 0:                        # round 92
+            self.__dict__.setdefault("_ls_z", {})[pair] = abs(math.log(s.ls_fast / s.ls_slow)) / max(s.volatility, 1e-12)
+            ages = self.__dict__.setdefault("_ls_age", {})
+            if pair not in ages or ages[pair][0] != side:
+                ages[pair] = (side, ts)
+        if c.ls_min_variance_ratio > 0 and self._variance_ratio(pair, ts) < c.ls_min_variance_ratio:
+            return None                                                   # round 87
+        if c.short_max_jump_share > 0 and side < 0 and self._jump_share(pair, ts) > c.short_max_jump_share:
+            return None
+        if c.ls_sizing != "inverse_vol" and not hasattr(self, "_ls_mult"):
+            self._ls_mult = {}
+        if c.ls_sizing == "merton":
+            # dS/S = mu dt + sigma dW: growth-optimal weight mu / sigma^2. An EMA of N hours lags a
+            # steady trend by (N - 1) / 2 hours, so the gap between the two EMAs reads the drift.
+            lag = (c.ls_trend[1] - c.ls_trend[0]) / 2.0
+            self._ls_mult[pair] = abs(math.log(s.ls_fast / s.ls_slow)) / lag / max(s.volatility, 1e-12)
+        elif c.ls_sizing == "har":                                        # round 88
+            forecast = self._har_vol(pair, ts)
+            self._ls_mult[pair] = s.volatility / forecast if forecast > 0 else 1.0
+        elif c.ls_sizing == "kalman":
+            t = s.trend_strength
+            self._ls_mult[pair] = min(abs(t) / c.ls_kalman_t, 1.0) if (t > 0) == (side > 0) else 0.0
         strength = min(abs(gap) / c.ls_full_gap, 1.0) if c.ls_full_gap > 0 else 1.0
         return side * strength
 
     def _research_ls_gross(self, gross, signals, frozen, targets):
         """Round 51: with ls_full_gap, full trends everywhere would fill the book."""
         c = self.cfg
+        if getattr(self, "_ls_fill", False):                              # round 93
+            self._ls_fill = False
+            return None
+        if c.ls_corr_cut > 0 and c.ls_corr_mode == "book" and self._ls_corr_high:
+            gross *= 2.0                                                  # round 90: the book halved
+        if c.ls_vol_manage:                                               # round 87
+            gross /= max(self._vol_scale(c.ls_vol_manage), 1e-6)
         if c.ls_full_gap > 0:
             # Strength sizing: full trends everywhere would fill the book; weak ones leave cash.
             gross = sum(1.0 / s.volatility for p, s in signals.items()
@@ -407,6 +484,14 @@ class ResearchRules:
         c = self.cfg
         if c.rotation_take_profit > 0 or c.rotation_profit_trail_after > 0:
             self._research_secure_profits(ts, signals, state, frozen)
+        if c.rotation_wr_hours > 0 and c.rotation_wr_exit > -100:            # round 86
+            for pair, w in list(state.rotation_plan.items()):
+                s = signals.get(pair)
+                if w <= 0 or pair == c.defensive_pair or pair in frozen or s is None:
+                    continue
+                if self._williams_r(pair, s.close, c.rotation_wr_hours) < c.rotation_wr_exit:
+                    del state.rotation_plan[pair]
+                    state.rotation_cooldown[pair] = ts + c.stop_cooldown_hours * HOUR_MS
         if not (c.rotation_exit_attention or c.rotation_exit_spike > 0) or not self.external_scores:
             return
         table = self._external(ts)
@@ -462,6 +547,44 @@ class ResearchRules:
         instead of inverse volatility, with the same gross; re-solved once a day or when the book's
         coins or sides change."""
         c = self.cfg
+        if (c.ls_er_hours > 0 or c.ls_r2_hours > 0) and raw:              # rounds 94, 96
+            er = getattr(self, "_ls_er", {})
+            if c.ls_er_keep > 0:                                          # round 98
+                ranked = sorted(raw, key=lambda p: er.get(p, 0.0), reverse=True)
+                kept = ranked[:max(1, round(len(ranked) * c.ls_er_keep))]
+                er = {p: (1.0 if p in kept else 0.0) for p in raw}
+            elif c.ls_er_power != 1.0:
+                er = {p: er.get(p, 0.0) ** c.ls_er_power for p in raw}
+            mean = sum(er.get(p, 0.0) for p in raw) / len(raw)
+            if mean > 0:
+                before = sum(abs(v) for v in raw.values())
+                raw = {p: v * min(er.get(p, 0.0) / mean, c.ls_sizing_cap) for p, v in raw.items()}
+                after = sum(abs(v) for v in raw.values())
+                raw = {p: v * before / after for p, v in raw.items()} if after > 0 else raw
+        if c.ls_rel_fill and raw:                                         # round 93: fill the left-out share
+            self._ls_fill = True
+        if (c.ls_top_n > 0 or c.ls_fresh_days > 0) and raw:              # round 92
+            gross = sum(abs(v) for v in raw.values())
+            new = dict(raw)
+            if c.ls_top_n > 0:
+                z = getattr(self, "_ls_z", {})
+                keep = sorted(new, key=lambda p: z.get(p, 0.0), reverse=True)[:c.ls_top_n]
+                new = {p: new[p] for p in keep}
+            if c.ls_fresh_days > 0:
+                ages = getattr(self, "_ls_age", {})
+                new = {p: v * (c.ls_fresh_boost if ts - ages.get(p, (0, -10 ** 15))[1] < c.ls_fresh_days * DAY_MS
+                               else 1.0) for p, v in new.items()}
+            total = sum(abs(v) for v in new.values())
+            raw = {p: v * gross / total for p, v in new.items()} if total > 0 else raw
+        if c.ls_sizing != "inverse_vol" and raw:                          # round 87
+            mult, self._ls_mult = getattr(self, "_ls_mult", {}), {}
+            new = {p: v * mult.get(p, 1.0) for p, v in raw.items()}
+            total = sum(abs(v) for v in new.values())
+            if total <= 0:
+                return {}
+            scale = sum(abs(v) for v in raw.values()) / total
+            return {p: max(-c.ls_sizing_cap * abs(raw[p]), min(c.ls_sizing_cap * abs(raw[p]), v * scale))
+                    for p, v in new.items() if v != 0}
         if c.ls_weighting == "inverse_vol" or len(raw) < 2:
             return raw
         key = (ts // DAY_MS, tuple(sorted((p, v > 0) for p, v in raw.items())))
@@ -846,6 +969,117 @@ class ResearchRules:
             sigma = math.sqrt(sum((x - mean) ** 2 for x in portfolio) / (length - 1) * 24)
         self._volatility_day, self._volatility = day, sigma
         return sigma
+
+    def _research_ls_market(self, signals):
+        """Round 89: the share of the book's coins in uptrends, and whether BTC fell more than
+        short_btc_crash over the last 30 days."""
+        c = self.cfg
+        if c.ls_breadth_align > 0:
+            trends = [s.ls_fast > s.ls_slow for p, s in signals.items()
+                      if p != c.defensive_pair and s.ls_fast > 0 and s.ls_slow > 0]
+            self._ls_breadth = sum(trends) / len(trends) if trends else 0.5
+        if c.ls_corr_cut > 0:
+            self._ls_corr_high = self._mean_correlation(signals) > c.ls_corr_cut
+        if c.short_btc_crash > 0:
+            r = self._horizon_return(c.regime_pair, 720) if c.regime_pair in self.indicators else None
+            self._btc_crashed = r is not None and r < -c.short_btc_crash
+
+    def _mean_correlation(self, signals, top: int = 10, hours: int = 72) -> float:
+        """Round 90: the mean pairwise correlation of hourly returns over `hours` among the `top`
+        most traded coins (by 30-day dollar volume); 0 with too little history."""
+        c = self.cfg
+        pairs = sorted((p for p in signals if p != c.defensive_pair and p in self.indicators),
+                       key=lambda p: self.indicators[p].dollar_sum, reverse=True)[:top]
+        series = [list(self.indicators[p].returns)[-hours:] for p in pairs]
+        series = [r for r in series if len(r) == hours]
+        if len(series) < 3:
+            return 0.0
+        z = []
+        for r in series:
+            m = sum(r) / hours
+            sd = math.sqrt(sum((x - m) ** 2 for x in r) / (hours - 1))
+            if sd <= 0:
+                continue
+            z.append([(x - m) / sd for x in r])
+        total, n = 0.0, 0
+        for i in range(len(z)):
+            for j in range(i + 1, len(z)):
+                total += sum(a * b for a, b in zip(z[i], z[j])) / (hours - 1)
+                n += 1
+        return total / n if n else 0.0
+
+    def _har_vol(self, pair: str, ts: int) -> float:
+        """The coin's hourly volatility forecast from a HAR model (Corsi, 2009) with equal weights:
+        the mean of the last day's, the last week's mean and the last month's mean daily realised
+        variance, per hour; 0 while there is under a month of history. Once a day (round 88)."""
+        cache = self.__dict__.setdefault("_har_cache", {})
+        key = (pair, ts // DAY_MS)
+        if key not in cache:
+            if len(cache) > 5000:
+                cache.clear()
+            r = list(self.indicators[pair].returns)[-720:]
+            if len(r) < 720:
+                cache[key] = 0.0
+            else:
+                days = [sum(x * x for x in r[i:i + 24]) for i in range(0, 720, 24)]
+                cache[key] = math.sqrt((days[-1] + sum(days[-7:]) / 7 + sum(days) / 30) / 3 / 24)
+        return cache[key]
+
+    def _variance_ratio(self, pair: str, ts: int, q: int = 24, hours: int = 720) -> float:
+        """Lo-MacKinlay variance ratio: the variance of overlapping q-hour returns over q times
+        that of hourly returns; above 1 for trending (positively autocorrelated) prices, 1 for a
+        random walk. 1 while there is too little history; computed once a day (round 87)."""
+        cache = self.__dict__.setdefault("_vr_cache", {})
+        key = (pair, ts // DAY_MS)
+        if key not in cache:
+            if len(cache) > 5000:
+                cache.clear()
+            cache[key] = self._variance_ratio_now(pair, q, hours)
+        return cache[key]
+
+    def _variance_ratio_now(self, pair: str, q: int, hours: int) -> float:
+        r = list(self.indicators[pair].returns)[-hours:]
+        if len(r) < hours // 2:
+            return 1.0
+        n = len(r)
+        mean = sum(r) / n
+        var1 = sum((x - mean) ** 2 for x in r) / (n - 1)
+        if var1 <= 0:
+            return 1.0
+        sums, acc = [], sum(r[:q])
+        sums.append(acc)
+        for i in range(q, n):
+            acc += r[i] - r[i - q]
+            sums.append(acc)
+        varq = sum((x - q * mean) ** 2 for x in sums) / max(len(sums) - 1, 1)
+        return varq / (q * var1)
+
+    def _jump_share(self, pair: str, ts: int, hours: int = 168) -> float:
+        """The share of realised variance from jumps (Barndorff-Nielsen and Shephard): 1 - bipower
+        variation (pi/2 x sum |r_t||r_t-1|) over realised variance, floored at 0; computed every 6
+        hours (round 87)."""
+        cache = self.__dict__.setdefault("_jump_cache", {})
+        key = (pair, ts // (6 * HOUR_MS))
+        if key in cache:
+            return cache[key]
+        if len(cache) > 5000:
+            cache.clear()
+        r = list(self.indicators[pair].returns)[-hours:]
+        if len(r) < 24:
+            return 0.0
+        rv = sum(x * x for x in r)
+        bv = math.pi / 2 * sum(abs(a) * abs(b) for a, b in zip(r[1:], r[:-1]))
+        cache[key] = max(0.0, 1.0 - bv / rv) if rv > 0 else 0.0
+        return cache[key]
+
+    def _williams_r(self, pair: str, close: float, hours: int) -> float:
+        """Williams %R over the last `hours` bars, the latest included: 0 at the range's top,
+        -100 at its bottom; 0 (never filtered) while there is too little history."""
+        ind = self.indicators[pair]
+        if len(ind.highs) < hours:
+            return 0.0
+        hh, ll = max(list(ind.highs)[-hours:]), min(list(ind.lows)[-hours:])
+        return -100.0 * (hh - close) / (hh - ll) if hh > ll else 0.0
 
     def _channel(self, pair: str, hours: int, high: bool) -> float:
         """Highest high (or lowest low) of the `hours` bars before the latest one; a value that

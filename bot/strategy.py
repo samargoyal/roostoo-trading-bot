@@ -574,6 +574,7 @@ class Strategy(ResearchRules):
         trend_on = regime is not None and regime.ema_trend_fast > regime.ema_trend_slow
         sides = sides or c.ls_sides
         shorts_ok = self._shorts_allowed(regime)
+        self._research_ls_market(signals)                                  # research: off
         fixed = {p: weights.get(p, 0.0) for p in frozen if p in targets and weights.get(p, 0.0) != 0.0}
         held_shorts = state.shorts if state is not None else {}
         liquid = None
@@ -604,6 +605,8 @@ class Strategy(ResearchRules):
         if c.short_entry_channel > 0 or c.short_stop_atr > 0 or use_slots:
             gross = slots                   # a short not timed in (or stopped out) leaves its slot in cash
         gross = self._research_ls_gross(gross, signals, frozen, targets)
+        if gross is None:                                                  # research: the held positions fill the book
+            gross = sum(abs(v) for v in raw.values()) or 1.0
         short_scale = (self._short_vol_scale() if c.short_vol_ratio else 1.0) * c.ls_short_scale  # research: 1
         for pair, v in raw.items():
             targets[pair] = v / gross * budget * (short_scale if v < 0 else 1.0)

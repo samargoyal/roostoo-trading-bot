@@ -45,6 +45,19 @@ python -m research.h50_long_short   # the long-short screen
 | `rotation_weight.py`, `book_exposure.py` | The rotation's share of the account; the book's exposure |
 | `h50_long_short.py` | Long-short books (screen for rounds 50–64; the live long-short book came from round 54) |
 | `h60_swing_mft.py`, `h61_swing.py` | 53 swing and 28 medium-frequency strategies, alone and beside the bot |
+| `h86_scalping.py` | Seven scalping strategies on 5-minute bars, longs and shorts judged apart |
+| `h87_orb.py` | Opening-range breakouts at the Asia, London and US opens and the UTC day, 252 designs |
+| `h88_williams_r.py`, `round86_williams_r.py` | Williams %R alone (five designs) and on the rotation |
+| `h89_rsi3_vwap.py` | The RSI(3) + EMA + VWAP dip-buy, daily, 4-hour and hourly |
+| `h90_order_flow.py`, `h90_holdout.py` | 17 order-flow signals from taker volume and trade counts, votes and pairs, and the survivors on 2018–20 |
+| `round87_book_sde.py` | The long-short book from stochastic calculus: Merton and Kalman sizing, variance ratio, jumps, volatility management |
+| `h91_range_forecast.py`, `round88_book_range.py` | A HAR forecast of the daily range: its accuracy, trading its bands, and the book weighted by it |
+| `h92_ml_ranking.py`, `h93_ml_book.py` | Ridge, LightGBM and a neural network ranking coins, walk-forward: for the rotation and as a long-short book |
+| `h94_ml_book.py`, `h94_q1_robust.py`, `round89_book_breadth.py` | ML for the book alone: direction models, meta-labels, a learned controller, and the breadth rule it found |
+| `round90_book_correlation.py` | Correlation on the book alone: ERC, minimum variance, HRP, and a correlation spike halving the book |
+| `round91_more_return.py` | Return against risk for the split, 75% to 95% rotation, and the HRP book |
+| `round92_book_return.py`, `round93_book_dual.py`, `round94_book_chop.py` | The book for return: concentration, faster longs, fresh trends, dual momentum, hysteresis, efficiency ratio |
+| `round95_efficiency.py`, `round96_book_quality.py`, `round97_efficiency_stress.py` | Trend-quality weights for the book (efficiency ratio, R^2), judged on return, and their stress tests |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

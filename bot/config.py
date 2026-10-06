@@ -32,10 +32,10 @@ class StrategyConfig:
     rotation beside the defensive book, and config/comp.json switches the competition account's
     book to the long-short trend book and ranks its rotation on several horizons (the research
     options rotation_ranking "multi", rotation_horizons and rotation_horizon_weights) with 3
-    coins in 75% of equity (the alternatives kept are config/comp_k2.json, config/comp_r54b.json
-    and config/comp_multi.json). Everything else
-    under "Research options" is off by default and used only by research/ (see
-    docs/research.md)."""
+    coins in 75% of equity, and weights the book by each coin's efficiency ratio (ls_er_hours,
+    rounds 94-97). The alternatives kept are config/comp_k2_3.json, config/comp_k2.json,
+    config/comp_r54b.json and config/comp_multi.json. Everything else under "Research options"
+    is off by default and used only by research/ (see docs/research.md)."""
     universe: List[str] = field(default_factory=lambda: list(DEFAULT_UNIVERSE))
 
     # ---- Both books ------------------------------------------------------------------
@@ -149,6 +149,52 @@ class StrategyConfig:
                                           # minus the coin): "erc" (equal risk contribution) or "min_variance"
                                           # (capped at ls_max_weight), keeping the inverse-volatility gross
     ls_max_weight: float = 0.10
+    ls_sizing: str = "inverse_vol"        # round 87: "merton", each coin's weight its drift over its variance
+                                          # (the growth-optimal weight of a geometric Brownian motion, the
+                                          # drift read from the EMA gap); "kalman", by the Kalman slope's
+                                          # t-statistic (none where it disagrees with the EMAs); both keep
+                                          # the book's gross and cap a coin at ls_sizing_cap x its
+                                          # inverse-volatility weight
+    ls_sizing_cap: float = 3.0           # ("har", round 88: by the coin's forecast daily volatility, the HAR
+                                          # mean of its last day's, week's and month's realised variance,
+                                          # instead of the last week's standard deviation)
+    ls_kalman_t: float = 2.0              # "kalman": full size from this |t| up
+    ls_min_variance_ratio: float = 0.0    # > 0: a position only while the coin's variance ratio (24-hour
+                                          # over 1-hour variance x 24, last 720 hours) is at least this:
+                                          # persistent, trending prices (round 87)
+    short_max_jump_share: float = 0.0     # > 0: no short while the jump share of the coin's variance (1 -
+                                          # bipower / realised variance, last 168 hours) is above this (87)
+    ls_breadth_align: float = 0.0         # > 0: longs only while at least this share of the book's coins
+                                          # are in uptrends, shorts only while fewer are (round 89)
+    short_btc_crash: float = 0.0          # > 0: no shorts while BTC's 30-day return is below minus this,
+                                          # the bounce after a crash (round 89)
+    ls_corr_cut: float = 0.0              # > 0: while the 10 most traded coins' mean pairwise correlation of
+                                          # hourly returns over 72 hours is above this, the book is halved
+                                          # (ls_corr_mode "book") or drops its shorts ("shorts") (round 90)
+    ls_corr_mode: str = "book"
+    ls_top_n: int = 0                     # > 0: the book holds only the N coins with the strongest trends
+                                          # (EMA gap over volatility), long or short, at the full gross (92)
+    ls_fresh_days: float = 0.0            # > 0: a coin whose trend turned within this many days gets
+                                          # ls_fresh_boost x its weight, the book re-scaled to its gross (92)
+    ls_fresh_boost: float = 2.0
+    ls_rel_hours: int = 0                 # > 0: dual momentum (round 93): a long also needs the coin to have
+                                          # beaten BTC over this many hours, a short to have lagged it
+    ls_rel_fill: bool = False             # the coins this leaves out: in cash (False) or the book
+                                          # re-scaled to its gross (True)
+    ls_hysteresis: float = 0.0            # > 0: a coin keeps its side until its EMA gap crosses this far
+                                          # past zero the other way (round 94)
+    ls_er_hours: int = 0                  # > 0: weights times Kaufman's efficiency ratio over this many
+                                          # hours (|net move| / path), re-scaled to the gross, capped at
+                                          # ls_sizing_cap x the weight (round 94)
+    ls_er_power: float = 1.0              # the efficiency tilt raised to this power (round 98)
+    ls_er_keep: float = 0.0               # > 0: only the coins whose efficiency ranks in this top share,
+                                          # filling the book's gross (round 98)
+    ls_r2_hours: int = 0                  # > 0: weights times the R^2 of a straight line through the coin's
+                                          # log price over this many hours, like ls_er_hours (round 96)
+    ls_regime_tilt: float = 0.0           # > 0: the side against the rotation's BTC filter at this
+                                          # fraction of its weight, the rest in cash (round 96)
+    ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
+                                          # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day
     ls_band: float = 0.0                  # > 0: a neutral zone, no position while the EMAs are closer than this
     ls_full_gap: float = 0.0              # > 0: size by trend strength, full size once the EMA gap reaches this
@@ -232,6 +278,10 @@ class StrategyConfig:
                                           # median over the last 60 days (research round 44)
     rotation_donchian_entry: int = 0      # > 0: picks must close at or above their highest high of the
                                           # previous N hours, a breakout (research round 42)
+    rotation_wr_hours: int = 0            # > 0: Williams %R over this many hourly bars (round 86):
+    rotation_wr_entry: float = -100.0     # a new pick needs %R at or above this (-100 = no filter)
+    rotation_wr_exit: float = -100.0      # a held pick leaves when %R falls below this, cooling down
+                                          # for stop_cooldown_hours (-100 = never)
     rotation_donchian_exit: int = 0       # > 0: drop a pick that closes below its lowest low of the
                                           # previous N hours (round 42)
     rotation_donchian_hold: bool = False  # keep held picks until that exit instead of re-ranking (42)

@@ -1522,3 +1522,283 @@ exactly before the switch, and the new config file reproduced its own.
 capitulation buys, failed the holdout and moved returns by a few points). The validation audit
 found a real trend-following edge, strongest in trending markets and weaker in the last two
 years. The operational breakers (part A) are ready, off until a testing-account cycle.
+
+## Scalping, long and short (H86)
+
+The user asked for scalping strategies, long and short. `research/h86_scalping.py` tested seven
+on 5-minute bars of 16 coins, 2020–26, each written down before running: VWAP snap-backs,
+US-open range breakouts, volume-confirmed momentum bursts, RSI(2) pullbacks in the 4-hour
+trend, altcoins following a sharp BTC bar, fading liquidation cascades and blow-off tops, and
+Bollinger squeeze breakouts. Longs and shorts were judged apart: the mean net return per trade
+had to be positive in at least 5 of the 6 folds.
+
+All 14 failed. The gross edge per trade was between -6 and +4 basis points (blow-off shorts,
+221 trades, lost 36 before costs);
+a market round trip costs about 27 (0.1% a side plus half the spread). Even with limit orders
+for longs at 0.05% a side and no spread, a best case, every long lost 7 to 12 basis points a
+trade; shorts are market-only on Roostoo. The one positive fold (cascade fades in 2024–25,
++20 basis points over a few dozen trades) was alone among the six. Moves inside an hour are
+too small against Roostoo's fees to trade, which agrees with H60's medium-frequency results.
+
+## Opening-range breakouts (H87)
+
+The user asked for an ORB test. `research/h87_orb.py` ran the full grid on 5-minute bars of 16
+coins, 2020–26, written down before running: the Asia (00:00 UTC), London (08:00) and US
+(13:30) opens held to 8 hours after, and the UTC day held to the next 00:00; ranges of 15, 30
+or 60 minutes (60, 120 or 240 for the day); three exits (a 2R target, held to the session's
+end, a stop at the range's middle); and four filters (none, the 1-day/4-day trend, twice the
+usual volume, and acting only at hour closes as the bot does). That is 252 designs, longs and
+shorts apart.
+
+None of the 252 passed: none made money per trade after costs in even 4 of the 6 folds. The
+session opens had no edge before costs (the best of any of them, +5.5 basis points a trade,
+against about 27 in costs). The UTC-day breakout for longs, with the trend filter, had the
+only real gross edge, +23 basis points a trade on a 240-minute range, but that is the trend
+already, mostly from 2020–21 (+91 net that year; -42 in both 2021–22 and 2025–26), and after
+costs it lost 4 a trade. Shorts lost in every design.
+
+## Williams %R (H88, round 86)
+
+The user asked for Williams %R. `research/h88_williams_r.py` tested five designs on hourly bars
+of 49 coins, 2020–26, longs and shorts apart, each with lookbacks of 10, 14 and 21: buying
+pullbacks (%R below -80) in the bot's trend, breakouts through -20, plain reversals (below -95,
+above -5), a 14-day %R near its high with an hourly pullback, and the 14-day %R alone (in when
+it crosses above -20, out below -50). Only the last, on longs, had an edge: +220 basis points a
+trade after costs, positive in 5 of 6 folds with 14- and 21-day lookbacks but 4 of 6 with 10, so
+it failed. The faster designs earned 0 to 15 basis points a trade before costs of about 25.
+
+That slow signal is a breakout, close to what the rotation already does, so round 86
+(`research/round86_williams_r.py`) put it in the rotation, on the live bot (K2, 3 coins at 75%)
+and on R54b: new picks only near their 14-day high (%R at or above -20), held picks leaving
+below -50, and both. All three failed C1 and C2 on both bots. The filter kept the rotation out
+of coins that were rising but not at their highs, and halved the bull years (2022–23: +10%
+against +92%); the exit sold picks in ordinary pullbacks. The options (`rotation_wr_hours`,
+`rotation_wr_entry`, `rotation_wr_exit`) stay in `bot/config.py`, off.
+
+## RSI(3), EMA and VWAP dip-buying (H89)
+
+The user sent a published QQQ strategy: buy when RSI(3) closes below 22, the 100-day EMA is
+above its level 5 days ago and the close is 1% or more below the 10-day VWAP; sell when RSI(3)
+closes above 55. `research/h89_rsi3_vwap.py` ran it on the bot's 49 coins on daily, 4-hour and
+hourly bars, with the mirror for shorts, and neighbours (RSI 18 and 26, gaps of 0.5% and 2%).
+
+On daily bars the longs made +149 basis points a trade after costs and won 63% of trades, alike
+in all four neighbours, but lost in both bear years (2021–22 -133, 2022–23 -65), so 4 of 6
+folds: a fail, though the nearest of anything since round 85. The shorts lost 2.4% a trade
+(bull-market pops kept rising). On 4-hour and hourly bars the edge before costs (+24 to +45
+basis points for longs) was mostly eaten by them; no version passed. Our QQQ file has closes
+only, so the original was not re-run on QQQ.
+
+## Order flow (H90)
+
+The user sent a list of 62 order-flow concepts. Binance's bars carry each hour's taker-buy
+volume and trade count, so `research/h90_order_flow.py` built 17 signals from those that can be
+measured: bar delta, CVD and its divergences, absorption at 7-day extremes, exhaustion, Asia's
+session delta, large average trade size, price-volume divergence, initiative and responsive
+moves around the 7-day value area, the developing POC, the week's anchored VWAP and its bands,
+liquidity sweeps, failed auctions, trapped traders and structure shifts. About 20 concepts need
+the order book or tick-by-tick bid and ask prices, which we do not have (footprints, DOM, level
+2, icebergs, spoofing, liquidity pulling and stacking, imbalances). Each signal traded on hourly
+bars of 49 coins, held 24 hours with a 3-ATR stop (neighbours: 12 and 48 hours), longs and shorts
+apart; then votes (2 or 3 agreeing within 6 hours) and all 136 pairs.
+
+No single signal passed. Most earned less than the 25 basis points a trade that costs take;
+exhaustion longs (buying a 3x-volume, 2.5-sd drop that closes in the bar's top half) made +127 a
+trade in 5 of 6 folds, but not with every hold, and lost in both holdout years. The votes
+failed. Three of the 272 pair-sides passed with all three holds, about as many as chance gives,
+and on the holdout years (2018–20, fewer coins) only one held up: initiative above the 7-day
+value area together with a break of structure in a downtrend, for longs (+48 and +187 basis
+points a trade at 24 hours, +5 and +71 at 12, -27 and +276 at 48). It averages +24 basis points
+a trade on about 220 trades a year across 49 coins, too small and too rare to matter beside the
+rotation; it is not in the bot.
+
+## The book from stochastic calculus (round 87)
+
+The user asked to make the long-short book stronger with stochastic calculus. Treating each coin
+as a diffusion, dS/S = mu dt + sigma dW with jumps, `research/round87_book_sde.py` tested six
+changes, judged on C1–C5 on the book alone and on the live bot (options in `bot/config.py`, off):
+Merton sizing (weights mu / sigma^2, the drift read from the EMA gap), sizing by the t-statistic
+of a Kalman filter's slope, trading only coins with a variance ratio of at least 1, no shorts
+where jumps are over 30% of the variance (bipower variation), scaling the book by BTC's
+volatility forecast, and the first, third and fourth together.
+
+All six failed C1 on both bots. On the book alone (the baseline: +484%, +32%, +7%, +84%, +27%, +50%;
+worst drawdown 43%): Kalman sizing made the most (+692% in 2020–21, +71% in 2025–26) but less in 2021–24 and
+a worse drawdown (49% against 43%); Merton sizing concentrated the book in the strongest trends
+and lost in 2022–23; the variance-ratio filter kept the book mostly in cash (drawdown 12%, but
++60% in 2020–21 against +484%); the jump filter changed little; volatility management cut the
+drawdown to 36% and the return with it. A diffusion with a drift read from the trend is what the
+book already assumes; the refinements traded return for risk or the other way, never both.
+
+## Forecasting the range (H91, round 88)
+
+The user asked for a range forecast. `research/h91_range_forecast.py` forecast each coin's daily
+volatility with a HAR model of the log Parkinson range (yesterday's, last week's and last month's
+values, pooled over 49 coins and refitted before each fold, walk-forward). It explained 29–46% of
+the next day's log range out of sample, against -5 to 23% for yesterday's range and 15–32% for
+the 30-day mean: a real forecast. Its 20% bands held less well in recent years (the top touched
+on 9–12% of days in 2020–23 but 18–20% in 2024–26).
+
+Trading the band failed: fading an hourly close beyond it lost 28–41 basis points a trade after
+costs, and following it lost 4 to 69, longs and shorts, at bands touched on 10, 20 and 30% of
+days. Round 88 (`research/round88_book_range.py`) weighted the book by the HAR forecast instead
+of the last week's volatility (option `ls_sizing` "har", off): on the book alone it was better in
+4 of 6 folds and moved returns by a few points; on the live bot 2 of 6. A better volatility
+forecast barely changes inverse-volatility weights, which only compare coins with each other.
+
+## Machine learning (H92, H93)
+
+The user asked for machine learning. `research/h92_ml_ranking.py` built 24 features a coin a day
+(returns over 1 to 30 days and against BTC, volatility, range, volume, taker-buy share, Williams
+%R, the book's EMA gap, the trend's t-statistic, the variance ratio, skewness, the best day of
+the month, BTC's state) for the bot's 49 coins, and trained a ridge regression, LightGBM and a
+neural network (an MLP, three seeds) to rank coins on the next 7 days' return, walk-forward (each
+fold predicted by a model trained only on earlier days, with a 7-day gap).
+
+The models ranked far better than K2 on average: a daily rank correlation with the next 7 days
+of +0.05 to +0.12 in every fold, against about -0.02 for K2. But a rotation on their top 3 made
+less than K2's in 5 or 6 of the 6 folds (LightGBM +707% against +4,895% in 2020–21). The rotation
+earns from the few coins that run away, which momentum finds; the models learned the average
+ordering, mostly short-term reversal and low volatility.
+
+`research/h93_ml_book.py` used them where an average edge pays, in a long-short book, in the same
+daily simulation as the live book: long the top fifth, short the bottom fifth (LightGBM, ridge),
+and the live book with an ML veto. None beat the book in 5 of 6 folds: the ML books lost 51–56%
+in 2023–24, when the coins they shorted rallied; the veto cut the worst drawdown from 47% to 24%
+but the return too (+124% against +407% in 2020–21). A classifier trained to find each week's
+top tenth beat K2's rotation in 2 of 6 folds. Reinforcement learning was not tried: six years
+give about 300 independent weekly decisions, too few to train a policy that does not memorise.
+
+## Machine learning for the book alone (H94, round 89)
+
+The user asked for ML, deep learning and reinforcement learning on the book alone.
+`research/h94_ml_book.py` learned the book's own decisions, walk-forward as H92, in H93's daily
+simulation: each coin's direction by LightGBM (T1) and by a neural network (T2), meta-labels
+keeping only the trend positions a model expects to pay (T3) or sized by its confidence (T4),
+and a learned controller (Q1, one-step fitted Q, a contextual bandit) choosing each day between
+the whole book, its longs, its shorts or nothing from the market's state. T1, T2 and T4 lost
+(worst drawdowns 70–86%); T3 cut the worst drawdown from 47% to 30% but beat the book's return
+in 2 of 6 folds. Q1 beat it in 4 of 6 on return and 5 of 6 on the median 14-day return, with a
+40% worst drawdown, and its neighbours (`research/h94_q1_robust.py`: reward horizons of 5 and 10
+days, trees of 3 and 15 leaves) in 4–5 of 6; all lost 2020–21, the year with the least training.
+
+What it learned is that the book's shorts lose while most coins are in uptrends, its longs earn
+nothing while most are in downtrends, and shorts lose after BTC has fallen 15% in 30 days.
+Round 89 (`research/round89_book_breadth.py`) made those plain rules (options
+`ls_breadth_align`, `short_btc_crash`, off): longs only while at least half the coins trend up,
+shorts only while fewer do (G1), and no shorts after a BTC crash (G2). On the book alone both
+beat it in 5 of 6 folds with a shallower drawdown but won fewer 14-day windows (C2); on the live
+bot G2 passed C1–C4. Both lost to the book in both holdout years, on both bots (book alone, median
+14-day composite 5.30 and 1.43 against 6.00 and 3.90 for G1), so the pattern was 2020–26's and
+not a rule. The book stays as it is. Reinforcement learning proper (a multi-step policy) was not
+tried, for H93's reason.
+
+## Correlation on the book alone (round 90)
+
+Rounds 74 and 83 had weighted the book by correlations only inside the live bot. Round 90
+(`research/round90_book_correlation.py`) ran them on the book alone, with a new use of
+correlation as a danger signal (option `ls_corr_cut`, off): equal risk contribution (P1),
+minimum variance (P2), hierarchical risk parity (P3), the book halved while the 10 most traded
+coins' mean 72-hour correlation is above 0.7 (K1), or its shorts dropped instead (K2c).
+
+P1–P3 and K2c failed C1 on both bots; hierarchical risk parity added the most return (+36 points
+a year alone, +81 in the live bot) but won the median 14-day window in 3 of 6 folds. K1 was the
+best result for the book so far: better in 5 of 6 folds on the 14-day yardstick, a worst
+drawdown of 36% against 43%, more 14-day windows won, and its neighbours (0.6, 0.8) held. It
+failed the holdout: 2018–19 +75% (14-day composite 4.42) against +104% (6.00), 2019–20 +67%
+(3.76) against +70% (3.90), though with drawdowns of 20% and 18% against 29% and 32%. Halving the
+book when correlations spike reliably cuts risk, but in the holdout it gave up more return than
+it saved; in the live bot it was better in 3 of 6 folds.
+
+## More return: the split (round 91)
+
+The user asked for more return. `research/round91_more_return.py` mapped the split on the live
+bot (K2, 3 coins), over the six folds and the 2018–20 holdout:
+
+| Rotation | 6-year total | Worst drawdown | Crash year 2021–22 | Mean median 14-day composite | Holdout 2018–19 / 2019–20 |
+|---|---|---|---|---|---|
+| 75% (live) | +145,396% | 49% | -33% | 8.72 | +91% / +219% |
+| 80% | +178,805% | 51% | -38% | 8.95 | +88% / +232% |
+| 85% | +217,895% | 54% | -40% | 9.73 | +87% / +245% |
+| 90% | +254,945% | 55% | -44% | 9.29 | +84% / +250% |
+| 95% | +299,393% | 57% | -47% | 9.76 | +87% / +263% |
+| 75%, hierarchical risk parity book | +168,205% | 49% | -39% | 9.63 | +97% / +226% |
+| 85%, hierarchical risk parity book | +199,090% | 54% | -45% | 10.00 | +89% / +232% |
+
+Each 5% more in the rotation adds about 2–3 points of worst drawdown; the 14-day composite rises
+to 85% and then flattens. 100% is not supported (the book's share divides by it). The user chose
+to keep 75%.
+
+## A book that makes more (rounds 92 and 93)
+
+The user asked to keep working on the book, return first. Round 92
+(`research/round92_book_return.py`): only the 10 strongest trends (N1), longs on a faster trend
+than shorts (N2), trends younger than 14 days at double weight (N3), and N1 with N2 (N4). Round 93
+(`research/round93_book_dual.py`): dual momentum, a long also beating BTC over 30 days and a short
+lagging it, the rest in cash (D1) or filling the book (D2), and fresh trends at three times their
+weight (F1). On the book alone (baseline +484%, +32%, +7%, +84%, +27%, +50%; worst drawdown 43%):
+
+| Design | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Worst drawdown | 14-day better |
+|---|---|---|---|---|---|---|---|---|
+| N1 10 strongest trends | +772% | +3% | -11% | +20% | +17% | +44% | 45% | 1/6 |
+| N2 faster longs | +497% | +26% | +9% | +82% | +31% | +45% | 37% | 3/6 |
+| N3 fresh trends 2x | +487% | +52% | +13% | +111% | +17% | +53% | 45% | 2/6 |
+| N4 N1 + N2 | +766% | +7% | +0% | +39% | +2% | +42% | 36% | 1/6 |
+| D1 dual momentum, cash | +112% | -14% | +3% | +15% | -1% | +8% | 46% | 0/6 |
+| D2 dual momentum, filled | +55% | -31% | -23% | +22% | +1% | -6% | 65% | 0/6 |
+| F1 fresh trends 3x | +459% | +55% | +21% | +136% | +18% | +50% | 46% | 3/6 |
+
+None passed C1 on either bot. Concentration paid only in the 2020–21 bull run. Dual momentum
+failed worst: coins beating BTC are few, and the book's edge is breadth across trends, not
+picking leaders (the rotation's job). Fresh trends were the one consistent effect, better in
+2021–24 at both 2x and 3x, but worse in 2024–25 and the 14-day windows did not follow. Options
+`ls_top_n`, `ls_fresh_days`, `ls_fresh_boost`, `ls_rel_hours`, `ls_rel_fill`, all off.
+
+## Trend quality for the book (rounds 94 to 96)
+
+Round 94 (`research/round94_book_chop.py`) went after the book's choppy years: hysteresis (a coin
+keeps its side until its EMA gap is 1% past zero the other way) and weights times Kaufman's
+efficiency ratio (net move over path length) of each coin's hourly returns, re-scaled to the
+book's gross and capped at 3x. Hysteresis lost return. The efficiency ratio added the most of
+any book design so far, but failed C1 (the median 14-day window better in 2 of 6 folds).
+
+The user asked for return first, so round 95 (`research/round95_efficiency.py`) and round 96
+(`research/round96_book_quality.py`) judged on return: six-year totals, worst drawdowns and the
+2018–20 holdout. On the book alone (baseline +2,794%, worst drawdown 43%, holdout +104% / +70%):
+
+| Design | Six years | Worst drawdown | Return better | Holdout 2018–19 / 2019–20 |
+|---|---|---|---|---|
+| Efficiency ratio, 7 days | +4,463% | 38% | 3/6 | +78% / +72% |
+| Efficiency ratio, 14 days | +5,560% | 41% | 4/6 | +84% / +91% |
+| Efficiency ratio, 30 days | +6,666% | 31% | 3/6 | +158% / +99% |
+| Efficiency 14 days + fresh trends 3x | +12,605% | 38% | 5/6 | +43% / +131% |
+| R^2 of a line through log price, 14 days | +4,224% | 44% | 4/6 | +132% / +158% |
+| R^2, 7 days | +3,210% | 37% | 3/6 | +109% / +106% |
+| R^2, 30 days | +2,112% | 49% | 2/6 | +94% / +88% |
+| Soft regime tilt (against-trend side at half) | +3,555% | 39% | 4/6 | +78% / +71% |
+
+Weighting the book towards clean trends added six-year return at every efficiency-ratio window
+with a drawdown no deeper, and the 30-day version won both holdout years by a wide margin; but
+year by year it lost some folds by a few points, and the 14-day windows did not improve. Inside
+the live bot (the book at 25%) the 14-day version made +158,256% against +145,396% with the same
+worst drawdown and both holdout years better. "Efficiency + HRP" equalled round 90's HRP book:
+the HRP weights override the efficiency tilt. Options `ls_hysteresis`, `ls_er_hours`,
+`ls_r2_hours`, `ls_regime_tilt`, off.
+
+Round 97 (`research/round97_efficiency_stress.py`) stress-tested the 30-day efficiency ratio on
+the book alone. Every variant kept more six-year return than the book and no deeper a worst
+drawdown: 21 days +5,037% (37%), 45 days +3,368% (41%), the weight cap at 2x +5,772% (35%) and 5x
++7,004% (31%), and at double fees +5,793% (34%) against the book's +2,452% (44%) at double fees.
+The 30-day variants won both holdout years (+142% to +166% against +101–104%, and +93% to +102%
+against +68–70%); the 21- and 45-day ones one each. The median 14-day window was better in 3–4
+of 6 folds and the share of positive windows 58% against 57%. On return, risk, costs and the
+holdout this is the strongest book design so far; it fails only C1, the 14-day yardstick.
+
+The user deployed the 30-day efficiency-ratio book on 7 October 2026 (`config/comp.json`, with
+`ls_er_hours` 720; the previous settings kept in `config/comp_k2_3.json`). In the full backtester
+the live bot with it made +163,209% over six years against +145,396%, worst yearly drawdown 50%
+against 49%; holdout +102% and +214% against +91% and +219%. On the competition's 14-day
+yardstick it was not better: the median 14-day composite was higher in 2–3 of 6 folds and lower
+in both holdout years (4.26 and 4.86 against 5.22 and 6.44). A fresh run of the live settings,
+outside the result cache, reproduced the cached backtests exactly with every option off and with
+the efficiency ratio on.

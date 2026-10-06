@@ -31,9 +31,13 @@ Two books share the account, trading the 45 most traded crypto pairs on Roostoo 
   (round 85).
 - **Long-short trend book, 25% of equity** (the competition account since 5 October 2026,
   through [`config/comp.json`](config/comp.json)). Every coin long while its 240-hour EMA is
-  above its 960-hour EMA and short while below, weighted by inverse volatility, with a trailing
-  stop on each short and no short where shorts are crowded (negative perpetual funding). See
-  [Rounds 50 to 64](docs/research.md#rounds-50-to-64-long-short).
+  above its 960-hour EMA and short while below, with a trailing stop on each short and no short
+  where shorts are crowded (negative perpetual funding). Each coin's weight is its inverse
+  volatility times its efficiency ratio over 30 days (net move over the total hourly path)
+  against the book's average, capped at 3 times, so clean trends take the share of choppy ones;
+  since 7 October 2026 (rounds 94–97), before that inverse volatility alone. See
+  [Rounds 50 to 64](docs/research.md#rounds-50-to-64-long-short) and
+  [Trend quality for the book](docs/research.md#trend-quality-for-the-book-rounds-94-to-96).
 - **Defensive trend book**, the code's default book, which held the 30% until 5 October 2026:
   low-volatility coins in uptrends, with a market regime filter, trailing stops and a drawdown
   brake.
@@ -259,7 +263,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after 18:43, 4 October 2026 | `ccace84` | 70% momentum rotation and 30% long-short trend book (round 54's R54b) |
 | Not deployed | `5bc0678` | `config/comp.json` switched to the multi-horizon ranking, but the server was not updated and the account kept trading R54b; the next commit put R54b back in `config/comp.json` and the ranking in `config/comp_multi.json` |
 | The restart after `256f3bc`, 6 October 2026, if the server pulled it | `256f3bc` | R54b with the rotation ranked on 1-, 2- and 3-week returns weighted 2/2/1 (round 82's K2), kept in `config/comp_k2.json` |
-| The restart after this push, 6 October 2026 | the commit that adds this row | K2 with 3 coins in a 75% rotation and the long-short book at 25% (round 85) |
+| The restart after `f549cb8`, 6 October 2026 | `f549cb8` | K2 with 3 coins in a 75% rotation and the long-short book at 25% (round 85), kept in `config/comp_k2_3.json` |
+| The restart after this push, 7 October 2026 | the commit that adds this row | The same with the book weighted by each coin's 30-day efficiency ratio (rounds 94–97) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -283,7 +288,8 @@ year starting in October.
 
 | | 2020–21 | 2021–22 | 2022–23 | 2023–24 | 2024–25 | 2025–26 | Six years |
 |---|---|---|---|---|---|---|---|
-| **Bot as live (75% rotation of 3 coins ranked on 1, 2 and 3 weeks, 2/2/1; 25% long-short book)** | **+3,612%** (32%) | **-33%** (42%) | **+92%** (40%) | **+679%** (38%) | **+147%** (49%) | **+58%** (32%) | **+145,396%** |
+| **Bot as live (75% rotation of 3 coins ranked on 1, 2 and 3 weeks, 2/2/1; 25% long-short book weighted by efficiency)** | **+4,403%** (33%) | **-37%** (45%) | **+88%** (40%) | **+677%** (39%) | **+151%** (50%) | **+57%** (32%) | **+163,209%** |
+| The same with the book by inverse volatility alone (until 7 October 2026, `config/comp_k2_3.json`) | +3,612% (32%) | -33% (42%) | +92% (40%) | +679% (38%) | +147% (49%) | +58% (32%) | +145,396% |
 | K2: 70% rotation of 2 coins, ranked the same (`config/comp_k2.json`) | +2,727% (34%) | -36% (45%) | +90% (52%) | +792% (42%) | +94% (47%) | +78% (34%) | +105,989% |
 | R54b, the rotation ranked on 2 weeks (until 6 October 2026, `config/comp_r54b.json`) | +1,614% (38%) | -49% (52%) | +59% (46%) | +626% (37%) | +233% (42%) | +48% (34%) | +49,404% |
 | The rotation ranked on 1, 2 and 3 weeks, 2/1/1 (`config/comp_multi.json`, not live) | +3,239% (33%) | -44% (51%) | +96% (50%) | +946% (43%) | +82% (48%) | +79% (33%) | +123,592% |
@@ -398,11 +404,13 @@ Unknown keys are rejected, so a typo cannot silently fall back to a default.
 
 Without `--config`, the live bot uses `config/<account>.json` if it exists, so each account's
 settings are committed and a restart picks them up. `config/comp.json` runs the competition
-account: the long-short book at 25%, and a 75% rotation of 3 coins ranked on 1-, 2- and
-3-week returns weighted 2/2/1. Three alternatives are kept: `config/comp_k2.json` (2 coins in
-70%), `config/comp_r54b.json`, the settings before 6 October 2026 (2 coins ranked on 2-week
-returns), and `config/comp_multi.json` (weighted 2/1/1). To switch, copy one over
-`config/comp.json`, commit, push and restart, so the change is in the history.
+account: the long-short book at 25%, weighted by each coin's 30-day efficiency ratio, and a 75%
+rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1. Four alternatives are
+kept: `config/comp_k2_3.json`, the same with the book by inverse volatility alone (until 7
+October 2026), `config/comp_k2.json` (2 coins in 70%), `config/comp_r54b.json`, the settings
+before 6 October 2026 (2 coins ranked on 2-week returns), and `config/comp_multi.json` (weighted
+2/1/1). To switch, copy one over `config/comp.json`, commit, push and restart, so the change is
+in the history.
 
 `config/shorts.json` turns on the short sleeve (see [Strategy research](#strategy-research)):
 
