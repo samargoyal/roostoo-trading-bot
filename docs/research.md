@@ -1511,6 +1511,13 @@ The 3-coin bot's split between the rotation and the book, for information:
 With three coins the rotation is less concentrated, so at 80% it has the drawdown K2 has at
 70% with two (51% against 52%) and more return (+178,805% against +105,989%).
 
+The user chose 3 coins at 75% for the competition account on 6 October 2026
+(`config/comp.json`; K2 kept in `config/comp_k2.json`). Its holdout, run then, was mixed:
+2018–19 +91% (yearly composite 2.62, median 14-day 5.22) against K2's +136% (3.00, 6.10) and
+R54b's +124% (2.80, 5.21); 2019–20 +219% (4.41, 6.44) against +191% (3.49, 5.33) and +187%
+(3.31, 3.10). The bot with every research option off reproduced R54b's and K2's backtests
+exactly before the switch, and the new config file reproduced its own.
+
 **The queue, in sum.** Nothing from parts B, C or E passed C1–C5 on either bot (the nearest, E5's
 capitulation buys, failed the holdout and moved returns by a few points). The validation audit
 found a real trend-following edge, strongest in trending markets and weaker in the last two

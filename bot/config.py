@@ -31,8 +31,9 @@ class StrategyConfig:
     """The strategy. The first groups are what the bot trades with: the defaults run the
     rotation beside the defensive book, and config/comp.json switches the competition account's
     book to the long-short trend book and ranks its rotation on several horizons (the research
-    options rotation_ranking "multi", rotation_horizons and rotation_horizon_weights; the
-    alternatives kept are config/comp_r54b.json and config/comp_multi.json). Everything else
+    options rotation_ranking "multi", rotation_horizons and rotation_horizon_weights) with 3
+    coins in 75% of equity (the alternatives kept are config/comp_k2.json, config/comp_r54b.json
+    and config/comp_multi.json). Everything else
     under "Research options" is off by default and used only by research/ (see
     docs/research.md)."""
     universe: List[str] = field(default_factory=lambda: list(DEFAULT_UNIVERSE))

@@ -273,8 +273,11 @@ class MultiHorizonTest(unittest.TestCase):
 
     def test_the_competition_configs_load_their_rankings(self):
         from bot.config import load_config
-        for path, weights in (("config/comp.json", [2.0, 2.0, 1.0]), ("config/comp_multi.json", [2.0, 1.0, 1.0])):
+        for path, weights in (("config/comp.json", [2.0, 2.0, 1.0]), ("config/comp_k2.json", [2.0, 2.0, 1.0]),
+                              ("config/comp_multi.json", [2.0, 1.0, 1.0])):
             c = load_config(path).strategy
             self.assertEqual((c.rotation_ranking, c.rotation_horizons, c.rotation_horizon_weights),
                              ("multi", [168, 336, 504], weights))
         self.assertEqual(load_config("config/comp_r54b.json").strategy.rotation_ranking, "return")
+        live = load_config("config/comp.json").strategy
+        self.assertEqual((live.rotation_top, live.rotation_weight), (3, 0.75))
