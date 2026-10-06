@@ -85,3 +85,30 @@ class OptimizeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Round83OptimisersTest(unittest.TestCase):
+    """Mean-variance with momentum alphas and hierarchical risk parity (round 83)."""
+
+    def test_mean_variance_follows_alpha_and_risk(self):
+        from bot.optimize import mean_variance
+        cov = [[1.0, 0.0], [0.0, 1.0]]
+        w = mean_variance([1.0, -1.0], cov, risk_aversion=1.0)
+        self.assertGreater(w[0], 0.9)                              # all on the stronger coin
+        w = mean_variance([0.0, 0.0], [[1.0, 0.0], [0.0, 4.0]], risk_aversion=10.0)
+        self.assertAlmostEqual(w[0], 0.8, places=3)                # no alpha: minimum variance
+        w = mean_variance([1.0, -1.0], cov, risk_aversion=1.0, cap=0.6)
+        self.assertAlmostEqual(w[0], 0.6, places=6)                # capped
+
+    def test_hrp_is_inverse_variance_for_unrelated_assets(self):
+        from bot.optimize import hrp_weights
+        w = hrp_weights([[1.0, 0.0], [0.0, 4.0]])
+        self.assertAlmostEqual(w[0], 0.8)
+        self.assertAlmostEqual(sum(w), 1.0)
+
+    def test_hrp_treats_twins_as_one_cluster(self):
+        from bot.optimize import hrp_weights
+        cov = [[1.0, 0.99, 0.0], [0.99, 1.0, 0.0], [0.0, 0.0, 1.0]]   # two near-identical coins and one apart
+        w = hrp_weights(cov)
+        self.assertAlmostEqual(sum(w), 1.0)
+        self.assertGreater(w[2], w[0] + 0.1)                       # the loner gets more than each twin

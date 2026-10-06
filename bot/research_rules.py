@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, AbstractSet, Dict, List, Optional
 
 from bot.indicators import Signal
 from bot.market_data import HOUR_MS
-from bot.optimize import covariance, erc_weights, min_variance
+from bot.optimize import covariance, erc_weights, hrp_weights, min_variance
 from bot.reasons import (CORE, EXIT_SHORT, EXIT_SHORT_STOP, EXIT_STOP, HOLD_HALTED, HOLD_NO_DATA, LS_SHORT,
                          ROTATION, SHORT_ENTRY, SHORT_HOLD)
 
@@ -193,6 +193,7 @@ class ResearchRules:
                 rising = self._multi_horizon(list(rising))
             else:
                 rising = {p: self._hours_return(p, c.rotation_lookback, skip_days=c.rank_skip_days) for p in rising}
+        self._rank_scores = dict(rising)                                 # round 83: the "mv" alphas
         if c.session_tilt and len(rising) > 1:                            # C4
             n = c.session_tilt_days * 24
             feature = {p: self._hours_return(p, n, hours_of_day=range(13, 21)) - self._hours_return(p, n, hours_of_day=range(0, 8))
@@ -285,6 +286,29 @@ class ResearchRules:
                            key=lambda p: pool[p].return_rotation)
         for pair in order[:c.rotation_shorts]:
             plan[pair] = -1.0 / c.rotation_shorts
+
+    def _research_short_leg(self, plan, picks, signals, state, frozen, ts):
+        """Round 84: while the filter is on, part of the sleeve shorts the weakest coins."""
+        c = self.cfg
+        if c.rotation_short_share <= 0:
+            return
+        crowded = self._external(ts) if c.short_exclude_external and self.external_scores else {}
+        pool = [p for p, s in signals.items()
+                if p != c.defensive_pair and p not in frozen and p not in picks
+                and s.return_rotation < 0 and crowded.get(p, 0.0) >= 0
+                and (not c.rotation_short_trend or 0 < s.ema_trend_fast < s.ema_trend_slow)]
+        if c.rotation_short_by == "multi" and len(pool) > 1 and c.rotation_horizons:
+            score = self._multi_horizon(pool)
+        else:
+            score = {p: signals[p].return_rotation for p in pool}
+        weak = sorted(pool, key=score.get)[:c.rotation_short_count]
+        if not weak:
+            return
+        for pair in list(plan):
+            if plan[pair] > 0:
+                plan[pair] *= 1.0 - c.rotation_short_share
+        for pair in weak:
+            plan[pair] = -c.rotation_short_share / len(weak)
 
     def _research_cvar(self, plan):
         """A tail cap on the sleeve's 1-day CVaR."""
@@ -449,7 +473,8 @@ class ResearchRules:
                 return raw
             signed = [[(1.0 if raw[p] > 0 else -1.0) * x for x in r[-length:]] for p, r in zip(pairs, series)]
             cov = covariance(signed, shrink=0.1)
-            w = erc_weights(cov) if c.ls_weighting == "erc" else min_variance(cov, cap=c.ls_max_weight)
+            w = (erc_weights(cov) if c.ls_weighting == "erc" else hrp_weights(cov) if c.ls_weighting == "hrp"
+                 else min_variance(cov, cap=c.ls_max_weight))
             self._ls_key, self._ls_w = key, dict(zip(pairs, w))
         gross = sum(abs(v) for v in raw.values())
         return {p: (1.0 if v > 0 else -1.0) * self._ls_w[p] * gross for p, v in raw.items()}

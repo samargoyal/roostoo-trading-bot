@@ -142,7 +142,8 @@ class StrategyConfig:
                                           # many hours (a confirmed bear market, round 62)
     ls_idle_horizon: int = 0              # > 0: the long-short book's unused share goes to the defensive pair
                                           # while its return over this many hours is positive (round 60)
-    ls_weighting: str = "inverse_vol"     # how the book's positions share it: "inverse_vol"; or by a convex
+    ls_weighting: str = "inverse_vol"     # how the book's positions share it: "inverse_vol"; "hrp", hierarchical
+                                          # risk parity over their correlations (round 83); or by a convex
                                           # optimiser over their side-adjusted hourly returns (a short counts as
                                           # minus the coin): "erc" (equal risk contribution) or "min_variance"
                                           # (capped at ls_max_weight), keeping the inverse-volatility gross
@@ -213,7 +214,9 @@ class StrategyConfig:
                                           # above this: crowded longs (round 57)
     rotation_core_share: float = 0.0      # share of the sleeve kept in the regime pair (BTC) while the
                                           # trend filter is on; the momentum slots share the rest
-    rotation_weighting: str = "equal"     # how the picks share the sleeve: "equal", "inverse_vol",
+    rotation_mv_risk_aversion: float = 1.0  # rotation_weighting "mv" (round 83): the picks weighted by mean-
+                                          # variance, the ranking's normal scores as expected returns
+    rotation_weighting: str = "equal"     # how the picks share the sleeve: "equal", "inverse_vol", "mv",
                                           # "erc" (equal risk contribution) or "min_variance"
     rotation_max_weight: float = 1.0      # cap per pick, as a share of the filled sleeve
     rotation_cov_hours: int = 336         # hourly returns behind the covariance for erc / min_variance
@@ -285,6 +288,12 @@ class StrategyConfig:
                                           # "trend_basket": every coin whose own 168h EMA is below its
                                           # 672h EMA, by inverse volatility (research H50)
     rotation_short_cap: float = 0.2       # "trend_basket": cap per coin, as a share of the sleeve
+    rotation_short_share: float = 0.0     # > 0 (round 84): while BTC's filter is on, this share of the sleeve
+    rotation_short_count: int = 2         # shorts its weakest coins (negative 2-week return, shorts not
+                                          # crowded), the picks taking the rest
+    rotation_short_by: str = "return"     # round 85: the weakest by "return" (2 weeks) or "multi" (the
+                                          # multi-horizon score over rotation_horizons)
+    rotation_short_trend: bool = False    # round 85: only coins in their own downtrend (168h EMA below 672h)
     rotation_vol_forecast: str = ""       # "har" or "ewma": scale the sleeve down when BTC's forecast daily
                                           # volatility is above its 60-day median (research H31)
     rotation_max_z: float = 0.0           # > 0: skip a pick whose close is more than this many standard

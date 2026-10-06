@@ -19,7 +19,7 @@ python -m research.h50_long_short   # the long-short screen
 | `holdout.py` | The first hold-out check (July to September 2026), run once |
 | `rounds.py` | Rounds 20–64: each design and its neighbours, the adoption rule and the holdout check |
 | `round65_attention.py` – `round74_convex.py` | Rounds 65–74, one script each: attention, securing profits, trend exits, entries and exits, the multi-horizon ranking, convex optimisation |
-| `queue.py`, `round75_risk_breakers.py` – `round82_combined.py` | The research queue (RESEARCH_QUEUE.md) and the questions after it, each design on both bots, judged on C1–C5 |
+| `queue.py`, `round75_risk_breakers.py` – `round85_shorts_three_coins.py` | The research queue (RESEARCH_QUEUE.md) and the questions after it, each design on both bots, judged on C1–C5 |
 | `d1_permutation.py`, `d2_deflated_sharpe.py` | The validation audit: a permutation test and the deflated Sharpe ratio of both bots |
 | `h77_meta_labels.py` | Meta-labelled sizing of the rotation's picks (E6): a walk-forward model |
 | `h76_measurements.py` | The queue's measurements: weekends, relative volume, shock bars, correlation |

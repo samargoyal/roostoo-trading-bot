@@ -1446,6 +1446,71 @@ composite (6.10 and 5.33 against 5.21 and 3.10) in both years. Before the switch
 every research option off reproduced R54b's backtests exactly in all 8 years, and the new
 config file reproduced K2's.
 
+**Round 83, correlation and convex optimisation on K2** (`research/round83_correlation.py`;
+`mean_variance` and `hrp_weights` in `bot/optimize.py`). Earlier optimisers ignored which coin
+was strongest; these do not.
+
+| Design | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Worst drawdown | 14-day better |
+|---|---|---|---|---|---|---|---|---|
+| K2 | +2,727% | -36% | +90% | +792% | +94% | +78% | 52% | |
+| O1 the second pick less correlated with the first | +2,727% | -36% | +90% | +792% | +99% | +78% | 52% | 1/6 |
+| O2 mean-variance over the top 4, momentum as expected return | +3,350% | -36% | +98% | +1,008% | +91% | +47% | 51% | 2/6 |
+| O2b the same over the top 2 | +2,704% | -38% | +110% | +988% | +77% | +60% | 53% | 2/6 |
+| O3 hierarchical risk parity for the long-short book | +3,226% | -42% | +125% | +749% | +134% | +66% | 50% | 2/6 |
+
+None passed C1. O1 changed almost nothing: K2's top two are rarely the most correlated pair.
+O2 and O3 added return in some years (O2 +136 points a year on average, O3 +86 with the
+lowest worst drawdown, 50%), but the median 14-day window was better in only 2 of 6 folds:
+over two weeks the optimised weights did no better than equal ones. Built and tested
+(`tests/test_optimize.py`); both stay research options. The hierarchical risk parity splits
+along the cluster tree rather than the halves of the ordered list, which separated
+near-identical coins in a first version caught by its test.
+
+**Round 84, a wider rotation** (`research/round84_wider_rotation.py`, the user asked for more
+coins or shorts in the long-only rotation), on K2:
+
+| Design | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Worst drawdown | 14-day windows won | 14-day better |
+|---|---|---|---|---|---|---|---|---|---|
+| K2 (2 coins, long only) | +2,727% | -36% | +90% | +792% | +94% | +78% | 52% | 56% | |
+| M1 the top 3 | +3,117% | -30% | +85% | +633% | +144% | +61% | 46% | 57% | 3/6 |
+| S1 bear-market shorts on the 2 weakest | +1,708% | -60% | +42% | +324% | +11% | +58% | 72% | 52% | 1/6 |
+| S2 a bear-market short basket | +2,186% | -19% | +66% | +568% | +68% | +143% | 58% | 56% | 4/6 |
+| S3 an always-on short leg, 30% | +917% | -23% | +90% | +420% | +80% | +38% | 43% | 58% | 2/6 |
+
+None passed. Three coins (M1) cut the worst drawdown to 46% and the crash year to -30% for
+about the same return, but beat K2's median 14-day window in only 3 of 6 folds. Shorting the
+weakest coins in bear markets (S1) was squeezed again (-60% in 2021–22); the basket of
+downtrends (S2) helped the crash years but deepened the worst drawdown; and the always-on short
+leg (S3) cut risk by giving up most of the bull years.
+
+**Round 85, shorting in the 3-coin rotation** (`research/round85_shorts_three_coins.py`). The
+user kept K2 with 3 coins (round 84's M1, uncommitted) and asked for shorts in it:
+
+| Design (3 coins and) | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Worst drawdown | 14-day better |
+|---|---|---|---|---|---|---|---|---|
+| nothing (the baseline) | +3,117% | -30% | +85% | +633% | +144% | +61% | 46% | |
+| X1 a 20% short leg, weakest by return | +1,500% | -22% | +83% | +398% | +134% | +33% | 35% | 1/6 |
+| X2 the same, weakest by K2's score | +1,406% | -25% | +86% | +394% | +127% | +38% | 36% | 1/6 |
+| X3 the same, coins in their own downtrend only | +1,815% | -29% | +88% | +471% | +155% | +26% | 36% | 2/6 |
+| X4 a bear-market short basket | +2,380% | -9% | +58% | +455% | +92% | +110% | 55% | 4/6 |
+| X5 X3 with the rotation at 80% | +2,252% | -35% | +101% | +554% | +168% | +28% | 42% | 2/6 |
+| X6 X3 with the top 4 | +1,307% | -25% | +37% | +325% | +171% | +43% | 36% | 1/6 |
+
+None passed. The always-on short legs cut the worst drawdown by about 10 points and gave up a
+third to a half of the bull years; the bear-market basket turned 2021–22 into -9% and made
++110% in 2025–26, but deepened the worst drawdown to 55%.
+
+The 3-coin bot's split between the rotation and the book, for information:
+
+| Rotation | 50% | 60% | 65% | 70% | 75% | 80% | 90% |
+|---|---|---|---|---|---|---|---|
+| Six years | +47,012% | +77,584% | +91,553% | +119,017% | +145,396% | +178,805% | +254,945% |
+| Worst drawdown | 38% | 42% | 45% | 46% | 49% | 51% | 55% |
+| 14-day windows won | 58% | 58% | 58% | 57% | 56% | 56% | 54% |
+
+With three coins the rotation is less concentrated, so at 80% it has the drawdown K2 has at
+70% with two (51% against 52%) and more return (+178,805% against +105,989%).
+
 **The queue, in sum.** Nothing from parts B, C or E passed C1–C5 on either bot (the nearest, E5's
 capitulation buys, failed the holdout and moved returns by a few points). The validation audit
 found a real trend-following edge, strongest in trending markets and weaker in the last two

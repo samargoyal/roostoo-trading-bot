@@ -21,7 +21,10 @@ from research.rounds import results_for
 
 YEARS = [f[0][:4] for f in FOLDS]
 BOTS = {name: json.load(open(path))["strategy"] for name, path in
-        (("multi-horizon", "config/comp_multi.json"), ("live (R54b)", "config/comp_r54b.json"))}
+        (("multi-horizon", "config/comp_multi.json"), ("live (R54b)", "config/comp_r54b.json"),
+         ("live (K2)", "config/comp_k2.json"))}
+DEFAULT_BOTS = ["multi-horizon", "live (R54b)"]       # rounds 75-82 ran on these two
+BOTS["K2, 3 coins"] = dict(BOTS["live (K2)"], rotation_top=3)      # the user's choice, round 85
 
 
 def design(bot: str, **opts) -> dict:
@@ -38,7 +41,7 @@ def judge(designs: dict, title: str, bots=None) -> dict:
     """designs: {name: (options, [neighbour options])}. Prints each bot's table (all of BOTS
     unless `bots` names some); returns {bot: {name: "confirmed" | "fails C.."}}."""
     verdicts = {}
-    for bot in bots or BOTS:
+    for bot in bots or DEFAULT_BOTS:
         names = {"baseline": design(bot)}
         names.update({n: design(bot, **dict(o)) for n, (o, _) in designs.items()})
         res = results_for(names)

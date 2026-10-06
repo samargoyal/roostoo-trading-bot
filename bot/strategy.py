@@ -59,7 +59,7 @@ from typing import AbstractSet, Dict, List, Optional, Tuple
 
 from bot.config import StrategyConfig
 from bot.indicators import IndicatorSet, Signal
-from bot.optimize import covariance, erc_weights, erc_weights_fixed, min_variance
+from bot.optimize import covariance, erc_weights, erc_weights_fixed, mean_variance, min_variance
 from bot.market_data import HOUR_MS, Bar
 
 # Reasons attached to each target, recorded with every decision and order (bot/reasons.py).
@@ -478,6 +478,7 @@ class Strategy(ResearchRules):
                     plan[pair] = filled * weight
                 self._research_reapply_trims(plan, state)
                 self._research_btc_fill(plan, picks, alts, regime, frozen, stuck)
+                self._research_short_leg(plan, picks, signals, state, frozen, ts)
             elif c.rotation_shorts > 0 and self._shorts_allowed(regime):
                 self._research_rotation_shorts(plan, signals, state, frozen, ts)
             empty = 1.0 - sum(abs(w) for w in plan.values())
@@ -498,7 +499,8 @@ class Strategy(ResearchRules):
             # halted coin, which cannot be sold) stays, and any bear-market shorts.
             plan = {p: w for p, w in plan.items() if p == c.defensive_pair or p in frozen or w < 0}
         else:
-            plan = {p: w for p, w in plan.items() if w > 0 or p in frozen}   # cover shorts at once
+            plan = {p: w for p, w in plan.items()                            # cover shorts at once,
+                    if w > 0 or p in frozen or c.rotation_short_share > 0}      # but a short leg's (84)
         return self._research_sleeve_scale(plan, regime, ts, frozen)
 
     def _rotation_weights(self, picks: List[str], signals: Dict[str, Signal]) -> Dict[str, float]:
@@ -512,6 +514,13 @@ class Strategy(ResearchRules):
             if len(inverse) == len(picks):
                 total = sum(inverse.values())
                 weights = {p: v / total for p, v in inverse.items()}
+        elif len(picks) > 1 and c.rotation_weighting == "mv":
+            series = self._recent_returns(picks, c.rotation_cov_hours)
+            if series is not None:
+                z = _normal_scores({p: getattr(self, "_rank_scores", {}).get(p, 0.0) for p in picks})
+                w = mean_variance([z[p] for p in picks], covariance(series, shrink=0.1),
+                                  c.rotation_mv_risk_aversion, c.rotation_max_weight)
+                weights = dict(zip(picks, w))
         elif len(picks) > 1 and c.rotation_weighting in ("erc", "min_variance"):
             series = self._recent_returns(picks, c.rotation_cov_hours)
             if series is not None:

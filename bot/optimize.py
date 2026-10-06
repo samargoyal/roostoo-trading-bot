@@ -130,6 +130,77 @@ def min_variance(cov: Matrix, cap: float = 1.0, iters: int = 2000, tol: float = 
     return w
 
 
+def mean_variance(alpha: Sequence[float], cov: Matrix, risk_aversion: float = 1.0, cap: float = 1.0,
+                  iters: int = 2000, tol: float = 1e-12) -> List[float]:
+    """argmax alpha'w - risk_aversion / 2 x w'Cw subject to sum(w) = 1 and 0 <= w_i <= cap, with C
+    scaled to a mean variance of 1 so that alpha (normal scores) and risk are on one scale; a
+    concave problem, solved by projected gradient ascent (round 83)."""
+    n = len(cov)
+    cap = max(cap, 1.0 / n)
+    scale = sum(cov[i][i] for i in range(n)) / n or 1.0
+    c = [[x / scale for x in row] for row in cov]
+    bound = max(sum(abs(x) for x in row) for row in c)
+    step = 1.0 / (risk_aversion * bound) if risk_aversion > 0 and bound > 0 else 0.1
+    w = project_capped_simplex([1.0 / n] * n, cap)
+    for _ in range(iters):
+        cw = _matvec(c, w)
+        new = project_capped_simplex([w[i] + step * (alpha[i] - risk_aversion * cw[i]) for i in range(n)], cap)
+        if max(abs(new[i] - w[i]) for i in range(n)) < tol:
+            return new
+        w = new
+    return w
+
+
+def hrp_weights(cov: Matrix) -> List[float]:
+    """Hierarchical risk parity (Lopez de Prado, 2016), split along the cluster tree: assets
+    are clustered by correlation distance (single linkage), and from the top of the tree down
+    each cluster's budget goes to its two halves in inverse proportion to their variance (each
+    half held by inverse variance), so similar assets share one budget and no matrix is
+    inverted (round 83)."""
+    n = len(cov)
+    if n == 1:
+        return [1.0]
+    sd = [math.sqrt(max(cov[i][i], 1e-18)) for i in range(n)]
+    dist = [[math.sqrt(max(0.0, 0.5 * (1 - cov[i][j] / (sd[i] * sd[j])))) for j in range(n)] for i in range(n)]
+    clusters = {i: [i] for i in range(n)}
+    children = {}                                   # a merged cluster -> its two parts
+    while len(clusters) > 1:
+        keys = list(clusters)
+        best = None
+        for a_i, a in enumerate(keys):
+            for b in keys[a_i + 1:]:
+                d = min(dist[x][y] for x in clusters[a] for y in clusters[b])
+                if best is None or d < best[0]:
+                    best = (d, a, b)
+        _, a, b = best
+        merged = tuple(clusters[a] + clusters[b])
+        children[merged] = (tuple(clusters[a]), tuple(clusters[b]))
+        clusters[a] = list(merged)
+        del clusters[b]
+
+    def variance(items):
+        ivp = [1.0 / cov[i][i] if cov[i][i] > 0 else 0.0 for i in items]
+        total = sum(ivp) or 1.0
+        w = [x / total for x in ivp]
+        return sum(w[a] * w[b] * cov[items[a]][items[b]] for a in range(len(items)) for b in range(len(items)))
+
+    weights = [1.0] * n
+    stack = [tuple(next(iter(clusters.values())))]
+    while stack:
+        node = stack.pop()
+        if node not in children:
+            continue
+        left, right = children[node]
+        vl, vr = variance(left), variance(right)
+        share = 1.0 - vl / (vl + vr) if vl + vr > 0 else 0.5
+        for i in left:
+            weights[i] *= share
+        for i in right:
+            weights[i] *= 1.0 - share
+        stack += [left, right]
+    return weights
+
+
 def risk_contributions(cov: Matrix, w: Sequence[float]) -> List[float]:
     cw = _matvec(cov, w)
     total = sum(w[i] * cw[i] for i in range(len(w)))
