@@ -281,3 +281,18 @@ class MultiHorizonTest(unittest.TestCase):
         self.assertEqual(load_config("config/comp_r54b.json").strategy.rotation_ranking, "return")
         live = load_config("config/comp.json").strategy
         self.assertEqual((live.rotation_top, live.rotation_weight), (3, 0.75))
+
+
+class SettingsChangeTest(unittest.TestCase):
+    def test_new_rotation_settings_repick_at_once_not_at_midnight(self):
+        signals = {"BTC/USD": sig(0.30), "ETH/USD": sig(0.20), "SOL/USD": sig(0.10), "PAXG/USD": sig(0.0)}
+        state = StrategyState()
+        two = make(signals, rotation_top=2)
+        two.decide(24 * HOUR_MS, 1.0, {}, state)                       # 00:00: picks 2
+        self.assertEqual(len([p for p, w in state.rotation_plan.items() if w > 0 and p != "PAXG/USD"]), 2)
+        three = make(signals, rotation_top=3)
+        three.decide(24 * HOUR_MS + 5 * HOUR_MS, 1.0, {}, state)       # 05:00 with 3: re-picks now
+        self.assertEqual(len([p for p, w in state.rotation_plan.items() if w > 0 and p != "PAXG/USD"]), 3)
+        plan_ts = state.rotation_plan_ts
+        three.decide(24 * HOUR_MS + 6 * HOUR_MS, 1.0, {}, state)       # same settings: no new pick
+        self.assertEqual(state.rotation_plan_ts, plan_ts)

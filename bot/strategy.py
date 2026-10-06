@@ -91,6 +91,7 @@ class StrategyState:
     short_cooldown_until: Dict[str, int] = field(default_factory=dict)
     rotation_plan: Dict[str, float] = field(default_factory=dict)      # the sleeve's weights
     rotation_plan_ts: int = 0                                          # when they were chosen
+    rotation_settings: str = ""                                        # the settings they were chosen with
     rotation_highs: Dict[str, float] = field(default_factory=dict)     # each pick's high since picked
     rotation_entry: Dict[str, int] = field(default_factory=dict)       # when each pick was first picked
     rotation_brake_on: bool = False
@@ -136,6 +137,7 @@ class StrategyState:
             short_cooldown_until={p: int(v) for p, v in data.get("short_cooldown_until", {}).items()},
             rotation_plan={p: float(v) for p, v in data.get("rotation_plan", {}).items()},
             rotation_plan_ts=int(data.get("rotation_plan_ts", 0)),
+            rotation_settings=str(data.get("rotation_settings", "")),
             rotation_highs={p: float(v) for p, v in data.get("rotation_highs", {}).items()},
             rotation_entry={p: int(v) for p, v in data.get("rotation_entry", {}).items()},
             rotation_brake_on=bool(data.get("rotation_brake_on", False)),
@@ -448,11 +450,16 @@ class Strategy(ResearchRules):
                or ((hour - c.rotation_rebalance_offset) % c.rotation_rebalance_hours == 0 and hour != last))
         if c.rotation_rebalance_at:                                       # research, round 79
             due = state.rotation_plan_ts == 0 or (hour % 24 in c.rotation_rebalance_at and hour != last)
+        settings = repr((c.rotation_top, c.rotation_weight, c.rotation_lookback, c.rotation_ranking,
+                         list(c.rotation_horizons), list(c.rotation_horizon_weights)))
+        if state.rotation_settings != settings:
+            due = True                    # new settings: re-pick now, not at the next 00:00 UTC
         due = self._research_entry_due(due, trend_on, hour, last, state)
         if due:
             state.rotation_plan_on = int(trend_on)
         if due and (c.rotation_ensemble or c.rotation_adaptive_lookbacks):
             self._research_ensemble(ts, signals, state, frozen, trend_on)
+            state.rotation_settings = settings
         elif due:
             plan = {p: w for p, w in state.rotation_plan.items() if p in frozen}
             stuck = len([p for p in plan if p != c.defensive_pair])
@@ -490,6 +497,7 @@ class Strategy(ResearchRules):
                 plan = self._research_cvar(plan)
             state.rotation_plan = plan
             state.rotation_plan_ts = ts
+            state.rotation_settings = settings
         if c.rotation_stop_atr > 0 or c.rotation_stop_pct > 0 or c.rotation_donchian_exit > 0:
             self._rotation_stops(ts, signals, state, frozen)
         self._research_rotation_exits(ts, signals, state, frozen)
