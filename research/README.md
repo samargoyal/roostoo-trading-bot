@@ -59,6 +59,8 @@ python -m research.h50_long_short   # the long-short screen
 | `round92_book_return.py`, `round93_book_dual.py`, `round94_book_chop.py` | The book for return: concentration, faster longs, fresh trends, dual momentum, hysteresis, efficiency ratio |
 | `round95_efficiency.py`, `round96_book_quality.py`, `round97_efficiency_stress.py` | Trend-quality weights for the book (efficiency ratio, R^2), judged on return, and their stress tests |
 | `round98_efficiency_more.py`, `round99_lower_split.py`, `round100_book_convex.py` | More from the efficiency ratio, the split with the efficiency book, convex optimisation on it |
+| `round101_book_at_55.py` | The squared efficiency tilt and fresh trends at the live split |
+| `h95_aggressive_sleeve.py`, `h96_more_aggressive.py` | An aggressive third sleeve (swings, breakouts, dip-buys, fast and all-in momentum, memes, concentrated books) in a 30/30/40 split |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

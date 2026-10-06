@@ -1848,3 +1848,34 @@ made +114,066% over six years against +102,471%, both holdout years better on re
 of -25% against -17%. Efficiency with fresh trends (X3) made +108,576%, better in 4 of 6 folds on
 the 14-day yardstick, one holdout year of two. Neither passed C1, so the live book stays; X2 is
 the next candidate if more return is wanted for a deeper crash year.
+
+## An aggressive third sleeve (H95, H96)
+
+The user proposed three sleeves: the rotation 30%, an aggressive sleeve 30% and the book 40%.
+`research/h95_aggressive_sleeve.py` and `research/h96_more_aggressive.py` tested eleven
+candidates for the aggressive 30%, each mixed with the full backtester's 30/40 rotation and
+efficiency book (daily rebalanced), against the live bot (55% rotation, 45% efficiency book).
+Rule: the median 14-day composite better in at least 5 of 6 folds and both holdout years, a
+worst drawdown at most 2 points deeper.
+
+| 30/30/40 with | Six years | Worst drawdown | Mean median 14-day composite | 14-day better | Holdout |
+|---|---|---|---|---|---|
+| (live 55/45) | +102,974% | 39% | 10.48 | | +121% / +177% |
+| A1 H61's swing ensemble | +20,014% | 28% | 9.42 | 1/6 | +87% / +118% |
+| A2 14-day Williams %R breakouts | +36,258% | 37% | 6.49 | 0/6 | +113% / +232% |
+| A3 the RSI(3) daily dip-buy | +11,094% | 35% | 8.08 | 1/6 | +86% / +119% |
+| A4 fast momentum (top 2, 3 and 7 days) | +105,455% | 47% | 11.23 | 1/6 | +139% / +190% |
+| A5 A1–A4 together | +32,763% | 34% | 10.41 | 1/6 | +107% / +163% |
+| A6 all-in momentum (top 1, 3 and 7 days) | +62,645% | 49% | 8.00 | 0/6 | +100% / +271% |
+| A7 all-in K2 (top 1) | +140,058% | 44% | 8.67 | 1/6 | +117% / +238% |
+| A8 meme momentum (top 2 memes) | +49,632% | 33% | 8.52 | 1/6 | +84% / +118% |
+| A9 the 5 strongest trends | +19,226% | 33% | 8.15 | 2/6 | +149% / +133% |
+| A10 the efficiency book cubed | +45,468% | 33% | 11.91 | 4/6 | +147% / +153% |
+| A11 breakouts in the most volatile third | +37,292% | 38% | 5.49 | 0/6 | +104% / +237% |
+
+None passed. Taking 25 points from the rotation cost more than any sleeve earned: the control
+(30% rotation, 70% book, no sleeve) made +36,530%. A7, the rotation concentrated in one coin,
+was the only one to make more than the live bot (+140,058%), at a deeper drawdown (44%) and a
+worse 14-day yardstick in 5 of 6 folds. A10, in effect a larger efficiency book, came nearest
+on the rule (4 of 6, both holdout years, a shallower drawdown) for well under half the return.
+On their own the aggressive sleeves drew down 62–85% (A3 lost money over the six years).
