@@ -60,6 +60,9 @@ class StrategyConfig:
     rotation_lookback: int = 336
     rotation_top: int = 2
     rotation_rebalance_hours: int = 24
+    rotation_rebalance_offset: int = 0   # the UTC hour of the daily re-pick (research, round 76)
+    rotation_rebalance_at: List[int] = field(default_factory=list)  # research (round 79): re-pick at
+                                         # these UTC hours instead, e.g. as each session opens
     rotation_trend_fast: int = 168
     rotation_trend_slow: int = 672
 
@@ -138,6 +141,12 @@ class StrategyConfig:
                                           # many hours (a confirmed bear market, round 62)
     ls_idle_horizon: int = 0              # > 0: the long-short book's unused share goes to the defensive pair
                                           # while its return over this many hours is positive (round 60)
+    ls_weighting: str = "inverse_vol"     # how the book's positions share it: "inverse_vol"; or by a convex
+                                          # optimiser over their side-adjusted hourly returns (a short counts as
+                                          # minus the coin): "erc" (equal risk contribution) or "min_variance"
+                                          # (capped at ls_max_weight), keeping the inverse-volatility gross
+    ls_max_weight: float = 0.10
+    ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day
     ls_band: float = 0.0                  # > 0: a neutral zone, no position while the EMAs are closer than this
     ls_full_gap: float = 0.0              # > 0: size by trend strength, full size once the EMA gap reaches this
                                           # (the book then holds cash while trends are weak)
@@ -310,6 +319,60 @@ class StrategyConfig:
     window_start_equity: float = 0.0
 
 
+    # Risk circuit breakers (RESEARCH_QUEUE.md part B, round 75), all off by default. "No new
+    # entries" lets a position shrink or close but not grow.
+    day_loss_stop: float = 0.0            # B1: the account this far below its 00:00 UTC value: no new
+    day_loss_cut: float = 0.0             # entries until the next 00:00; this far: everything at half
+    dd_ladder: List[float] = field(default_factory=list)  # B2: drawdowns from the account's peak
+                                          # scaling everything to 0.5 and 0.25, and at the third the
+                                          # rotation in cash for 24 hours; each released at half its
+                                          # level after at least 12 hours
+    coin_loss_cap: float = 0.0            # B3: a position whose 24-hour move cost the account this
+                                          # share of equity is halved and not added to for 24 hours
+    squeeze_rise: float = 0.0             # B5: a short whose coin rose this much in 24 hours, or
+    squeeze_atr: float = 3.0              # this many ATRs in an hour, is covered and the coin not
+    squeeze_block_hours: int = 48         # shorted again for this long; shorts capped at
+    short_collateral_cap: float = 0.15    # this share of equity in all
+    btc_shock_1h: float = 0.0             # B6: BTC down this much in an hour, or btc_shock_4h in
+    btc_shock_4h: float = 0.05            # four: no new longs for 6 hours and the rotation at half
+    vol_regime: float = 0.0               # B7: BTC's 24-hour realised variance this many times its
+    vol_regime_floor: float = 0.4         # 30-day median: everything scaled by vol_regime / ratio,
+                                          # never below the floor
+    # Session filters (RESEARCH_QUEUE.md part C, round 76), off by default.
+    entry_hours: List[int] = field(default_factory=list)  # C2, C6: new entries and adds only at
+                                          # these UTC hours (empty: any); exits at any hour
+    weekend_no_entries: bool = False      # C3a: no new entries or adds on Saturdays and Sundays (UTC)
+    weekend_scale: float = 1.0            # C3b: everything scaled by this on Saturdays and Sundays
+    rank_skip_days: List[int] = field(default_factory=list)  # C3c: the rotation ranks on returns
+                                          # without the hours of these weekdays (5 Saturday, 6 Sunday)
+    session_tilt: float = 0.0             # C4: rotation candidates ranked on the normal score of their
+    session_tilt_days: int = 7            # ranking value plus this times that of their US-session
+                                          # return less their Asian-session return over this many days
+    # New signals (RESEARCH_QUEUE.md part E, round 77), off by default.
+    beta_hedge: float = 0.0               # E1: short BTC against this share of the rotation's beta
+                                          # (336-hour betas), paid for by shrinking the rotation
+    macro_rho: float = 0.0                # E2: while BTC's 30-day correlation with QQQ is above this
+    macro_scale: float = 0.5              # and QQQ is below its 50-day average, everything at this
+    rotation_entropy_order: int = 0       # E4: rotation candidates must have permutation entropy of
+    rotation_entropy_low: bool = True     # this order (168 hours) below the candidates' median
+                                          # (above it with rotation_entropy_low False)
+    capitulation_size: float = 0.0        # E5: buy this share of equity after an hourly -3 sd bar on
+    capitulation_regime: str = "on"       # 3x its hour-of-week volume closing 40% off its low, at
+                                          # most 3 at once, out at +1.5 ATRs or after 24 hours; "on",
+                                          # "off" or "any": while BTC's filter is on, off, or always
+    long_max_funding_z: float = 0.0       # E7: no long (rotation or book) while the coin's funding is
+                                          # this many standard deviations above its 30-day norm
+    trade_dependence: str = ""            # E3: "after_loss" or "after_win": a new rotation pick or
+                                          # trend-book leg is taken only if the coin's last paper trade
+                                          # (every signal, taken or not) lost, or won
+    trade_dependence_scope: str = "both"  # "both", "rotation" or "book"
+    rotation_meta_sizing: bool = False    # E6: each rotation pick at clip(2p, 0.5, 1) of its weight, p a
+                                          # walk-forward model's probability that it beats its costs
+                                          # (research/h77_meta_labels.py, research flag "meta")
+    volume_accel: bool = False            # E8: longs grow only while volume accelerates: the second
+    volume_accel_hours: int = 24          # difference of this many hours' average dollar volume > 0
+
+
 @dataclass
 class UniverseConfig:
     """How `python -m bot.universe` and the backtest choose the pairs to trade (see universe.py)."""
@@ -362,6 +425,29 @@ class LiveConfig:
 
 
 @dataclass
+class BreakerConfig:
+    """Operational circuit breakers (bot/breakers.py): the live bot stands aside from bad data, a
+    broken connection or runaway orders. Off unless enabled, e.g. in config/<account>.json."""
+    enabled: bool = False
+    max_divergence: float = 0.01        # A1: Roostoo mid against Binance's last close
+    max_divergent_pairs: int = 5        #     more pairs than this diverging: the cycle is skipped
+    stale_samples: int = 3              # A2: identical Roostoo quotes over this many samples...
+    stale_move: float = 0.003           #     ...while Binance's last hour moved more than this
+    max_bar_age_min: int = 90           # A3: Binance's newest bar older than this: no new entries
+    max_spread: float = 0.003           # A4: wider spread: limit orders only
+    max_failures_in_row: int = 3        # A5: rejected orders in a row...
+    max_failure_share: float = 0.3      #     ...or this share of the cycle's (after 5): stop the cycle
+    max_slippage: float = 0.005         # A6: a market fill this far from its quote is logged...
+    slippage_strikes: int = 3           #     ...and this many in 24 hours make the pair limit-only
+    max_order_share: float = 0.40       # A7: refuse an entry larger than this share of equity
+    max_orders: int = 60                #     and orders beyond this many in a cycle (exits first)
+    fee_budget: float = 0.003           # A8: fees over 24 hours above this share of equity: exits only
+    max_state_mismatch: float = 0.02    # A9: holdings moved this much between cycles: no new entries
+    trading_halt: bool = False          # A10: no orders at all (changed only by a commit)
+    reduce_only: bool = False           #      exits only (and the activity trade)
+
+
+@dataclass
 class BacktestConfig:
     start: str = "2025-10-01"
     end: str = "2026-10-01"
@@ -386,6 +472,7 @@ class Config:
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
     live: LiveConfig = field(default_factory=LiveConfig)
+    breakers: BreakerConfig = field(default_factory=BreakerConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
 
     def to_dict(self) -> Dict[str, Any]:

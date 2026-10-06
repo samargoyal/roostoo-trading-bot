@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 ORDER_FIELDS = ["time", "pair", "side", "type", "order_id", "status", "role", "quantity",
                 "limit_price", "filled", "avg_price", "fee", "fee_coin", "reason",
                 "current_weight", "target_weight", "error", "collateral", "realized_pnl"]
+BREAKER_FIELDS = ["time", "name", "pair", "value", "threshold", "action"]
 EQUITY_FIELDS = ["time", "equity", "cash", "invested", "drawdown", "peak_equity", "risk_on",
                  "brake_on", "positions"]
 
@@ -74,6 +75,10 @@ class Journal:
 
     def equity(self, row: Dict[str, Any]) -> None:
         self._append_csv("equity.csv", EQUITY_FIELDS, dict(row, time=row.get("time") or utc_iso()))
+
+    def breaker(self, row: Dict[str, Any]) -> None:
+        """A circuit breaker that tripped (bot/breakers.py)."""
+        self._append_csv("breakers.csv", BREAKER_FIELDS, dict(row, time=row.get("time") or utc_iso()))
 
     def decision(self, record: Dict[str, Any]) -> None:
         self._append_line("decisions.jsonl", json.dumps(record, sort_keys=True))

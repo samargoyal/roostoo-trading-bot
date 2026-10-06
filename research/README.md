@@ -18,7 +18,11 @@ python -m research.h50_long_short   # the long-short screen
 | `holdout2018.py` | The untouched holdout, October 2018 to October 2020, for rounds 31 and on |
 | `holdout.py` | The first hold-out check (July to September 2026), run once |
 | `rounds.py` | Rounds 20–64: each design and its neighbours, the adoption rule and the holdout check |
-| `round65_attention.py` – `round73_ranking.py` | Rounds 65–73, one script each: attention, securing profits, trend exits, entries and exits, the multi-horizon ranking |
+| `round65_attention.py` – `round74_convex.py` | Rounds 65–74, one script each: attention, securing profits, trend exits, entries and exits, the multi-horizon ranking, convex optimisation |
+| `queue.py`, `round75_risk_breakers.py` – `round82_combined.py` | The research queue (RESEARCH_QUEUE.md) and the questions after it, each design on both bots, judged on C1–C5 |
+| `d1_permutation.py`, `d2_deflated_sharpe.py` | The validation audit: a permutation test and the deflated Sharpe ratio of both bots |
+| `h77_meta_labels.py` | Meta-labelled sizing of the rotation's picks (E6): a walk-forward model |
+| `h76_measurements.py` | The queue's measurements: weekends, relative volume, shock bars, correlation |
 | `competition_rule.py` | Every design of rounds 20 and on, judged on 14-day windows |
 | `fullbars.py`, `panel.py`, `stocks.py` | Data: full Binance klines, price panels, US share data |
 | `klines5m.py`, `attention.py` | Data: 5-minute Binance candles; daily Wikipedia page views per coin |

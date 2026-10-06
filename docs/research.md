@@ -1219,3 +1219,227 @@ re-pick more often than daily and whether to weight the horizons:
   round 71's neighbour test and was chosen after the holdout had been looked at, so expect
   less than the backtest: it beat the old ranking on the median 14-day window in only 3 of 6
   years, and lost in 2024–25 (+82% against +233%), a year that rewarded the 2-week leaders.
+
+## Convex optimisation on the live bot (round 74)
+
+The user asked for convex optimisation on the bot as live after round 73
+(`research/round74_convex.py`). The long-short book weights its positions by inverse
+volatility, ignoring how they move together; the new `ls_weighting` option instead solves for
+the weights over the positions' side-adjusted hourly returns (a short counts as minus the
+coin), re-solved daily, with the same gross.
+
+| Design | 6 years | Worst drawdown | Years better | 14-day score better |
+|---|---|---|---|---|
+| Live bot (multi-horizon ranking, inverse-volatility book) | +123,592% | 51% | | |
+| R74a the book by equal risk contribution (30 days of returns) | +89,005% | 57% | 2/6 | 2/6 |
+| R74b the book at minimum variance, 10% cap | +93,420% | 56% | 2/6 | 1/6 |
+| R74c the rotation's two picks by equal risk contribution | +84,638% | 51% | 1/6 | 3/6 |
+| R74d the rotation at 60% / 65% / 75% / 80% (the split) | +80,947% to +178,921% | 45–58% | 3/6 | 2–4/6 |
+
+- Both optimised books did worse and drew down deeper. The covariance of the last month did
+  not hold when it mattered: in sell-offs crypto's correlations jump towards one, and the
+  optimiser had leaned on the "diversifying" positions that then fell together.
+- The two picks again did better equally weighted: an optimiser leans on the calmer leader.
+- The split is a trade of return for drawdown with no free lunch: more rotation, more of both.
+- None adopted; `ls_weighting` stays a research option, off by default.
+
+## The research queue (rounds 75 on)
+
+`RESEARCH_QUEUE.md` (from the user) lists circuit breakers, session filters, a validation audit
+and new signals, each to be tested on both the live bot (`config/comp.json`) and the previous one
+(`config/comp_r54b.json`) and judged on the competition rule C1–C5 (`research/queue.py`).
+
+**Part A, operational circuit breakers** (`bot/breakers.py`, `tests/test_breakers.py`). Ten
+checks against bad data, a broken connection or runaway orders: price divergence from Binance,
+stale quotes, missing candles, wide spreads, rejected orders, slippage, order sanity, a fee
+budget, holdings that changed between cycles, and commit-controlled `trading_halt` and
+`reduce_only` flags. Exits and the activity trade always stay allowed (except under
+`trading_halt`), and each trip is written to `breakers.csv`. Tested by fault injection against
+the simulated exchange; off until `breakers.enabled` is set for an account, after a live cycle on
+the testing account.
+
+**Measurements first** (`research/h76_measurements.py`):
+- Weekends: the weekend's return against the following Monday and Tuesday correlated from
+  -0.45 to +0.21 by fold, no consistent reversal.
+- Shock bars (a -3 standard deviation hour on 3 times the usual volume for that hour of the
+  week) were followed by gains, not further falls: next 24 hours +0.3% to +3.1% in 5 of 6 folds
+  with BTC's filter on. Selling them (B4) is the wrong way round and was dropped; buying the
+  ones that close off their low (E5) goes to part E.
+- The 10 most traded coins' mean 48-hour correlation reached 0.85 on only 2–7% of days, so a
+  correlation cap (B8) would almost never bind; not built.
+
+**Round 75, risk circuit breakers** (`research/round75_risk_breakers.py`). Median 14-day
+composite better than each bot's (folds of 6), and the yearly return given up:
+
+| Breaker | Live bot | Given up | R54b | Given up |
+|---|---|---|---|---|
+| B1 daily loss 3%, everything at half at 5% | 0/6 | -340 pts | 2/6 | -158 pts |
+| B1b daily loss 3% only | 2/6 | -33 pts | 3/6 | -12 pts |
+| B2 drawdown ladder 4/7/10% | 1/6 | -654 pts | 0/6 | -366 pts |
+| B3 a position's 24-hour loss capped at 2.5% of equity | 1/6 | -418 pts | 0/6 | -264 pts |
+| B5 short squeeze guard | 1/6 | +26 pts | 1/6 | +2 pts |
+| B6 BTC shock | 3/6 | -339 pts | 3/6 | -154 pts |
+| B7 volatility regime | 4/6 | -242 pts | 3/6 | -133 pts |
+
+- None passed C1 on either bot. The drawdown ladder cut the worst yearly drawdown from 51% to
+  20%, but by keeping the bot small through the rebounds that make its year.
+- Losses on this book cluster and then reverse: every breaker that sells into a fall sells near
+  the low, as the shock-bar measurement showed hour by hour.
+
+**Round 76, session filters** (`research/round76_sessions.py`).
+- C1, the hour of the daily re-pick: no hour beat 00:00 in more than 4 of 6 folds on either
+  bot, and no block of 4 hours in a row reached 5 of 6, so the hour stays. The live bot's mean
+  14-day composite peaked at 07:00 (22.4 against 8.8), but 07:00 beat 00:00 in only 2 of 6
+  folds: one outlier year, the noise the block guard exists to ignore.
+- C6, the funding hours: 08:00 and 16:00 beat 00:00 in 2–3 of 6 folds, so C6 was not run.
+
+| Filter | Live bot: 14-day better | Given up | R54b: 14-day better | Given up |
+|---|---|---|---|---|
+| C2 entries only in the US session | 2/6 | -12 pts | 0/6 | -128 pts |
+| C2 entries only in Europe's and the US's sessions | 2/6 | -1 pt | 0/6 | -153 pts |
+| C3a no weekend entries | 2/6 | -237 pts | 1/6 | -145 pts |
+| C3b everything at 0.7 at weekends | 1/6 | -185 pts | 0/6 | -116 pts |
+
+None passed: delaying entries to a session costs the trend its first hours, and the weekends
+were no worse than weekdays.
+
+**Round 77, new signals** (`research/round77_signals.py`; the meta-labels from
+`research/h77_meta_labels.py`). Median 14-day composite better than each bot's (folds of 6):
+
+| Signal | Multi-horizon bot | Given up | R54b | Given up |
+|---|---|---|---|---|
+| E1 BTC short against half the rotation's beta | 4/6 | -570 pts | 2/6 | -303 pts |
+| E2 half size while BTC tracks QQQ and QQQ is below its 50-day average | 3/6 | +6 pts | 3/6 | +3 pts |
+| E3 entries only after a losing paper trade | 1/6 | -376 pts | 2/6 | -61 pts |
+| E3 falsification: only after a winning one | 1/6 | | 1/6 | -226 pts |
+| E4 rotation only in low-entropy trends | 1/6 | -352 pts | 2/6 | -140 pts |
+| E4 falsification: high entropy | 2/6 | -253 pts | 2/6 | -109 pts |
+| E5 capitulation buys, BTC's filter on | 3/6 | +14 pts | **5/6** | -5 pts |
+| E5 capitulation buys, filter off | 3/6 | +4 pts | 4/6 | +1 pt |
+| E6 meta-labelled sizing | 3/6 | | 3/6 | -73 pts |
+| E7 no longs while funding is 1.5 sd above the coin's norm | 2/6 | | 3/6 | -165 pts |
+| E8 longs grow only while volume accelerates | 1/6 | -10 pts | 2/6 | -29 pts |
+
+- None was confirmed. The closest of the whole queue was E5 on R54b: 2% buys after high-volume
+  shock hours that closed off their low, while BTC's filter was on, passed C1 to C4 (its
+  neighbours, 1% and 3%, held) and failed C5, better in one holdout year of two. It changed
+  the yearly return by a few points either way: too small to matter.
+- E1 cut the worst drawdown to 25–28% at the cost of most of the return, like round 75's ladder.
+- E6's model had no skill to size with: walk-forward AUC 0.48–0.55.
+
+**D2, the deflated Sharpe ratio** (`research/d2_deflated_sharpe.py`). N = 437 designs and
+neighbours tried in rounds 20–77; the spread of their Sharpe ratios from 40 re-run at random.
+
+| Fold | Multi-horizon: Sharpe | DSR | R54b: Sharpe | DSR | Luck's best of 437 |
+|---|---|---|---|---|---|
+| 2020–21 | 3.56 | 1.00 | 3.09 | 0.99 | 0.94 |
+| 2021–22 | -1.20 | 0.01 | -1.54 | 0.00 | 1.35 |
+| 2022–23 | 1.27 | 0.62 | 0.98 | 0.50 | 0.97 |
+| 2023–24 | 3.18 | 0.98 | 2.88 | 0.94 | 1.40 |
+| 2024–25 | 1.11 | 0.68 | 1.88 | 0.90 | 0.67 |
+| 2025–26 | 1.20 | 0.54 | 0.89 | 0.42 | 1.09 |
+
+In the bull years both bots' Sharpe ratios clear what the best of 437 unskilled tries would
+reach by luck (deflated Sharpe 0.9 or more); in the flat and falling years they do not
+(0.0–0.6). The edge is a trend-following one that pays in trending markets, not an
+all-weather one, which the six folds' returns already suggested.
+
+**D1, the permutation test** (`research/d1_permutation.py`). Each fold's prices, warm-up
+included, shuffled in 24-hour blocks in the same order for every coin (drift, volatility, fat
+tails and cross-coin correlation kept, trends destroyed), 100 times, against the real history;
+coins without a near-complete history were left out of both. Median 14-day composite:
+
+| Fold (coins) | Multi-horizon: real / shuffled median / p | R54b: real / shuffled median / p |
+|---|---|---|
+| 2018–19 (8) | 3.94 / -2.30 / 0.04 | 3.83 / -2.22 / 0.04 |
+| 2019–20 (11) | 5.01 / -1.57 / 0.03 | 3.36 / -1.69 / 0.04 |
+| 2020–21 (13) | 23.29 / 1.59 / 0.02 | 31.24 / 1.49 / 0.01 |
+| 2021–22 (26) | -1.00 / -2.79 / 0.23 | -0.90 / -2.56 / 0.24 |
+| 2022–23 (26) | -3.41 / -2.11 / 0.76 | -2.62 / -2.06 / 0.59 |
+| 2023–24 (30) | 5.09 / -0.81 / 0.05 | 5.79 / -0.37 / 0.04 |
+| 2024–25 (36) | 1.56 / -0.99 / 0.16 | 2.40 / -0.79 / 0.12 |
+| 2025–26 (46) | 2.11 / -1.59 / 0.13 | 1.14 / -1.38 / 0.20 |
+
+- Both bots beat the shuffled histories in 7 of 8 folds; combined over the folds (Fisher's
+  method) p is about 0.001 for each. The rules earn from the order of prices, the trends, not
+  only from the drift and volatility a shuffled market keeps.
+- Fold by fold the edge is clear only in trending years (2018–21, 2023–24). In 2024–26 it beat
+  the shuffles but not significantly, so the recent edge is weaker than the six-year backtest
+  suggests, as D2 found. The response the queue sets for a weak result is less concentration,
+  not more signals; it is the user's choice of risk.
+
+**Round 78, the last session ideas** (`research/round78_session_momentum.py`).
+
+| Design | Multi-horizon: 14-day better | Mean yearly return | R54b: 14-day better | Mean yearly return |
+|---|---|---|---|---|
+| C3c the ranking without weekend hours | 2/6 | +188 pts | 2/6 | +385 pts |
+| C4 US-session strength over 7 days | 2/6 | -214 pts | 2/6 | -163 pts |
+| C4 the same over 14 days | 3/6 | -127 pts | 3/6 | -22 pts |
+| C4 falsification, Asian strength, 7 days | 2/6 | -448 pts | 2/6 | -96 pts |
+| C4 falsification, Asian strength, 14 days | 1/6 | -178 pts | 3/6 | +44 pts |
+
+None passed. C3c's higher mean return came almost all from 2020–21 (+4,630% and +3,684%) with
+deeper drawdowns (55–57%) and worse 14-day windows; C4 and its falsification failed alike, so
+there is no session effect in either direction.
+
+**Round 79, re-picking at each session open** (`research/round79_session_repicks.py`, the
+user's question): the rotation re-picked at 00:00, 08:00 and 13:00 UTC, as Asia, Europe and
+the US open, instead of once a day.
+
+| Bot | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Worst drawdown | 14-day better |
+|---|---|---|---|---|---|---|---|---|
+| Multi-horizon | +3,239% | -44% | +96% | +946% | +82% | +79% | 51% | |
+| ... re-picked at each session open | +2,016% | -55% | +123% | +820% | +97% | +76% | 61% | 3/6 |
+| R54b | +1,614% | -49% | +59% | +626% | +233% | +48% | 52% | |
+| ... re-picked at each session open | +1,285% | -56% | +111% | +490% | +205% | +42% | 60% | 2/6 |
+
+It failed on both: three re-picks a day swapped coins on intraday noise, cost fees, and deepened
+the worst drawdown by 8–10 points, as round 73's fixed-interval re-picks had.
+
+**Round 80, a faster ranking** (`research/round80_faster_ranking.py`, the user asked for a
+faster bot). The ranking leaning on more recent returns (each version replaces the ranking of
+either bot, so the returns are the same on both, judged against each baseline):
+
+| Ranking | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Worst drawdown | 14-day better: multi / R54b |
+|---|---|---|---|---|---|---|---|---|
+| Multi-horizon 7/14/21 days, 2/1/1 | +3,239% | -44% | +96% | +946% | +82% | +79% | 51% | |
+| F1 7/14/21 days, 4/1/1 | +2,273% | -44% | +107% | +908% | +47% | +75% | 53% | 2/6, 4/6 |
+| F2 3/7/14 days, 2/1/1 | +5,246% | -47% | +119% | +585% | +119% | -13% | 56% | 2/6, 3/6 |
+| F3 3 and 7 days | +4,567% | -42% | +125% | +519% | +83% | -13% | 58% | 1/6, 2/6 |
+
+None passed. The faster rankings won big in the strongest bull year and lost in the last one
+(-13% against +79%), with deeper drawdowns and fewer winning 14-day windows (53% against 56%):
+short returns pick up the coins of the moment, which reverse as often as they run.
+
+**Round 81, the live bot faster** (`research/round81_faster_r54b.py`): each of R54b's three
+speeds turned up, against R54b.
+
+| Design | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Worst drawdown | 14-day better |
+|---|---|---|---|---|---|---|---|---|
+| R54b | +1,614% | -49% | +59% | +626% | +233% | +48% | 52% | |
+| S1 the rotation on 10-day returns | +2,443% | -52% | +160% | +751% | +213% | +7% | 53% | 2/6 |
+| S2 BTC's filter on 5/20-day EMAs | +1,292% | -56% | +48% | +425% | +79% | +27% | 58% | 1/6 |
+| S3 the book on 7/28-day trends | +1,625% | -51% | +59% | +609% | +240% | +43% | 52% | 1/6 |
+| S4 all three | +2,125% | -61% | +146% | +520% | +134% | -6% | 61% | 1/6 |
+
+None passed. As in round 80, faster settings won more in some strong years and lost in the
+choppy last one (S1: +7% against +48%), with fewer winning 14-day windows: the faster filter
+whipsawed in and out (S2's worst drawdown 58%), and the faster book changed nothing.
+
+**Round 82, the two bots combined** (`research/round82_combined.py`, the user's question).
+
+| Design | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | Worst drawdown | 14-day better: multi / R54b |
+|---|---|---|---|---|---|---|---|---|
+| R54b | +1,614% | -49% | +59% | +626% | +233% | +48% | 52% | |
+| Multi-horizon (2/1/1) | +3,239% | -44% | +96% | +946% | +82% | +79% | 51% | |
+| K1 half the rotation on each bot's picks | +2,281% | -46% | +77% | +780% | +147% | +64% | 51% | 2/6, 2/6 |
+| K2 one ranking summing both (2/2/1) | +2,727% | -36% | +90% | +792% | +94% | +78% | 52% | 4/6, 3/6 |
+
+Neither passed C1 against either bot. Both land between the two, as a blend would: K2 made more
+than R54b in 5 of 6 years and had the mildest crash year of any version (-36%), but its median
+14-day window beat R54b's in only 3 of 6 years.
+
+**The queue, in sum.** Nothing from parts B, C or E passed C1–C5 on either bot (the nearest, E5's
+capitulation buys, failed the holdout and moved returns by a few points). The validation audit
+found a real trend-following edge, strongest in trending markets and weaker in the last two
+years. The operational breakers (part A) are ready, off until a testing-account cycle.

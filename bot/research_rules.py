@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, AbstractSet, Dict, List, Optional
 
 from bot.indicators import Signal
 from bot.market_data import HOUR_MS
-from bot.optimize import covariance
+from bot.optimize import covariance, erc_weights, min_variance
 from bot.reasons import (CORE, EXIT_SHORT, EXIT_SHORT_STOP, EXIT_STOP, HOLD_HALTED, HOLD_NO_DATA, LS_SHORT,
                          ROTATION, SHORT_ENTRY, SHORT_HOLD)
 
@@ -161,6 +161,13 @@ class ResearchRules:
                       >= c.rotation_attention_floor}
         if c.rotation_exhaustion:
             rising = {p: r for p, r in rising.items() if not self._exhausted(p, signals[p])}
+        if c.long_max_funding_z > 0 and self.external_scores:            # E7
+            table = self._external(ts)
+            rising = {p: r for p, r in rising.items() if table.get("FZ:" + p, 0.0) < c.long_max_funding_z}
+        if c.rotation_entropy_order > 0 and len(rising) > 2:              # E4
+            pe = {p: self._entropy(p, c.rotation_entropy_order) for p in rising}
+            mid = sorted(pe.values())[len(pe) // 2]
+            rising = {p: r for p, r in rising.items() if (pe[p] < mid) == c.rotation_entropy_low}
         if c.rotation_attention_rank > 0 and self.external_scores and len(rising) > 1:
             table = self._external(ts)
             z_ret = _normal_scores(rising)
@@ -181,12 +188,35 @@ class ResearchRules:
         elif c.rotation_ranking == "external" and self._external(ts):
             table = self._external(ts)
             rising = {p: table.get(p, -1e9) for p in rising}
+        if c.rank_skip_days and len(rising) > 1:                         # C3c
+            if c.rotation_ranking == "multi":
+                rising = self._multi_horizon(list(rising))
+            else:
+                rising = {p: self._hours_return(p, c.rotation_lookback, skip_days=c.rank_skip_days) for p in rising}
+        if c.session_tilt and len(rising) > 1:                            # C4
+            n = c.session_tilt_days * 24
+            feature = {p: self._hours_return(p, n, hours_of_day=range(13, 21)) - self._hours_return(p, n, hours_of_day=range(0, 8))
+                       for p in rising}
+            z_rank, z_feature = _normal_scores(rising), _normal_scores(feature)
+            rising = {p: z_rank[p] + c.session_tilt * z_feature[p] for p in rising}
         return rising, alts
 
     def _research_picks(self, ranked, picks, rising, signals, state, ts, frozen, stuck):
         """Rounds 22, 27, 36 and 42: holding, buffering, concentrating or diversifying the picks."""
         c = self.cfg
         concentrated = False
+        if c.trade_dependence and c.trade_dependence_scope != "book":     # E3, the rotation
+            unfiltered = set(ranked[:c.rotation_top])
+            for pair in [k[4:] for k in state.paper if k.startswith("rot:")]:
+                if pair not in unfiltered and pair in signals:
+                    side, price = state.paper.pop("rot:" + pair)
+                    state.paper_last["rot:" + pair] = signals[pair].close / price - 1
+            for pair in unfiltered:
+                if "rot:" + pair not in state.paper and pair in signals:
+                    state.paper["rot:" + pair] = [1.0, signals[pair].close]
+            held = {p for p, w in state.rotation_plan.items() if w > 0}
+            ranked = [p for p in ranked if p in held or self._take(state.paper_last.get("rot:" + p))]
+            picks = ranked[:max(c.rotation_top - stuck, 0)]
         if c.rotation_donchian_hold:
             held = [p for p, w in state.rotation_plan.items()
                     if w > 0 and p != c.defensive_pair and p in signals and p not in frozen]
@@ -289,6 +319,22 @@ class ResearchRules:
         if (c.long_max_external > 0 and s.ls_fast > s.ls_slow and not c.ls_ensemble and self.external_scores
                 and self._external(ts).get(pair, 0.0) > c.long_max_external):
             return None
+        if (c.long_max_funding_z > 0 and side > 0 and self.external_scores
+                and self._external(ts).get("FZ:" + pair, 0.0) >= c.long_max_funding_z):
+            return None                                                   # E7
+        if c.trade_dependence and c.trade_dependence_scope != "rotation" and state is not None:  # E3
+            key = "ls:" + pair
+            open_trade = state.paper.get(key)
+            if open_trade is None or open_trade[0] != side:
+                if open_trade is not None:
+                    state.paper_last[key] = open_trade[0] * (s.close / open_trade[1] - 1)
+                state.paper[key] = [side, s.close]
+                if open_trade is not None and not self._take(state.paper_last.get(key)):
+                    state.paper_skip[key] = side
+                else:
+                    state.paper_skip.pop(key, None)
+            if state.paper_skip.get(key) == side:
+                return None
         if c.ls_short_trend:
             short_down = 0 < s.ls_short_fast < s.ls_short_slow
             if (side > 0) == short_down:
@@ -386,6 +432,260 @@ class ResearchRules:
             return False
         att = self._external(ts).get("ATT:" + pair)
         return att is not None and att > c.short_attention_max
+
+    def _research_ls_weights(self, raw, ts):
+        """Round 74: the long-short book's positions weighted by a convex optimiser (ls_weighting)
+        instead of inverse volatility, with the same gross; re-solved once a day or when the book's
+        coins or sides change."""
+        c = self.cfg
+        if c.ls_weighting == "inverse_vol" or len(raw) < 2:
+            return raw
+        key = (ts // DAY_MS, tuple(sorted((p, v > 0) for p, v in raw.items())))
+        if getattr(self, "_ls_key", None) != key:
+            pairs = sorted(raw)
+            series = [list(self.indicators[p].returns)[-c.ls_cov_hours:] for p in pairs]
+            length = min(len(r) for r in series)
+            if length < 48:
+                return raw
+            signed = [[(1.0 if raw[p] > 0 else -1.0) * x for x in r[-length:]] for p, r in zip(pairs, series)]
+            cov = covariance(signed, shrink=0.1)
+            w = erc_weights(cov) if c.ls_weighting == "erc" else min_variance(cov, cap=c.ls_max_weight)
+            self._ls_key, self._ls_w = key, dict(zip(pairs, w))
+        gross = sum(abs(v) for v in raw.values())
+        return {p: (1.0 if v > 0 else -1.0) * self._ls_w[p] * gross for p, v in raw.items()}
+
+    def _research_risk_breakers(self, ts, equity, targets, rotation, account, signals, state, frozen):
+        """Round 75 (RESEARCH_QUEUE.md part B): risk circuit breakers on the final targets."""
+        c = self.cfg
+        if not (c.day_loss_stop or c.dd_ladder or c.coin_loss_cap or c.squeeze_rise or c.btc_shock_1h
+                or c.vol_regime or c.entry_hours or c.weekend_no_entries or c.weekend_scale != 1.0
+                or c.beta_hedge or c.macro_rho or c.capitulation_size or c.volume_accel
+                or c.rotation_meta_sizing) or equity <= 0:
+            return targets
+        out = dict(targets)
+        until = state.risk_until
+        rot = {p: c.rotation_weight * w for p, w in rotation.items() if p not in frozen}
+
+        def hold_back(pairs=None, longs_only=False):
+            for p, t in out.items():
+                if p in frozen or (pairs is not None and p not in pairs):
+                    continue
+                w = account.get(p, 0.0)
+                if t > 0:
+                    out[p] = min(t, max(w, 0.0))
+                elif t < 0 and not longs_only:
+                    out[p] = max(t, min(w, 0.0))
+
+        def scale(factor, only=None):
+            for p in out:
+                if p not in frozen:
+                    part = out[p] if only is None else only.get(p, 0.0)
+                    out[p] -= part * (1.0 - factor)
+
+        if c.squeeze_rise > 0:                                   # B5
+            for p, w in account.items():
+                s, ind = signals.get(p), self.indicators.get(p)
+                if w >= 0 or s is None or ind is None or len(ind.closes) < 25 or p in frozen:
+                    continue
+                closes = ind.closes
+                if (s.close / closes[-25] - 1 >= c.squeeze_rise
+                        or (s.atr > 0 and s.close - closes[-2] >= c.squeeze_atr * s.atr)):
+                    out[p] = 0.0
+                    state.short_cooldown_until[p] = ts + c.squeeze_block_hours * HOUR_MS
+            shorts = -sum(t for p, t in out.items() if t < 0 and p not in frozen)
+            if shorts > c.short_collateral_cap:
+                for p, t in out.items():
+                    if t < 0 and p not in frozen:
+                        out[p] = t * c.short_collateral_cap / shorts
+        if c.coin_loss_cap > 0:                                  # B3
+            for p, w in account.items():
+                ind = self.indicators.get(p)
+                if w == 0 or p in frozen or ind is None or len(ind.closes) < 25:
+                    continue
+                if w * (ind.closes[-1] / ind.closes[-25] - 1) <= -c.coin_loss_cap:
+                    state.coin_block_until[p] = ts + 24 * HOUR_MS
+                    half = w / 2
+                    out[p] = min(out.get(p, 0.0), half) if w > 0 else max(out.get(p, 0.0), half)
+            blocked = {p for p, t in state.coin_block_until.items() if t > ts}
+            if blocked:
+                hold_back(blocked)
+        if c.day_loss_stop > 0:                                  # B1
+            day = ts // DAY_MS
+            if day != state.risk_day:
+                state.risk_day, state.risk_day_equity = day, equity
+            loss = equity / state.risk_day_equity - 1 if state.risk_day_equity > 0 else 0.0
+            if loss <= -c.day_loss_stop:
+                until["day_stop"] = (day + 1) * DAY_MS
+            if c.day_loss_cut > 0 and loss <= -c.day_loss_cut:
+                until["day_cut"] = (day + 1) * DAY_MS
+            if until.get("day_stop", 0) > ts:
+                hold_back()
+            if until.get("day_cut", 0) > ts:
+                scale(0.5)
+        if c.dd_ladder:                                          # B2
+            dd = 1.0 - equity / state.peak_equity if state.peak_equity > 0 else 0.0
+            reached = sum(1 for level in c.dd_ladder if dd >= level)
+            if reached > state.dd_tier:
+                state.dd_tier, state.dd_tier_since = reached, ts
+                if reached >= 3:
+                    until["dd_rotation"] = ts + 24 * HOUR_MS
+            while (state.dd_tier > 0 and dd < c.dd_ladder[state.dd_tier - 1] / 2
+                   and ts - state.dd_tier_since >= 12 * HOUR_MS):
+                state.dd_tier -= 1
+                state.dd_tier_since = ts
+            if until.get("dd_rotation", 0) > ts:
+                scale(0.0, rot)
+            if state.dd_tier >= 1:
+                scale(0.5 if state.dd_tier == 1 else 0.25)
+        if c.btc_shock_1h > 0:                                   # B6
+            closes = self.indicators[c.regime_pair].closes if c.regime_pair in self.indicators else []
+            if len(closes) >= 5 and (closes[-1] / closes[-2] - 1 <= -c.btc_shock_1h
+                                     or closes[-1] / closes[-5] - 1 <= -c.btc_shock_4h):
+                until["btc_shock"] = ts + 6 * HOUR_MS
+            if until.get("btc_shock", 0) > ts:
+                hold_back(longs_only=True)
+                scale(0.5, rot)
+        if c.vol_regime > 0:                                     # B7
+            ratio = self._vol_ratio()
+            if ratio >= c.vol_regime:
+                scale(max(c.vol_regime_floor, c.vol_regime / ratio))
+        if c.beta_hedge > 0 and rot:                             # E1
+            coins = {p: w for p, w in rot.items() if w > 0 and p != c.defensive_pair and p != c.regime_pair}
+            hedge = c.beta_hedge * sum(w * self._beta(p) for p, w in coins.items())
+            total = sum(coins.values())
+            if hedge > 0 and total > 0:
+                hedge = min(hedge, total / 2)
+                for p, w in coins.items():
+                    out[p] -= w * hedge / total
+                out[c.regime_pair] = out.get(c.regime_pair, 0.0) - hedge
+        if c.rotation_meta_sizing and self.external_scores:      # E6
+            table = self._external(ts)
+            for p, w in rot.items():
+                prob = table.get("META:" + p)
+                if w > 0 and prob is not None and p != c.defensive_pair:
+                    out[p] -= w * (1.0 - min(max(2 * prob, 0.5), 1.0))
+        if c.macro_rho > 0 and self.external_scores:             # E2
+            table = self._external(ts)
+            if table.get("MACRO:rho", 0.0) > c.macro_rho and table.get("MACRO:below", 0.0) > 0:
+                scale(c.macro_scale)
+        if c.volume_accel:                                       # E8
+            hold_back({p for p in out if not self._volume_accelerating(p)}, longs_only=True)
+        if c.capitulation_size > 0:                              # E5
+            self._capitulation(ts, out, signals, state, frozen)
+        weekend = (ts // DAY_MS + 3) % 7 >= 5                   # the epoch was a Thursday
+        if c.entry_hours and (ts // HOUR_MS) % 24 not in c.entry_hours:   # C2, C6
+            hold_back()
+        if weekend and c.weekend_no_entries:                     # C3a
+            hold_back()
+        if weekend and c.weekend_scale != 1.0:                   # C3b
+            scale(c.weekend_scale)
+        return out
+
+    def _take(self, last):
+        """E3: whether a signal is taken after a paper trade that returned `last` (None: none yet)."""
+        if last is None:
+            return True
+        return last < 0 if self.cfg.trade_dependence == "after_loss" else last > 0
+
+    def _hours_return(self, pair, count, skip_days=(), hours_of_day=None):
+        """The pair's log return over its last `count` hourly bars, counting only bars outside
+        `skip_days` (0 Monday .. 6 Sunday) and, if given, inside the UTC hours `hours_of_day`."""
+        ind = self.indicators[pair]
+        r = list(ind.returns)[-count:]
+        if ind.last_ts is None:
+            return 0.0
+        wanted = set(hours_of_day) if hours_of_day is not None else None
+        total = 0.0
+        for i, x in enumerate(r):
+            ts = ind.last_ts - (len(r) - 1 - i) * HOUR_MS                  # the bar's open time
+            if skip_days and (ts // DAY_MS + 3) % 7 in skip_days:
+                continue
+            if wanted is not None and (ts // HOUR_MS) % 24 not in wanted:
+                continue
+            total += x
+        return total
+
+    def _beta(self, pair):
+        """E1: the pair's beta to the regime pair over rotation_cov_hours of hourly returns."""
+        c = self.cfg
+        a = list(self.indicators[pair].returns)[-c.rotation_cov_hours:]
+        b = list(self.indicators[c.regime_pair].returns)[-c.rotation_cov_hours:]
+        n = min(len(a), len(b))
+        if n < 48:
+            return 1.0
+        a, b = a[-n:], b[-n:]
+        ma, mb = sum(a) / n, sum(b) / n
+        var = sum((y - mb) ** 2 for y in b)
+        return sum((x - ma) * (y - mb) for x, y in zip(a, b)) / var if var > 0 else 1.0
+
+    def _entropy(self, pair, order):
+        """E4: permutation entropy (0 to 1) of the last 168 hourly closes' ordinal patterns."""
+        closes = list(self.indicators[pair].closes)[-168:]
+        counts = {}
+        for i in range(len(closes) - order + 1):
+            window = closes[i:i + order]
+            key = tuple(sorted(range(order), key=window.__getitem__))
+            counts[key] = counts.get(key, 0) + 1
+        total = sum(counts.values())
+        if total == 0:
+            return 1.0
+        h = -sum(n / total * math.log(n / total) for n in counts.values())
+        return h / math.log(math.factorial(order))
+
+    def _volume_accelerating(self, pair):
+        """E8: the second difference of the 24-hour average of dollar volume is positive."""
+        n = self.cfg.volume_accel_hours
+        d = list(self.indicators[pair].dollar)
+        if len(d) < n + 2:
+            return True
+        m0, m1, m2 = (sum(d[len(d) - k - n:len(d) - k]) / n for k in (0, 1, 2))
+        return m0 - 2 * m1 + m2 > 0
+
+    def _capitulation(self, ts, out, signals, state, frozen):
+        """E5: a small long after an hour of forced selling that closed off its low."""
+        c = self.cfg
+        regime = signals.get(c.regime_pair)
+        on = regime is not None and regime.ema_trend_fast > regime.ema_trend_slow
+        for pair, (entry_ts, price, atr) in list(state.capitulation.items()):
+            s = signals.get(pair)
+            if s is None or s.close >= price + 1.5 * atr or ts - entry_ts >= 24 * HOUR_MS:
+                del state.capitulation[pair]
+        if len(state.capitulation) < 3 and (c.capitulation_regime == "any" or (c.capitulation_regime == "on") == on):
+            for pair, s in signals.items():
+                if len(state.capitulation) >= 3:
+                    break
+                if pair in state.capitulation or pair in frozen or pair == c.defensive_pair:
+                    continue
+                ind = self.indicators[pair]
+                r, d = list(ind.returns), list(ind.dollar)
+                if len(r) < 169 or len(d) < 673 or not ind.highs:
+                    continue
+                past = r[-169:-1]
+                mean = sum(past) / len(past)
+                sd = (sum((x - mean) ** 2 for x in past) / (len(past) - 1)) ** 0.5
+                week = sorted(d[-1 - 168 * k] for k in (1, 2, 3, 4))
+                rvol = d[-1] / ((week[1] + week[2]) / 2) if week[1] + week[2] > 0 else 0.0
+                rng = ind.highs[-1] - ind.lows[-1]
+                wick = (s.close - ind.lows[-1]) / rng if rng > 0 else 0.0
+                if sd > 0 and r[-1] / sd <= -3 and rvol >= 3 and wick >= 0.4:
+                    state.capitulation[pair] = [float(ts), s.close, s.atr]
+        for pair in state.capitulation:
+            out[pair] = out.get(pair, 0.0) + c.capitulation_size
+
+    def _vol_ratio(self):
+        """B7: BTC's realised variance over the last 24 hours over its median over 30 days."""
+        r = list(self.indicators[self.cfg.regime_pair].returns)[-(720 + 24):]
+        if len(r) < 48:
+            return 0.0
+        sq = [x * x for x in r]
+        sums, acc = [], sum(sq[:24])
+        sums.append(acc)
+        for i in range(24, len(sq)):
+            acc += sq[i] - sq[i - 24]
+            sums.append(acc)
+        ordered = sorted(sums)
+        median = ordered[len(ordered) // 2]
+        return sums[-1] / median if median > 0 else 0.0
 
     def _research_window_lock(self, ts, equity, targets, book, rotation, signals, exposure, state, frozen, reasons):
         """H70 (research/h70_secure_profits.py): securing profits within the competition window,
@@ -615,7 +915,10 @@ class ResearchRules:
             values = {}
             for p in pairs:
                 r = self.indicators[p].returns
-                values[p] = sum(list(r)[-h:]) if len(r) >= h else 0.0
+                if self.cfg.rank_skip_days:                               # C3c
+                    values[p] = self._hours_return(p, h, skip_days=self.cfg.rank_skip_days)
+                else:
+                    values[p] = sum(list(r)[-h:]) if len(r) >= h else 0.0
             for p, z in _normal_scores(values).items():
                 total[p] += w * z
         return total

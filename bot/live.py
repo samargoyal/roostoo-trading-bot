@@ -35,6 +35,7 @@ import time
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from bot.config import Config, load_config
+from bot.breakers import Breakers, Trip
 from bot.execution import Executor, OrderResult, halted_pairs, parse_rules
 from bot.indicators import Signal
 from bot.journal import Journal, StateStore, setup_logging, utc_iso
@@ -75,6 +76,16 @@ class PriceSampler:
         return [Bar(h, hours[h][0], hours[h][1], hours[h][2], hours[h][3], 0.0)
                 for h in sorted(hours)
                 if h + HOUR_MS <= now_ms and (after_ts is None or h > after_ts)]
+
+
+def coin_quantities(wallet: Dict[str, Dict[str, float]]) -> Dict[str, float]:
+    """{pair: coins held, free and locked} from a Roostoo balance."""
+    out = {}
+    for coin, balance in wallet.items():
+        amount = float(balance.get("Free") or 0.0) + float(balance.get("Lock") or 0.0)
+        if coin != "USD" and amount > 0:
+            out[coin + "/USD"] = amount
+    return out
 
 
 def portfolio_value(wallet: Dict[str, Dict[str, float]], quotes: Dict[str, Dict[str, float]],
@@ -137,6 +148,8 @@ class LiveBot:
         self.state = StrategyState()
         self.executor: Optional[Executor] = None
         self.frozen: Set[str] = set()   # pairs Roostoo is not trading, as of the last check
+        self.breakers = Breakers(cfg.breakers) if cfg.breakers.enabled else None
+        self.binance_failed: Set[str] = set()   # pairs whose candles could not be fetched this cycle
 
     # ---- lifecycle -------------------------------------------------------------
 
@@ -145,6 +158,12 @@ class LiveBot:
         info = self.client.exchange_info()
         self.executor = Executor(self.client, parse_rules(info), self.cfg.execution, self._record_order,
                                  dry_run=self.dry_run, sleep=self.sleep)
+        if self.breakers is not None:
+            b = self.cfg.breakers
+            self.executor.failure_limits = (b.max_failures_in_row, b.max_failure_share)
+            self.executor.on_trip = self._record_trip
+            log.info("circuit breakers on%s", ", TRADING HALT" if b.trading_halt else
+                     ", reduce only" if b.reduce_only else "")
         self.frozen = halted_pairs(info, self.cfg.strategy.universe)
         if self.frozen:
             log.warning("not tradable on Roostoo now (no orders until they are): %s",
@@ -177,7 +196,10 @@ class LiveBot:
                 return
             if now >= next_sample:
                 try:
-                    self.sampler.add(self.client.ticker(), now)
+                    quotes = self.client.ticker()
+                    self.sampler.add(quotes, now)
+                    if self.breakers is not None:
+                        self.breakers.sample(quotes)
                 except RoostooError as exc:
                     log.warning("ticker sample failed: %s", exc)
                 next_sample = now + self.cfg.live.ticker_sample_sec * 1000
@@ -193,6 +215,7 @@ class LiveBot:
         started = self.client.now_ms()
         strategy = Strategy(self.cfg.strategy, external_scores=self._funding_scores(started))
         universe = self.cfg.strategy.universe
+        self.binance_failed = set()
         # Binance candles for ~46 pairs, a few pages each: fetched six at a time.
         with ThreadPoolExecutor(max_workers=6) as pool:
             history = dict(zip(universe, pool.map(lambda p: self._bars(p, started), universe)))
@@ -206,7 +229,8 @@ class LiveBot:
 
         quotes = self.client.ticker()
         self.sampler.add(quotes, started)
-        equity, cash, values = portfolio_value(self.client.balance(), quotes, self._shorts())
+        wallet = self.client.balance()
+        equity, cash, values = portfolio_value(wallet, quotes, self._shorts())
         weights = {p: v / equity for p, v in values.items()} if equity > 0 else {}
 
         frozen = self._refresh_rules(set(universe) | set(weights))
@@ -215,15 +239,29 @@ class LiveBot:
                                    frozen if self.cfg.strategy.plan_around_halts else frozenset())
         trades = plan_trades(decision, weights, equity, now, self.state.last_fill_ts,
                              self.cfg.execution, self.cfg.strategy.min_position_weight, frozen)
+        limit_only: Set[str] = set()
+        if self.breakers is not None:
+            self.breakers.sample(quotes)
+            last_bars = {p: history[p][-1] for p in universe if history[p]}
+            trades, limit_only, trips = self.breakers.screen(trades, now, equity, quotes, last_bars,
+                                                             self.binance_failed, coin_quantities(wallet))
+            for trip in trips:
+                self._record_trip(trip)
         self._record_decision(now, decision, equity, weights, trades, signals)
 
-        results = self.executor.execute(trades, quotes) if trades else []
+        results = self.executor.execute(trades, quotes, limit_only) if trades else []
+        if self.breakers is not None:
+            for trip in self.breakers.after(results, quotes, now):
+                self._record_trip(trip)
         if any(r.filled > 0 for r in results):
             self.state.last_fill_ts = self.client.now_ms()
         if results and not self.dry_run:
             quotes = self.client.ticker()
-            equity, cash, values = portfolio_value(self.client.balance(), quotes, self._shorts())
+            wallet = self.client.balance()
+            equity, cash, values = portfolio_value(wallet, quotes, self._shorts())
             weights = {p: v / equity for p, v in values.items()} if equity > 0 else {}
+        if self.breakers is not None:
+            self.breakers.remember_holdings(coin_quantities(wallet))
 
         strategy.reconcile(now, weights, decision, self.state)
         self._record_equity(equity, cash, values, decision)
@@ -288,6 +326,7 @@ class LiveBot:
         try:
             bars = self.binance.recent_closed(binance_symbol(pair), self.cfg.live.history_bars, now_ms)
         except BinanceError as exc:
+            self.binance_failed.add(pair)
             cached = self.history.get(pair, [])
             extra = self.sampler.closed_bars(pair, cached[-1].ts if cached else None, now_ms)
             log.warning("Binance candles unavailable for %s (%s); using %d cached and %d "
@@ -301,6 +340,11 @@ class LiveBot:
         return bars
 
     # ---- records ---------------------------------------------------------------
+
+    def _record_trip(self, trip: Trip) -> None:
+        log.warning("circuit breaker %s%s: %.4g against %.4g, %s", trip.name, " " + trip.pair if trip.pair else "",
+                    trip.value, trip.threshold, trip.action)
+        self.journal.breaker(trip.as_row())
 
     def _record_order(self, order: OrderResult) -> None:
         self.journal.order(order.as_row())

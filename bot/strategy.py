@@ -110,6 +110,16 @@ class StrategyState:
     window_index: int = -1              # research: the competition window of the profits lock
     window_equity: float = 0.0          # research: the account's value when that window began
     profit_locked: bool = False         # research: profits secured for the rest of the window
+    risk_day: int = -1                  # research (round 75): the UTC day of risk_day_equity
+    risk_day_equity: float = 0.0        # the account's value at that day's 00:00
+    risk_until: Dict[str, int] = field(default_factory=dict)  # breaker -> ms it stays on
+    dd_tier: int = 0                    # the drawdown ladder's step, and when it was reached
+    dd_tier_since: int = 0
+    coin_block_until: Dict[str, int] = field(default_factory=dict)  # B3: no adds until (ms)
+    capitulation: Dict[str, List[float]] = field(default_factory=dict)  # E5: pair -> [entry ms, price, ATR]
+    paper: Dict[str, List[float]] = field(default_factory=dict)  # E3: open paper trades, key -> [side, price]
+    paper_last: Dict[str, float] = field(default_factory=dict)   # E3: key -> last closed paper return
+    paper_skip: Dict[str, float] = field(default_factory=dict)   # E3: book legs skipped, key -> side
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -144,6 +154,16 @@ class StrategyState:
             window_index=int(data.get("window_index", -1)),
             window_equity=float(data.get("window_equity", 0.0)),
             profit_locked=bool(data.get("profit_locked", False)),
+            risk_day=int(data.get("risk_day", -1)),
+            risk_day_equity=float(data.get("risk_day_equity", 0.0)),
+            risk_until={k: int(v) for k, v in data.get("risk_until", {}).items()},
+            dd_tier=int(data.get("dd_tier", 0)),
+            dd_tier_since=int(data.get("dd_tier_since", 0)),
+            coin_block_until={p: int(v) for p, v in data.get("coin_block_until", {}).items()},
+            capitulation={p: [float(x) for x in v] for p, v in data.get("capitulation", {}).items()},
+            paper={k: [float(x) for x in v] for k, v in data.get("paper", {}).items()},
+            paper_last={k: float(v) for k, v in data.get("paper_last", {}).items()},
+            paper_skip={k: float(v) for k, v in data.get("paper_skip", {}).items()},
         )
 
 
@@ -359,6 +379,7 @@ class Strategy(ResearchRules):
 
         targets, exposure = self._research_window_lock(ts, equity, targets, book, rotation, signals, exposure,
                                                        state, frozen, reasons)
+        targets = self._research_risk_breakers(ts, equity, targets, rotation, account, signals, state, frozen)
         if frozen:
             targets = _hold_frozen(targets, account, frozen, reasons)
         return Decision(ts=ts, risk_on=risk_on, exposure_limit=exposure, drawdown=drawdown,
@@ -424,7 +445,9 @@ class Strategy(ResearchRules):
         hour = ts // HOUR_MS
         last = state.rotation_plan_ts // HOUR_MS
         due = (state.rotation_plan_ts == 0 or hour - last >= c.rotation_rebalance_hours
-               or (hour % c.rotation_rebalance_hours == 0 and hour != last))
+               or ((hour - c.rotation_rebalance_offset) % c.rotation_rebalance_hours == 0 and hour != last))
+        if c.rotation_rebalance_at:                                       # research, round 79
+            due = state.rotation_plan_ts == 0 or (hour % 24 in c.rotation_rebalance_at and hour != last)
         due = self._research_entry_due(due, trend_on, hour, last, state)
         if due:
             state.rotation_plan_on = int(trend_on)
@@ -558,6 +581,7 @@ class Strategy(ResearchRules):
             if side is None:
                 continue
             raw[pair] = side / s.volatility
+        raw = self._research_ls_weights(raw, ts)
         budget = max(1.0 - sum(abs(w) for w in fixed.values()), 0.0)
         gross = sum(abs(v) for v in raw.values())
         if c.short_entry_channel > 0 or c.short_stop_atr > 0 or use_slots:

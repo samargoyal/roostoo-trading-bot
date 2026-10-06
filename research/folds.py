@@ -24,6 +24,7 @@ import sys
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 
+import numpy as np
 import pandas as pd
 
 from bot.backtest import run_backtest
@@ -191,6 +192,50 @@ def funding_table(hours: int) -> dict:
     return out
 
 
+def funding_z_table() -> dict:
+    """{00:00 of each day (ms): {"FZ:" + pair: (mean funding over the last 24 hours - mean over 30
+    days) / standard deviation of the prints over 30 days}}: funding against the coin's own norm
+    (round 77, E7)."""
+    if "z" in _FUNDING:
+        return _FUNDING["z"]
+    import glob
+    out = {}
+    for path in glob.glob(os.path.join("data", "funding", "*.csv")):
+        df = pd.read_csv(path)
+        if df.empty:
+            continue
+        s = pd.Series(df["rate"].values, index=pd.to_datetime(df["ts"] // 1000, unit="s", utc=True))
+        s = s[~s.index.duplicated()].sort_index()
+        z = (s.rolling("24h").mean() - s.rolling("30D").mean()) / s.rolling("30D").std()
+        days = pd.date_range(s.index[0].ceil("D"), s.index[-1].floor("D"), freq="D")
+        pair = os.path.basename(path)[:-4] + "/USD"
+        for day, value in z.reindex(z.index.union(days)).ffill().reindex(days).items():
+            if value == value:
+                out.setdefault(int(day.timestamp() * 1000), {})["FZ:" + pair] = float(value)
+    _FUNDING["z"] = out
+    return out
+
+
+def macro_table() -> dict:
+    """{00:00 of each day (ms): {"MACRO:rho": correlation of BTC's and QQQ's daily log returns
+    over 30 trading days, "MACRO:below": 1 while QQQ closed below its 50-day average}}, from US
+    closes up to the day before (they are known from 21:00 UTC), carried over weekends (E2)."""
+    from bot.market_data import _read_bars
+    q = pd.read_csv(os.path.join("data", "stocks", "QQQ_daily.csv"), index_col=0, parse_dates=True)["close"]
+    q.index = pd.to_datetime(q.index).tz_localize("UTC")
+    bars = _read_bars(os.path.join("data", "binance", "BTCUSDT_1h.csv"))
+    btc = pd.Series({pd.Timestamp(b.ts + HOUR_MS, unit="ms", tz="UTC"): b.close for b in bars}).sort_index()
+    btc = btc.resample("1D").last().reindex(q.index + pd.Timedelta(hours=21), method="ffill")
+    btc.index = q.index
+    rho = np.log(q).diff().rolling(30).corr(np.log(btc).diff())
+    below = (q < q.rolling(50).mean()).astype(float)
+    frame = pd.DataFrame({"MACRO:rho": rho, "MACRO:below": below}).dropna()
+    frame.index = frame.index + pd.Timedelta(days=1)            # usable from the next day's 00:00
+    days = pd.date_range(frame.index[0], frame.index[-1] + pd.Timedelta(days=3), freq="D")
+    frame = frame.reindex(days, method="ffill")
+    return {int(d.timestamp() * 1000): row.to_dict() for d, row in frame.iterrows()}
+
+
 def run(job):
     name, overrides, (start, end) = job
     overrides = copy.deepcopy(overrides)
@@ -209,6 +254,18 @@ def run(job):
     if "BTC/USD" not in bars:
         bars["BTC/USD"] = load_history(client, "BTC/USD", warm, e, cfg.backtest.data_dir)
     external = funding_table(extra["funding_hours"]) if extra.get("funding_hours") else None
+    for flag, table in (("funding_z", funding_z_table), ("macro", macro_table)):
+        if extra.get(flag):
+            merged = {day: dict(v) for day, v in (external or {}).items()}
+            for day, v in table().items():
+                merged.setdefault(day, {}).update(v)
+            external = merged
+    if extra.get("meta"):                     # E6: research/h77_meta_labels.py
+        table = json.load(open(os.path.join("runs", "research", "h77", "meta_%s.json" % extra["meta"])))
+        merged = {day: dict(v) for day, v in (external or {}).items()}
+        for day, v in table.items():
+            merged.setdefault(int(day), {}).update(v)
+        external = merged
     if extra.get("attention"):
         from research.attention import attention_table
         merged = {day: dict(v) for day, v in (external or {}).items()}

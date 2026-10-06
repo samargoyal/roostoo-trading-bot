@@ -141,14 +141,23 @@ class Executor:
         self.client = client
         self.rules = rules
         self.cfg = cfg
-        self.on_order = on_order
+        self.on_order = lambda order: (self._note(order), on_order(order))
         self.dry_run = dry_run
+        self.failure_limits: Optional[Tuple[int, float]] = None   # breaker A5: (in a row, share)
+        self.on_trip: Callable[[Any], None] = lambda trip: None
+        self.limit_only: Set[str] = set()
+        self.stopped = False
+        self._sent = self._failed = self._in_row = 0
         self.sleep = sleep
         self.clock = clock
 
-    def execute(self, trades: List[PlannedTrade],
-                quotes: Dict[str, Dict[str, float]]) -> List[OrderResult]:
-        """Sells and covers first, then buys and new shorts sized to the cash actually free."""
+    def execute(self, trades: List[PlannedTrade], quotes: Dict[str, Dict[str, float]],
+                limit_only: Iterable[str] = ()) -> List[OrderResult]:
+        """Sells and covers first, then buys and new shorts sized to the cash actually free.
+        Pairs in `limit_only` get no market orders (breakers A4 and A6)."""
+        self.limit_only = set(limit_only)
+        self.stopped = False
+        self._sent = self._failed = self._in_row = 0
         results: List[OrderResult] = []
         sells = [t for t in trades if t.side == SELL]
         covers = [t for t in trades if t.side == COVER]
@@ -227,7 +236,10 @@ class Executor:
         results = []
         resting = []
         for t, quantity in sized:
-            if self.cfg.use_limit_orders and not (self.cfg.market_on_stop and t.reason == EXIT_STOP):
+            if self.stopped:
+                break
+            if t.pair in self.limit_only or (self.cfg.use_limit_orders
+                                             and not (self.cfg.market_on_stop and t.reason == EXIT_STOP)):
                 order = self._place(t, LIMIT, quantity, self._touch_price(t, quotes[t.pair]))
                 if order.done:
                     self.on_order(order)
@@ -244,7 +256,7 @@ class Executor:
                 if not order.done:
                     self._cancel(order)
                 self.on_order(order)
-                if not order.done:
+                if not order.done or self.stopped or order.trade.pair in self.limit_only:
                     # It may still fill, so a market order now could double the trade.
                     # The next cycle cancels leftovers and works from the real balance.
                     continue
@@ -263,6 +275,8 @@ class Executor:
                      scale: float) -> List[OrderResult]:
         results = []
         for t in trades:
+            if self.stopped:
+                break
             rules, quote = self.rules.get(t.pair), quotes.get(t.pair)
             if rules is None or quote is None:
                 log.warning("skipping SHORT %s: no trading rules or price", t.pair)
@@ -295,6 +309,8 @@ class Executor:
             return []
         results = []
         for t in trades:
+            if self.stopped:
+                break
             rules, quote, position = self.rules.get(t.pair), quotes.get(t.pair), positions.get(t.pair)
             if rules is None or quote is None or position is None:
                 log.warning("skipping COVER %s: no trading rules, price or open short", t.pair)
@@ -321,6 +337,27 @@ class Executor:
             self.on_order(order)
             results.append(order)
         return results
+
+    def _note(self, order: OrderResult) -> None:
+        """Breaker A5: stop the cycle after too many rejected orders."""
+        self._sent += 1
+        if order.status in (ERROR, "REJECTED"):
+            self._failed += 1
+            self._in_row += 1
+        else:
+            self._in_row = 0
+        if self.failure_limits is None or self.stopped:
+            return
+        in_row, share = self.failure_limits
+        if self._in_row >= in_row or (self._sent >= 5 and self._failed / self._sent >= share):
+            self.stopped = True
+            from bot.breakers import Trip
+            row_hit = self._in_row >= in_row
+            self.on_trip(Trip("A5 order failures", order.trade.pair,
+                              self._in_row if row_hit else self._failed / self._sent,
+                              in_row if row_hit else share, "rest of the cycle skipped"))
+            log.error("%d of %d orders failed (%d in a row): skipping the rest of this cycle",
+                      self._failed, self._sent, self._in_row)
 
     @staticmethod
     def _touch_price(t: PlannedTrade, quote: Dict[str, float]) -> float:
