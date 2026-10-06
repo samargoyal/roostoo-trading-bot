@@ -1828,3 +1828,14 @@ its neighbours (powers 1.5 and 3) alike; adding fresh trends at double weight (X
 31%, holdout +121% and +121%. Both beat the inverse-volatility book on the 14-day yardstick in 4
 or 5 of 6 folds. Inside the bot at 75% they made +179,359% and +167,604% against the efficiency
 book's +163,209%.
+
+Round 100 (`research/round100_book_convex.py`) put convex optimisation on the efficiency book,
+keeping the efficiency ratio as an input: risk contributions in proportion to it (C1, Spinu's
+risk budgeting, `risk_budget_weights` in `bot/optimize.py`) and mean-variance with its normal
+scores as expected returns (C2). Both were judged against the efficiency book (the comparison
+labelled "before" in the output is that book too: the harness then read `config/comp.json`,
+which the deployment had changed; it now reads fixed files). On the book alone C1 made +888%
+over six years and C2 +5,516% against +6,666%, with deeper drawdowns (38% and 40% against 31%)
+and both holdout years worse. In the bot at 75%, C2 at risk aversion 0.5 made +202,219% against
++163,209% and the 14-day windows better in 4 of 6 folds, but the design itself 2 of 6 and one
+holdout year of two. The plain efficiency tilt stays.
