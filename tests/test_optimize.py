@@ -112,3 +112,23 @@ class Round83OptimisersTest(unittest.TestCase):
         w = hrp_weights(cov)
         self.assertAlmostEqual(sum(w), 1.0)
         self.assertGreater(w[2], w[0] + 0.1)                       # the loner gets more than each twin
+
+
+class RiskBudgetTest(unittest.TestCase):
+    """Round 100: risk contributions in proportion to budgets (the book's efficiency ratios)."""
+
+    def test_equal_budgets_are_erc(self):
+        from bot.optimize import risk_budget_weights
+        cov = [[0.04, 0.01, 0.0], [0.01, 0.09, 0.02], [0.0, 0.02, 0.16]]
+        for a, b in zip(risk_budget_weights(cov, [2.0, 2.0, 2.0]), erc_weights(cov)):
+            self.assertAlmostEqual(a, b, places=9)
+
+    def test_contributions_follow_the_budgets(self):
+        from bot.optimize import risk_budget_weights, risk_contributions
+        cov = [[0.04, 0.01, 0.0], [0.01, 0.09, 0.02], [0.0, 0.02, 0.16]]
+        budgets = [1.0, 2.0, 3.0]
+        w = risk_budget_weights(cov, budgets)
+        rc = risk_contributions(cov, w)
+        self.assertAlmostEqual(sum(w), 1.0)
+        for r, b in zip(rc, budgets):
+            self.assertAlmostEqual(r / sum(rc), b / sum(budgets), places=6)

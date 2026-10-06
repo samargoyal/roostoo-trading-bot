@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, AbstractSet, Dict, List, Optional
 
 from bot.indicators import Signal
 from bot.market_data import HOUR_MS
-from bot.optimize import covariance, erc_weights, hrp_weights, min_variance
+from bot.optimize import covariance, erc_weights, hrp_weights, mean_variance, min_variance, risk_budget_weights
 from bot.reasons import (CORE, EXIT_SHORT, EXIT_SHORT_STOP, EXIT_STOP, HOLD_HALTED, HOLD_NO_DATA, LS_SHORT,
                          ROTATION, SHORT_ENTRY, SHORT_HOLD)
 
@@ -596,8 +596,15 @@ class ResearchRules:
                 return raw
             signed = [[(1.0 if raw[p] > 0 else -1.0) * x for x in r[-length:]] for p, r in zip(pairs, series)]
             cov = covariance(signed, shrink=0.1)
-            w = (erc_weights(cov) if c.ls_weighting == "erc" else hrp_weights(cov) if c.ls_weighting == "hrp"
-                 else min_variance(cov, cap=c.ls_max_weight))
+            er = getattr(self, "_ls_er", {})
+            if c.ls_weighting == "risk_budget_er":                       # round 100
+                w = risk_budget_weights(cov, [max(er.get(p, 0.0), 1e-3) for p in pairs])
+            elif c.ls_weighting == "mv_er":
+                z = _normal_scores({p: er.get(p, 0.0) for p in pairs})
+                w = mean_variance([z[p] for p in pairs], cov, c.ls_mv_risk_aversion, c.ls_max_weight)
+            else:
+                w = (erc_weights(cov) if c.ls_weighting == "erc" else hrp_weights(cov) if c.ls_weighting == "hrp"
+                     else min_variance(cov, cap=c.ls_max_weight))
             self._ls_key, self._ls_w = key, dict(zip(pairs, w))
         gross = sum(abs(v) for v in raw.values())
         return {p: (1.0 if v > 0 else -1.0) * self._ls_w[p] * gross for p, v in raw.items()}

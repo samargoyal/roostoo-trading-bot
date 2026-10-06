@@ -38,12 +38,22 @@ def _matvec(m: Matrix, v: Sequence[float]) -> List[float]:
 
 def erc_weights(cov: Matrix, iters: int = 1000, tol: float = 1e-12) -> List[float]:
     """Weights (summing to 1) with equal risk contributions w_i (Cw)_i."""
+    return risk_budget_weights(cov, [1.0] * len(cov), iters, tol)
+
+
+def risk_budget_weights(cov: Matrix, budgets: Sequence[float], iters: int = 1000,
+                        tol: float = 1e-12) -> List[float]:
+    """Weights (summing to 1) whose risk contributions w_i (Cw)_i are in proportion to
+    `budgets` (positive): the minimum of 1/2 y'Cy - sum(b_i log y_i), a strictly convex
+    problem (Spinu, 2013), by cyclical coordinate descent, then normalised (round 100)."""
     n = len(cov)
-    b = 1.0 / n
+    total_b = sum(budgets)
+    bs = [b / total_b for b in budgets]
     y = [1.0 / math.sqrt(cov[i][i]) for i in range(n)]
     for _ in range(iters):
         change = 0.0
         for i in range(n):
+            b = bs[i]
             c = sum(cov[i][k] * y[k] for k in range(n)) - cov[i][i] * y[i]
             new = (-c + math.sqrt(c * c + 4.0 * cov[i][i] * b)) / (2.0 * cov[i][i])
             change = max(change, abs(new - y[i]))

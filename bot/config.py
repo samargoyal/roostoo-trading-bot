@@ -32,9 +32,9 @@ class StrategyConfig:
     rotation beside the defensive book, and config/comp.json switches the competition account's
     book to the long-short trend book and ranks its rotation on several horizons (the research
     options rotation_ranking "multi", rotation_horizons and rotation_horizon_weights) with 3
-    coins in 75% of equity, and weights the book by each coin's efficiency ratio (ls_er_hours,
-    rounds 94-97). The alternatives kept are config/comp_k2_3.json, config/comp_k2.json,
-    config/comp_r54b.json and config/comp_multi.json. Everything else under "Research options"
+    coins in 55% of equity, and weights the book by each coin's efficiency ratio (ls_er_hours,
+    rounds 94-99). The alternatives kept are config/comp_er_75.json, config/comp_k2_3.json,
+    config/comp_k2.json, config/comp_r54b.json and config/comp_multi.json. Everything else under "Research options"
     is off by default and used only by research/ (see docs/research.md)."""
     universe: List[str] = field(default_factory=lambda: list(DEFAULT_UNIVERSE))
 
@@ -148,7 +148,11 @@ class StrategyConfig:
                                           # optimiser over their side-adjusted hourly returns (a short counts as
                                           # minus the coin): "erc" (equal risk contribution) or "min_variance"
                                           # (capped at ls_max_weight), keeping the inverse-volatility gross
-    ls_max_weight: float = 0.10
+    ls_max_weight: float = 0.10           # ("risk_budget_er": risk contributions in proportion to each
+                                          # coin's efficiency ratio; "mv_er": mean-variance with the
+                                          # efficiency ratios' normal scores as expected returns, at
+                                          # ls_mv_risk_aversion; both need ls_er_hours, round 100)
+    ls_mv_risk_aversion: float = 1.0
     ls_sizing: str = "inverse_vol"        # round 87: "merton", each coin's weight its drift over its variance
                                           # (the growth-optimal weight of a geometric Brownian motion, the
                                           # drift read from the EMA gap); "kalman", by the Kalman slope's

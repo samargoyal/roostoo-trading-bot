@@ -1802,3 +1802,29 @@ yardstick it was not better: the median 14-day composite was higher in 2–3 of 
 in both holdout years (4.26 and 4.86 against 5.22 and 6.44). A fresh run of the live settings,
 outside the result cache, reproduced the cached backtests exactly with every option off and with
 the efficiency ratio on.
+
+## The split with the efficiency book (round 99)
+
+The user asked to lower the rotation's share. `research/round99_lower_split.py` ran the live bot
+with the efficiency-weighted book and the rotation at 50% to 75%:
+
+| Rotation | Six years | Worst drawdown | Crash year 2021–22 | 14-day windows won | Mean median 14-day composite | Holdout 2018–19 / 2019–20 |
+|---|---|---|---|---|---|---|
+| 75% | +163,209% | 50% | -37% | 56% | 9.34 | +102% / +214% |
+| 70% | +131,086% | 48% | -36% | 56% | 9.17 | +110% / +211% |
+| 65% | +115,077% | 45% | -28% | 58% | 9.49 | +109% / +193% |
+| 60% | +98,263% | 42% | -25% | 58% | 10.01 | +112% / +189% |
+| 55% | +102,471% | 39% | -17% | 59% | 10.48 | +121% / +177% |
+| 50% | +73,356% | 37% | -20% | 59% | 10.73 | +120% / +169% |
+
+With the efficiency book the 14-day composite rose as the rotation's share fell, unlike with
+the old book (round 91), where it rose with the share. The user chose 55% on 7 October 2026
+(`config/comp.json`; 75% kept in `config/comp_er_75.json`).
+
+Round 98 (`research/round98_efficiency_more.py`) took the efficiency ratio further on the book
+alone: keeping only the cleaner half of the coins lost (+264% over six years); squaring the
+tilt (X2) made +11,632% with a 34% worst drawdown, both holdout years better (+181%, +117%) and
+its neighbours (powers 1.5 and 3) alike; adding fresh trends at double weight (X3) +10,182%,
+31%, holdout +121% and +121%. Both beat the inverse-volatility book on the 14-day yardstick in 4
+or 5 of 6 folds. Inside the bot at 75% they made +179,359% and +167,604% against the efficiency
+book's +163,209%.
