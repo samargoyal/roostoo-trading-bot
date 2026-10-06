@@ -1839,3 +1839,12 @@ over six years and C2 +5,516% against +6,666%, with deeper drawdowns (38% and 40
 and both holdout years worse. In the bot at 75%, C2 at risk aversion 0.5 made +202,219% against
 +163,209% and the 14-day windows better in 4 of 6 folds, but the design itself 2 of 6 and one
 holdout year of two. The plain efficiency tilt stays.
+
+Round 101 (`research/round101_book_at_55.py`) ran round 98's two stronger books at the live
+split, against the live bot (55% rotation, the efficiency book at 45%). The squared tilt (X2)
+made +114,066% over six years against +102,471%, both holdout years better on return and the
+14-day composite (+125% / +216% against +121% / +177%; its neighbours alike), but the median
+14-day window better in only 3 of 6 folds, a worst drawdown of 41% against 39% and a crash year
+of -25% against -17%. Efficiency with fresh trends (X3) made +108,576%, better in 4 of 6 folds on
+the 14-day yardstick, one holdout year of two. Neither passed C1, so the live book stays; X2 is
+the next candidate if more return is wanted for a deeper crash year.
