@@ -2039,3 +2039,9 @@ a better rule; B1 stays.
 On 7 October 2026 the user chose B1 with the book's shorts on 24/72-hour EMAs for the
 competition account (`config/comp.json`; B1 alone kept in `config/comp_b1.json`), expecting the
 market's fall to continue.
+
+Later on 7 October 2026 the user switched the competition account to the book alone, keeping
+the 24/72-hour shorts (`config/comp.json` with `rotation_weight` 0; the 55/45 version kept in
+`config/comp_b1_fast.json`). That exact combination was not backtested: the book alone with its
+shorts on the book's own EMAs made +6,709% over six years and +26% in the 2021–22 crash year, and
+with shorts on 168/672 hours +4,748% (H98).

@@ -21,7 +21,9 @@ strategy, and every order, decision and hourly equity point is recorded.
 Two books share the account, trading the 45 most traded crypto pairs on Roostoo plus PAXG
 (gold-backed):
 
-- **Momentum rotation, 55% of equity while BTC's 168-hour EMA is above its 672-hour EMA.** When
+- **Momentum rotation, off since the later of the 7 October 2026 changes** (the user switched the
+  account to the book alone; `config/comp_b1_fast.json` keeps the rotation below). Before that:
+  **55% of equity while BTC's 168-hour EMA is above its 672-hour EMA.** When
   that filter turns off, the rotation's share runs the long-short book instead of PAXG or cash,
   so the account is the book alone in bear markets and back to 55/45 when the filter recovers
   (round 107's B1, live since 7 October 2026; the best of eight designs over every BTC crash
@@ -33,7 +35,7 @@ Two books share the account, trading the 45 most traded crypto pairs on Roostoo 
   [`config/comp_r54b.json`](config/comp_r54b.json)); the ranking sums that one's score and the
   multi-horizon bot's (round 82), and a third coin lets it take 75% for about the same drawdown
   (round 85).
-- **Long-short trend book, 45% of equity, all of it in bear markets** (the competition account
+- **Long-short trend book, all of equity** (45% beside the rotation before; the competition account
   since 5 October 2026, through [`config/comp.json`](config/comp.json); 25% before 7 October).
   Since 7 October its shorts follow 24- and 72-hour EMAs (longs the 240/960-hour pair, a coin
   flat while the two disagree), so it shorts within a day or two of a coin turning down
@@ -279,7 +281,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `480b562`, 7 October 2026 | `480b562` | The efficiency-weighted book at 45% and the rotation at 55% (round 99), kept in `config/comp_er_55.json` |
 | The restart after `eea7949`, 7 October 2026 | `eea7949` | The efficiency-weighted book alone, the rotation off (the user expected the market's fall to continue), kept in `config/comp_book.json` |
 | The restart after `ded8258`, 7 October 2026 | `ded8258` | 55/45 with the book taking the rotation's share while BTC's filter is off (round 107's B1), kept in `config/comp_b1.json` |
-| The restart after this push, 7 October 2026 | the commit that adds this row | B1 with the book's shorts on 24/72-hour EMAs (round 111) |
+| The restart after `8461a16`, 7 October 2026 | `8461a16` | B1 with the book's shorts on 24/72-hour EMAs (round 111), kept in `config/comp_b1_fast.json` |
+| The restart after this push, 7 October 2026 | the commit that adds this row | The efficiency book alone, its shorts on 24/72-hour EMAs, the rotation off (the user's choice; not backtested in this exact form) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -425,8 +428,9 @@ Without `--config`, the live bot uses `config/<account>.json` if it exists, so e
 settings are committed and a restart picks them up. `config/comp.json` runs the competition
 account: a 55% rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1 beside
 the long-short book weighted by each coin's 30-day efficiency ratio, its shorts on 24/72-hour
-EMAs, the book taking the whole account while BTC's filter is off. Eight alternatives are kept:
-`config/comp_b1.json` (the same with the shorts on the book's own 240/960-hour EMAs),
+EMAs, the book taking the whole account while BTC's filter is off; since the last change of 7
+October the rotation is off and the book holds everything. Nine alternatives are kept:
+`config/comp_b1_fast.json` (the same with the 55% rotation), `config/comp_b1.json` (the same with the shorts on the book's own 240/960-hour EMAs),
 `config/comp_book.json` (the book alone), `config/comp_er_55.json` (55/45 without the switch), `config/comp_er_75.json`
 (the same at 75% rotation), `config/comp_k2_3.json`, 75% with
 the book by inverse volatility alone (until 7 October 2026), `config/comp_k2.json` (2 coins in 70%), `config/comp_r54b.json`, the settings
