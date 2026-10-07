@@ -1935,3 +1935,27 @@ against +102,471% fixed, a better crash year (-9% against -17%) and latest year 
 the filter flickered). Confirmation by BTC's 200-day average (B2) was in between; the fast
 detectors (BTC against its 50- and 200-hour EMAs, breadth, both) whipsawed and made a fifth to a
 quarter as much.
+
+## Validated on every crash (H98)
+
+The user asked to validate long-short designs on the crashes themselves.
+`research/h98_crash_validation.py` found every spell from October 2018 to October 2026 in which
+BTC fell 25% or more below its running high (eight, from -25% to -77%, peak to trough) and
+measured each design's chained equity over each, beside its yearly returns.
+
+| Design | 2018 | 2019–20 | Jan 2021 | 2021 | 2021–22 | 2024 | 2025 | 2025–26 | Mean | Six years |
+|---|---|---|---|---|---|---|---|---|---|---|
+| BTC | -52% | -63% | -25% | -53% | -77% | -26% | -28% | -53% | | |
+| Book alone (live) | +53% | +119% | +14% | +22% | +11% | -13% | +28% | +28% | +32.8% | +6,709% |
+| Book, shorts on 168h/672h | +46% | +128% | +14% | +23% | +5% | -15% | +29% | +27% | +32.1% | +4,748% |
+| Book, shorts on 120h/480h | +51% | +136% | +16% | +20% | +6% | -12% | +23% | +30% | +33.8% | +3,765% |
+| Book on 120h/480h | +40% | +168% | +16% | +28% | -2% | -16% | +23% | +29% | +35.7% | +3,597% |
+| Book on 72h/288h | +45% | +184% | +6% | +23% | -4% | -5% | +10% | +7% | +33.0% | +1,521% |
+| 55/45 | +24% | +104% | +31% | +44% | -28% | -30% | +6% | +4% | +19.3% | +102,974% |
+| 55/45, book in bears (B1) | +53% | +158% | +31% | +55% | -19% | -33% | +10% | +33% | +36.2% | +98,491% |
+| B1 with shorts on 168h/672h | +47% | +175% | +30% | +55% | -19% | -34% | +10% | +28% | +36.8% | +99,558% |
+
+Faster trends did not make the book better in crashes on average and cost it return in the
+other years. Handing the rotation's share to the book while the BTC filter is off (B1) did best
+over the crashes on average and kept nearly all of 55/45's six-year return; its weak crashes
+were the 2021–22 bear market and the 2024 correction, where the book alone lost less.
