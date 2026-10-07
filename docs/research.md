@@ -1962,3 +1962,11 @@ were the 2021–22 bear market and the 2024 correction, where the book alone los
 
 On 7 October 2026 the user chose B1 for the competition account (`config/comp.json`: 55/45 with
 `ls_absorb_rotation` 1.0; the book alone kept in `config/comp_book.json`).
+
+`research/h99_attribution.py` split B1's return between its sleeves (each day's share times each
+sleeve's own return, from backtests of each alone, summed by fold; the approximation's
+compounded total is within a few points of B1 in most years). Over 2020–26 the rotation gave
++566 points and the book +271, about two-thirds and one third; the rotation earned most in the
+bull years (90% of 2023–24's gain) and lost in the crash year (-23 points, when the book made
++38), and the two were close to even in 2025–26 (+40 and +38) and the 2018–19 holdout year, when
+the book made most of it.
