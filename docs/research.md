@@ -2104,3 +2104,6 @@ against +1,067% (14-day composite 0.17 against 2.46), shorts at 3 ATRs +426% and
 year, both at 3 ATRs +17% and a 53% worst drawdown. At 8 ATRs on longs the book was unchanged
 (+1,096%, 2.41), the stop rarely binding beyond the trend's own exit. Hourly swings in crypto are
 wide enough that a tight trail sells into the dip that then recovers.
+
+On 8 October 2026 the user set the block after a stop to 1 hour on the competition account
+(`stop_cooldown_hours` 1; the 24-hour version kept in `config/comp_book_band.json`).

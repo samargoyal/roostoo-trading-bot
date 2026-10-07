@@ -655,10 +655,11 @@ class Strategy(ResearchRules):
                     return True
         if state is not None and state.short_cooldown_until.get(pair, 0) > ts:
             return True
-        if pair in held and c.short_stop_atr > 0:
+        if pair in held and (c.short_stop_atr > 0 or c.short_stop_pct > 0):
             info = held[pair]
             info.lowest_close = min(info.lowest_close, s.close)
-            if s.close > info.lowest_close + c.short_stop_atr * s.atr:
+            if ((c.short_stop_atr > 0 and s.close > info.lowest_close + c.short_stop_atr * s.atr)
+                    or (c.short_stop_pct > 0 and s.close > info.lowest_close * (1.0 + c.short_stop_pct))):
                 reasons[pair] = EXIT_SHORT_STOP
                 return True
         if c.short_entry_channel > 0:

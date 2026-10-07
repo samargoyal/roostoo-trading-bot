@@ -232,6 +232,10 @@ class StrategyConfig:
     ls_fill_gap: bool = False             # the book's share left idle (coins inside ls_band, crowded or
                                           # stopped shorts) added to the positions it holds, in proportion
                                           # to each one's EMA gap, so the book is fully invested (H105)
+    ls_long_stop_pct: float = 0.0         # > 0 (H108): the book sells a long this fraction below its highest
+                                          # close since entry (a percentage trail beside ls_long_stop_atr)
+    short_stop_pct: float = 0.0           # > 0 (H108): the book covers a short this fraction above its lowest
+                                          # close since entry (beside short_stop_atr)
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day

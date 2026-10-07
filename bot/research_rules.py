@@ -1495,7 +1495,7 @@ class ResearchRules:
         """ls_long_stop_atr: a held long below its highest close since entry less that many ATRs
         is sold (and cools down); a coin cooling down is not bought again yet."""
         c = self.cfg
-        if c.ls_long_stop_atr <= 0 or state is None:
+        if (c.ls_long_stop_atr <= 0 and c.ls_long_stop_pct <= 0) or state is None:
             return False
         if state.cooldown_until.get(pair, 0) > ts:
             return True
@@ -1503,7 +1503,8 @@ class ResearchRules:
         if info is None:
             return False
         info.highest_close = max(info.highest_close, s.close)
-        if s.close < info.highest_close - c.ls_long_stop_atr * s.atr:
+        if ((c.ls_long_stop_atr > 0 and s.close < info.highest_close - c.ls_long_stop_atr * s.atr)
+                or (c.ls_long_stop_pct > 0 and s.close < info.highest_close * (1.0 - c.ls_long_stop_pct))):
             reasons[pair] = EXIT_STOP
             return True
         return False
