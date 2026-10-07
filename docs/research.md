@@ -2096,3 +2096,11 @@ against +19.5%), but a median 14-day composite of 5.38 against 2.46: the stocks'
 weekdays smoothed the account's two-week windows. The list is today's tokens (hindsight), and the
 bot has no hourly prices for them (Binance does not list them and Roostoo's API has no candles),
 so it is not built.
+
+`research/h107_trailing_stops.py` added trailing stops to the live book: longs sold 3, 5 or 8
+hourly ATRs below their highest close since entry (`ls_long_stop_atr`), shorts trailed at 3 or 5
+ATRs instead of 10, and both. Tighter was worse: longs at 3 ATRs made +146% over six years
+against +1,067% (14-day composite 0.17 against 2.46), shorts at 3 ATRs +426% and a -39% crash
+year, both at 3 ATRs +17% and a 53% worst drawdown. At 8 ATRs on longs the book was unchanged
+(+1,096%, 2.41), the stop rarely binding beyond the trend's own exit. Hourly swings in crypto are
+wide enough that a tight trail sells into the dip that then recovers.
