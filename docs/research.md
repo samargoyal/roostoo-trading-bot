@@ -2137,3 +2137,9 @@ efficiency. None was better on return, drawdown and the 14-day yardstick togethe
 On 8 October 2026 the user set the block after a stop back to 24 hours and weighted the book by
 the HAR volatility forecast (`config/comp.json`: `stop_cooldown_hours` 24, `ls_sizing` "har"; the
 previous version kept in `config/comp_book_stops_1h.json`).
+
+`research/h113_best_combo.py` confirmed the combination: the 10% short stop with the 24-hour block
+made +1,494% over six years (14-day composite 3.55), with the HAR forecast +1,528% (4.44, the best
+14-day yardstick of any book, worst drawdown 38%), with signal-strength weights +1,460% (3.72) and
+with both +1,929% (4.01), the last two at worst drawdowns of 58–60% and crash years of -43% and
+-44%.
