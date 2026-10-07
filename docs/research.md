@@ -2052,3 +2052,8 @@ with shorts on 24/72-hour EMAs gained in all eight BTC crashes since 2018 (+35.9
 13%), with the smallest worst drawdown of any version (24%), but made +3,307% over six years
 against +6,709% for the usual book and +88,084% for B1 with the same shorts, and its median
 14-day composite (5.41) was about a third of B1's (14.55).
+
+Deployed, the book alone with fast shorts left the account about 94% in cash on 7 October 2026
+(most coins in a 240/960-hour uptrend and a 24/72-hour downtrend, so flat), and the user switched
+the whole book to 24/72-hour EMAs for longs and shorts alike (`config/comp.json`; the previous
+version kept in `config/comp_book_fast_shorts.json`).

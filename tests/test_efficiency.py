@@ -51,8 +51,11 @@ class EfficiencyRatioTest(unittest.TestCase):
     def test_the_competition_config_is_the_previous_one_plus_the_ratio(self):
         before, live = (read(p)["strategy"] for p in ("config/comp_k2_3.json", "config/comp.json"))
         self.assertEqual(dict(before, ls_er_hours=720, rotation_weight=0.0, ls_absorb_rotation=1.0,
-                              ls_short_trend=[24, 72]), live)
-        self.assertEqual(dict(live, rotation_weight=0.55), read("config/comp_b1_fast.json")["strategy"])
+                              ls_trend=[24, 72]), live)
+        self.assertEqual(dict(live, ls_trend=[240, 960], ls_short_trend=[24, 72]),
+                         read("config/comp_book_fast_shorts.json")["strategy"])
+        self.assertEqual(dict(live, ls_trend=[240, 960], ls_short_trend=[24, 72], rotation_weight=0.55),
+                         read("config/comp_b1_fast.json")["strategy"])
         self.assertEqual(dict(before, ls_er_hours=720, rotation_weight=0.55, ls_absorb_rotation=1.0),
                          read("config/comp_b1.json")["strategy"])
         self.assertEqual(dict(before, ls_er_hours=720, rotation_weight=0.0), read("config/comp_book.json")["strategy"])

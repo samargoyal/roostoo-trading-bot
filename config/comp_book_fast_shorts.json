@@ -1,7 +1,7 @@
 {
   "strategy": {
     "book_mode": "long_short",
-    "ls_trend": [24, 72],
+    "ls_trend": [240, 960],
     "short_stop_atr": 10.0,
     "short_exclude_external": true,
     "rotation_ranking": "multi",
@@ -10,6 +10,7 @@
     "rotation_top": 3,
     "rotation_weight": 0.0,
     "ls_er_hours": 720,
-    "ls_absorb_rotation": 1.0
+    "ls_absorb_rotation": 1.0,
+    "ls_short_trend": [24, 72]
   }
 }
