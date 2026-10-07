@@ -65,6 +65,7 @@ python -m research.h50_long_short   # the long-short screen
 | `round104_winners_losers.py`, `round105_dynamic_winners.py`, `round106_dynamic_split.py` | Winners against losers (fixed and dynamic counts) and a split set by a fast regime |
 | `round107_crash_detector.py`, `round108_faster_book.py`, `h98_crash_validation.py` | Crash detectors switching to the book, faster books, and every design measured over every BTC crash |
 | `h99_attribution.py`, `round109_alt_index.py` | B1's return split by sleeve; an altcoin index for the switch |
+| `h100_next_day.py` | Predicting the next day's market direction (logistic, LightGBM, simple rules) and trading it daily |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

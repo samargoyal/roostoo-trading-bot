@@ -1991,3 +1991,17 @@ The altcoin index alone switched more often and cost the bull years. "Either" pr
 crashes (positive in the crash year, +46% on average over the crashes) for about 40% less return
 over six years and a lower 14-day yardstick. B1's BTC switch stays: the best 14-day yardstick of
 all and nearly all of 55/45's return.
+
+## Predicting the next day (H100)
+
+The user, noting that the competition counts each day (return, then Sortino, Sharpe and
+Calmar), asked to trade whether the next day will be up or down. `research/h100_next_day.py`
+predicted the sign of the next UTC day's return of an equal-weight index of the bot's coins and
+of BTC from 20 features known at midnight (returns over 1 to 14 days, EMA gaps, volatility,
+breadth, BTC against the index, the day of the week, funding, Fear & Greed), walk-forward with a
+logistic regression and LightGBM, and traded it daily (long, short, or flat when unsure), paying
+0.15% on each change. Accuracy was 52–54% on average (a coin flip is 50% +-2.6 points on a
+year), falling to about 50% in the last three years; the daily strategies lost in most years
+after costs (the confident LightGBM on the index: +241%, -20%, -13%, -1%, -8%, +3% against
+holding it). Tomorrow-like-today lost every year. The next day's direction is not predictable
+enough to trade.
