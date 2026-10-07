@@ -34,7 +34,10 @@ Two books share the account, trading the 45 most traded crypto pairs on Roostoo 
   multi-horizon bot's (round 82), and a third coin lets it take 75% for about the same drawdown
   (round 85).
 - **Long-short trend book, 45% of equity, all of it in bear markets** (the competition account
-  since 5 October 2026, through [`config/comp.json`](config/comp.json); 25% before 7 October). Every coin long while its 240-hour EMA is
+  since 5 October 2026, through [`config/comp.json`](config/comp.json); 25% before 7 October).
+  Since 7 October its shorts follow 24- and 72-hour EMAs (longs the 240/960-hour pair, a coin
+  flat while the two disagree), so it shorts within a day or two of a coin turning down
+  (round 111). Every coin long while its 240-hour EMA is
   above its 960-hour EMA and short while below, with a trailing stop on each short and no short
   where shorts are crowded (negative perpetual funding). Each coin's weight is its inverse
   volatility times its efficiency ratio over 30 days (net move over the total hourly path)
@@ -275,7 +278,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `d03a152`, 7 October 2026 | `d03a152` | The same with the book weighted by each coin's 30-day efficiency ratio (rounds 94–97), kept in `config/comp_er_75.json` |
 | The restart after `480b562`, 7 October 2026 | `480b562` | The efficiency-weighted book at 45% and the rotation at 55% (round 99), kept in `config/comp_er_55.json` |
 | The restart after `eea7949`, 7 October 2026 | `eea7949` | The efficiency-weighted book alone, the rotation off (the user expected the market's fall to continue), kept in `config/comp_book.json` |
-| The restart after this push, 7 October 2026 | the commit that adds this row | 55/45 with the book taking the rotation's share while BTC's filter is off (round 107's B1) |
+| The restart after `ded8258`, 7 October 2026 | `ded8258` | 55/45 with the book taking the rotation's share while BTC's filter is off (round 107's B1), kept in `config/comp_b1.json` |
+| The restart after this push, 7 October 2026 | the commit that adds this row | B1 with the book's shorts on 24/72-hour EMAs (round 111) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -299,7 +303,8 @@ year starting in October.
 
 | | 2020–21 | 2021–22 | 2022–23 | 2023–24 | 2024–25 | 2025–26 | Six years |
 |---|---|---|---|---|---|---|---|
-| **Bot as live (55% rotation, 45% efficiency book; the book alone while BTC's filter is off)** | **+3,033%** | **-9%** | **+69%** | **+417%** | **+106%** | **+92%** | **+98,491%** |
+| **Bot as live (B1 with the book's shorts on 24/72-hour EMAs)** | **+3,097%** | **-7%** | **+67%** | **+396%** | **+106%** | **+74%** | **+88,084%** |
+| B1: 55% rotation, 45% efficiency book, the book alone while BTC's filter is off (`config/comp_b1.json`) | +3,033% | -9% | +69% | +417% | +106% | +92% | +98,491% |
 | The efficiency book alone (`config/comp_book.json`) | +1,066% (31%) | +26% (30%) | +16% (22%) | +74% (26%) | +53% (29%) | +50% (21%) | +6,709% |
 | 55% rotation of 3 coins ranked on 1, 2 and 3 weeks, 2/2/1, and 45% book (`config/comp_er_55.json`) | +3,276% (30%) | -17% (32%) | +70% (31%) | +466% (34%) | +144% (39%) | +57% (24%) | +102,471% |
 | The same at 75% rotation (`config/comp_er_75.json`, live 7 October 2026 for a few hours at most) | +4,403% (33%) | -37% (45%) | +88% (40%) | +677% (39%) | +151% (50%) | +57% (32%) | +163,209% |
@@ -419,9 +424,10 @@ Unknown keys are rejected, so a typo cannot silently fall back to a default.
 Without `--config`, the live bot uses `config/<account>.json` if it exists, so each account's
 settings are committed and a restart picks them up. `config/comp.json` runs the competition
 account: a 55% rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1 beside
-the long-short book weighted by each coin's 30-day efficiency ratio, the book taking the whole
-account while BTC's filter is off. Seven alternatives are kept: `config/comp_book.json` (the book
-alone), `config/comp_er_55.json` (55/45 without the switch), `config/comp_er_75.json`
+the long-short book weighted by each coin's 30-day efficiency ratio, its shorts on 24/72-hour
+EMAs, the book taking the whole account while BTC's filter is off. Eight alternatives are kept:
+`config/comp_b1.json` (the same with the shorts on the book's own 240/960-hour EMAs),
+`config/comp_book.json` (the book alone), `config/comp_er_55.json` (55/45 without the switch), `config/comp_er_75.json`
 (the same at 75% rotation), `config/comp_k2_3.json`, 75% with
 the book by inverse volatility alone (until 7 October 2026), `config/comp_k2.json` (2 coins in 70%), `config/comp_r54b.json`, the settings
 before 6 October 2026 (2 coins ranked on 2-week returns), and `config/comp_multi.json` (weighted

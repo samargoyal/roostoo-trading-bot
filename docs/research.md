@@ -2035,3 +2035,7 @@ drawdown 43%, crash year -7%, holdout +134% / +235%), 48/144 hours +57,822% (10.
 +98,491% (14.89; +36.2%, 47%, -9%, +146% / +187%). The 24/72 shorts traded a few points of return
 for a shallower drawdown, but their neighbours were clearly worse, so it is a lucky setting, not
 a better rule; B1 stays.
+
+On 7 October 2026 the user chose B1 with the book's shorts on 24/72-hour EMAs for the
+competition account (`config/comp.json`; B1 alone kept in `config/comp_b1.json`), expecting the
+market's fall to continue.
