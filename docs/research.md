@@ -2026,3 +2026,12 @@ Faster was worse at every step, on the crashes as well as the bull years: a fast
 every dip (218 times a year at 12/48 hours) and each flip sells the rotation near a short-term
 low. The slower 240/960 did slightly better than B1 on the crashes, the six-year total and the
 worst drawdown, and slightly worse on the 14-day yardstick.
+
+Round 111 (`research/round111_fast_shorts.py`), the user's follow-up: the switch at 24/72 hours
+switched 122 times a year and made +18,977% over six years (crash mean +11.4%, crash year -41%).
+The book's shorts on very fast EMAs, longs on 240/960 (round 64's option), on B1: 12/48 hours
++59,888% (14-day composite 13.17), 24/72 hours +88,084% (14.55; crash mean +37.8%, worst
+drawdown 43%, crash year -7%, holdout +134% / +235%), 48/144 hours +57,822% (10.57), against B1's
++98,491% (14.89; +36.2%, 47%, -9%, +146% / +187%). The 24/72 shorts traded a few points of return
+for a shallower drawdown, but their neighbours were clearly worse, so it is a lucky setting, not
+a better rule; B1 stays.
