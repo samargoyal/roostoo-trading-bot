@@ -2133,3 +2133,7 @@ from a 1%, 2% or 4% EMA gap, idle share filled) +451% to +1,250% but worst drawd
 the efficiency tilt squared +918% (2.24), R^2 instead +482%, a HAR volatility forecast +1,156%
 (2.64, 40%), no tilt +778%, against +1,079% (2.51, 36%) for the live 1/volatility times
 efficiency. None was better on return, drawdown and the 14-day yardstick together.
+
+On 8 October 2026 the user set the block after a stop back to 24 hours and weighted the book by
+the HAR volatility forecast (`config/comp.json`: `stop_cooldown_hours` 24, `ls_sizing` "har"; the
+previous version kept in `config/comp_book_stops_1h.json`).
