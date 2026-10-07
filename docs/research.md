@@ -2085,3 +2085,14 @@ against +1,067%, a worst drawdown of 46% against 37%, -25% in the 2021–22 cras
 and -7% in 2025–26 against +4%, with the same 14-day composite (2.46): the idle share was largely
 the crowded shorts, and putting it into the other positions doubled up where the book was already
 most exposed.
+
+`research/h106_idle_parking.py` parked the live book's idle share (33% of the account on average
+over 2020–26) instead of holding cash. In PAXG while gold rose (the bot's `ls_idle_horizon`, 14 or
+7 days) it made +271% and +240% over six years against +1,067% in cash, and a worse crash year
+(-24% against -6%). In a simulated basket of the 5 least volatile of Roostoo's tokenized stocks
+(re-picked monthly, the underlying shares' daily closes, bar COIN, MSTR and CRCL) it made +1,159%,
+with a 39% worst drawdown against 37%, a worse crash year (-18%) and a lower crash mean (+11.1%
+against +19.5%), but a median 14-day composite of 5.38 against 2.46: the stocks' steady drift on
+weekdays smoothed the account's two-week windows. The list is today's tokens (hindsight), and the
+bot has no hourly prices for them (Binance does not list them and Roostoo's API has no candles),
+so it is not built.
