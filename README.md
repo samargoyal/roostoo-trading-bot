@@ -285,7 +285,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `ec0b431`, 7 October 2026 | `ec0b431` | The efficiency book alone, its shorts on 24/72-hour EMAs, the rotation off (left the account about 94% in cash: most coins' two trends disagreed), kept in `config/comp_book_fast_shorts.json` |
 | The restart after `ebe18e5`, 7 October 2026 | `ebe18e5` | The efficiency book alone on 24/72-hour EMAs for longs and shorts alike, the rotation off (the user's choice), kept in `config/comp_book_fast.json` |
 | The restart after `4e6f68e`, 7 October 2026 | `4e6f68e` | The same, trading a coin only while its 24h EMA is at least 0.4% above or below its 72h EMA (H104), kept in `config/comp_book_band.json` |
-| The restart after this push, 8 October 2026 | the commit that adds this row | The same, a stopped coin blocked for 1 hour instead of 24 (the user's choice) |
+| The restart after `bfad8d9`, 8 October 2026 | `bfad8d9` | The same, a stopped coin blocked for 1 hour instead of 24 (the user's choice), kept in `config/comp_book_band_1h.json` |
+| The restart after this push, 8 October 2026 | the commit that adds this row | The same with trailing stops: shorts also at 10% above their lowest close, longs 8 ATRs below their highest (H107, H108) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -434,7 +435,10 @@ the long-short book weighted by each coin's 30-day efficiency ratio, its shorts 
 EMAs, the book taking the whole account while BTC's filter is off; since the last change of 7
 October the rotation is off and the whole book follows 24/72-hour EMAs, holding a coin only
 while the gap between them is at least 0.4% (`ls_band`), and a stopped coin may be traded again
-after 1 hour (`stop_cooldown_hours`). Twelve alternatives are kept: `config/comp_book_band.json`
+after 1 hour (`stop_cooldown_hours`). Shorts are covered 10 ATRs or 10% above their lowest close
+since entry, whichever comes first, and longs sold 8 ATRs below their highest. Thirteen
+alternatives are kept: `config/comp_book_band_1h.json` (without the 10% and 8-ATR stops),
+`config/comp_book_band.json`
 (the same with the usual 24-hour block),
 `config/comp_book_fast.json` (the same without the minimum gap), `config/comp_book_fast_shorts.json` (the book alone, longs on 240/960 hours and shorts on
 24/72), `config/comp_b1_fast.json` (that with the 55% rotation), `config/comp_b1.json` (the same with the shorts on the book's own 240/960-hour EMAs),

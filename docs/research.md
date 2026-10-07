@@ -2115,3 +2115,7 @@ beside the 10-ATR trail, helped: 5% +1,137% (14-day composite 3.58 against 2.46)
 10% made +536%. The block after a stop hardly mattered: 6, 12 and 72 hours gave +1,083%, +1,078%
 and +1,115%, and `research/h109_cooldown_1h.py` found 1 hour (live since 8 October) alike
 (+1,079%, 2.51).
+
+On 8 October 2026 the user added both stops to the competition account: shorts also trailed at
+10% (`short_stop_pct`), longs at 8 ATRs (`ls_long_stop_atr`), with the 1-hour block
+(`config/comp.json`; without them `config/comp_book_band_1h.json`).
