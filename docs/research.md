@@ -2063,3 +2063,9 @@ shorts made +642% over six years (against +3,307% with only its shorts on 24/72 
 for the usual book), +21.7% on average over the eight crashes (the lowest of the four), a worst
 drawdown of 39%, -15% in the 2021–22 crash year and -2% in 2025–26, and a median 14-day composite
 of 2.13 (B1: 14.89). Trend signals that fast flip on every swing, and each flip pays.
+
+`research/h103_book_band.py` added a minimum gap (option `ls_band`, no position while the 24h EMA
+is within it of the 72h) to that book: 0.5% made +1,023% over six years against +642% without
+(crash mean +21.1%, worst drawdown 36%, 14-day composite 2.05 against 2.13); wider bands made
+less and less (1%: +440%, 0.53; 2%: +119%, -1.50; 3% and 5%: -4%, below zero). A coin whose fast
+EMAs have moved apart has usually already made its move. B1 stayed far ahead (+98,491%, 14.89).
