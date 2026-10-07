@@ -2057,3 +2057,9 @@ Deployed, the book alone with fast shorts left the account about 94% in cash on 
 (most coins in a 240/960-hour uptrend and a 24/72-hour downtrend, so flat), and the user switched
 the whole book to 24/72-hour EMAs for longs and shorts alike (`config/comp.json`; the previous
 version kept in `config/comp_book_fast_shorts.json`).
+
+`research/h102_book_fast.py` backtested that: the book alone on 24/72-hour EMAs for longs and
+shorts made +642% over six years (against +3,307% with only its shorts on 24/72 hours and +6,709%
+for the usual book), +21.7% on average over the eight crashes (the lowest of the four), a worst
+drawdown of 39%, -15% in the 2021–22 crash year and -2% in 2025–26, and a median 14-day composite
+of 2.13 (B1: 14.89). Trend signals that fast flip on every swing, and each flip pays.
