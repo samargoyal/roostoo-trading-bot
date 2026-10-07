@@ -236,6 +236,8 @@ class StrategyConfig:
                                           # close since entry (a percentage trail beside ls_long_stop_atr)
     short_stop_pct: float = 0.0           # > 0 (H108): the book covers a short this fraction above its lowest
                                           # close since entry (beside short_stop_atr)
+    ls_vol_power: float = 1.0             # H112: the book's weights 1 / volatility ** this (0 equal weights,
+                                          # 2 inverse variance), re-scaled to the book's usual gross
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day

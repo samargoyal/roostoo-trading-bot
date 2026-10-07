@@ -2119,3 +2119,17 @@ and +1,115%, and `research/h109_cooldown_1h.py` found 1 hour (live since 8 Octob
 On 8 October 2026 the user added both stops to the competition account: shorts also trailed at
 10% (`short_stop_pct`), longs at 8 ATRs (`ls_long_stop_atr`), with the 1-hour block
 (`config/comp.json`; without them `config/comp_book_band_1h.json`).
+
+`research/h110_both_stops.py` and `research/h111_stops_24h.py` then found that the 10% short stop
+needs the usual 24-hour block: with the 1-hour block the account made +844% over six years
+(14-day composite 2.06) against +1,079% without the new stops, but with the 24-hour block
++1,494% (3.55), and +1,455% (3.43) with the 8-ATR long stop too; after a 10% stop on a bounce,
+re-shorting an hour later caught the same bounce again.
+
+`research/h112_weights.py` compared ways of weighting the book's positions (option
+`ls_vol_power` for equal weights and inverse variance, off): equal weights +937% (2.05, worst
+drawdown 40%), inverse variance +946% (2.83, -9% in 2025–26), weights by signal strength (full
+from a 1%, 2% or 4% EMA gap, idle share filled) +451% to +1,250% but worst drawdowns of 49–54%,
+the efficiency tilt squared +918% (2.24), R^2 instead +482%, a HAR volatility forecast +1,156%
+(2.64, 40%), no tilt +778%, against +1,079% (2.51, 36%) for the live 1/volatility times
+efficiency. None was better on return, drawdown and the 14-day yardstick together.

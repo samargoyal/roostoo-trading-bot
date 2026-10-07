@@ -422,6 +422,8 @@ class ResearchRules:
             return None
         if c.ls_corr_cut > 0 and c.ls_corr_mode == "shorts" and side < 0 and self._ls_corr_high:
             return None                                                   # round 90
+        if c.ls_vol_power != 1.0:                                         # H112
+            self.__dict__.setdefault("_ls_sigma", {})[pair] = s.volatility
         if c.ls_fill_gap:                                                 # H105: each coin's EMA gap
             self.__dict__.setdefault("_ls_gap", {})[pair] = abs(math.log(s.ls_fast / s.ls_slow))
         if c.ls_hysteresis > 0:                                           # round 94
@@ -605,6 +607,12 @@ class ResearchRules:
             shorts = -sum(v for v in raw.values() if v < 0)
             raw = {p: v * (gross / 2 / longs if v > 0 else gross / 2 / shorts)
                    for p, v in raw.items() if (longs if v > 0 else shorts) > 0}
+        if c.ls_vol_power != 1.0 and raw:                                 # H112: another volatility power
+            sig = getattr(self, "_ls_sigma", {})
+            before = sum(abs(v) for v in raw.values())
+            new = {p: v * sig.get(p, 1.0) ** (1.0 - c.ls_vol_power) for p, v in raw.items()}
+            after = sum(abs(v) for v in new.values())
+            raw = {p: v * before / after for p, v in new.items()} if after > 0 else raw
         if c.ls_fill_gap and raw:                                         # H105: fill the idle share by gap
             gaps = getattr(self, "_ls_gap", {})
             left = getattr(self, "_ls_slots", 0.0) - sum(abs(v) for v in raw.values())
