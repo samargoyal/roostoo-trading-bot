@@ -72,6 +72,7 @@ python -m research.h50_long_short   # the long-short screen
 | `h102_book_fast.py` | The book alone on 24/72-hour EMAs for longs and shorts alike |
 | `h103_book_band.py` | A minimum EMA gap before the 24/72-hour book trades |
 | `h104_band_grid.py` | The minimum EMA gap from 0.1% to 1% |
+| `h105_fill_gap.py` | The book fully invested, its idle share added by EMA gap |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

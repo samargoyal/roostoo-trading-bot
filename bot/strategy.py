@@ -600,6 +600,7 @@ class Strategy(ResearchRules):
             if side is None:
                 continue
             raw[pair] = side / s.volatility
+        self._ls_slots = slots                                             # research: the book's full gross
         raw = self._research_ls_weights(raw, ts)
         budget = max(1.0 - sum(abs(w) for w in fixed.values()), 0.0)
         gross = sum(abs(v) for v in raw.values())

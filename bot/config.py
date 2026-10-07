@@ -229,6 +229,9 @@ class StrategyConfig:
                                           # switch) read from an equal-weight index of the coins other than
                                           # BTC and the defensive pair, its 168h EMA against its 672h ("alts"),
                                           # or off when either that or BTC's is off ("either")
+    ls_fill_gap: bool = False             # the book's share left idle (coins inside ls_band, crowded or
+                                          # stopped shorts) added to the positions it holds, in proportion
+                                          # to each one's EMA gap, so the book is fully invested (H105)
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day

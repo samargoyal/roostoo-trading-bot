@@ -2077,3 +2077,11 @@ so no single value stands out; from 0.6% the results fell away. All stayed far b
 
 The user then set the minimum gap at 0.4% on the competition account (`config/comp.json`,
 `ls_band` 0.004; without it kept in `config/comp_book_fast.json`).
+
+`research/h105_fill_gap.py` tested the user's fill: the book's idle share (coins inside the band,
+crowded or stopped shorts) added to its positions in proportion to their EMA gaps (option
+`ls_fill_gap`, off). On the live book (24/72 hours, 0.4% band) it made +800% over six years
+against +1,067%, a worst drawdown of 46% against 37%, -25% in the 2021–22 crash year against -6%
+and -7% in 2025–26 against +4%, with the same 14-day composite (2.46): the idle share was largely
+the crowded shorts, and putting it into the other positions doubled up where the book was already
+most exposed.
