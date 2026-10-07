@@ -68,6 +68,7 @@ python -m research.h50_long_short   # the long-short screen
 | `h100_next_day.py` | Predicting the next day's market direction (logistic, LightGBM, simple rules) and trading it daily |
 | `round110_hourly_ema.py` | The speed of the bear-market switch, BTC EMAs from 12/48 to 240/960 hours |
 | `round111_fast_shorts.py` | A 24/72-hour switch, and the book's shorts on very fast EMAs |
+| `h101_book_fast_shorts.py` | The book alone with its shorts on 24/72-hour EMAs (the configuration deployed on 7 October) |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

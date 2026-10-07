@@ -2045,3 +2045,10 @@ the 24/72-hour shorts (`config/comp.json` with `rotation_weight` 0; the 55/45 ve
 `config/comp_b1_fast.json`). That exact combination was not backtested: the book alone with its
 shorts on the book's own EMAs made +6,709% over six years and +26% in the 2021–22 crash year, and
 with shorts on 168/672 hours +4,748% (H98).
+
+`research/h101_book_fast_shorts.py` then backtested the deployed configuration. The book alone
+with shorts on 24/72-hour EMAs gained in all eight BTC crashes since 2018 (+35.9% on average,
++29% over the 2021–22 bear market and +7% over the 2024 correction, where the usual book lost
+13%), with the smallest worst drawdown of any version (24%), but made +3,307% over six years
+against +6,709% for the usual book and +88,084% for B1 with the same shorts, and its median
+14-day composite (5.41) was about a third of B1's (14.55).
