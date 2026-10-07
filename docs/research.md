@@ -2147,3 +2147,8 @@ with both +1,929% (4.01), the last two at worst drawdowns of 58–60% and crash 
 On 8 October 2026 the user shortened the block after a stop to 6 hours (`config/comp.json`; the
 24-hour version kept in `config/comp_book_har_24h.json`), not yet backtested with the 10% short
 stop.
+
+`research/h114_block_6h.py` backtested it: with the live stops and HAR weights the 6-hour block
+made +1,080% over six years (14-day composite 3.19, worst drawdown 41%), 12 hours +1,435% (3.80,
+36%) and 24 hours +1,578% (4.39, 38%). The shorter the block after a 10% short stop, the more often
+the book re-shorted into the bounce that stopped it.
