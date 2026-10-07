@@ -2005,3 +2005,24 @@ year), falling to about 50% in the last three years; the daily strategies lost i
 after costs (the confident LightGBM on the index: +241%, -20%, -13%, -1%, -8%, +3% against
 holding it). Tomorrow-like-today lost every year. The next day's direction is not predictable
 enough to trade.
+
+## The switch's speed in hours (round 110)
+
+The user asked for faster hourly EMAs on B1's switch. `research/round110_hourly_ema.py` set
+BTC's EMA pair (which gates the rotation and moves the account to the book alone) from 12/48 to
+240/960 hours:
+
+| BTC EMA pair | Switches a year | Mean over the 8 crashes | Crash year 2021–22 | Six years | Worst drawdown | Mean median 14-day composite |
+|---|---|---|---|---|---|---|
+| 12h/48h | 218 | +6.8% | -45% | +5,105% | 49% | 3.80 |
+| 24h/96h | 106 | +15.2% | -40% | +34,267% | 50% | 7.14 |
+| 48h/192h | 56 | +25.0% | -37% | +38,200% | 51% | 7.09 |
+| 72h/288h | 33 | +33.6% | -33% | +42,146% | 49% | 9.73 |
+| 120h/480h | 20 | +34.6% | -15% | +47,063% | 50% | 10.56 |
+| 168h/672h (B1, live) | 14 | +36.2% | -9% | +98,491% | 47% | 14.89 |
+| 240h/960h | 9 | +37.9% | +12% | +110,586% | 42% | 13.27 |
+
+Faster was worse at every step, on the crashes as well as the bull years: a fast pair flips on
+every dip (218 times a year at 12/48 hours) and each flip sells the rotation near a short-term
+low. The slower 240/960 did slightly better than B1 on the crashes, the six-year total and the
+worst drawdown, and slightly worse on the 14-day yardstick.
