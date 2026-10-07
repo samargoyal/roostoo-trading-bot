@@ -2107,3 +2107,11 @@ wide enough that a tight trail sells into the dip that then recovers.
 
 On 8 October 2026 the user set the block after a stop to 1 hour on the competition account
 (`stop_cooldown_hours` 1; the 24-hour version kept in `config/comp_book_band.json`).
+
+`research/h108_stop_methods.py` tried more stops on the live book. Percentage trails on longs hurt
+(5%: +29% over six years against +1,067%; 10%: +348%; 15%: +650%). Percentage trails on shorts,
+beside the 10-ATR trail, helped: 5% +1,137% (14-day composite 3.58 against 2.46), 10% +1,494%
+(3.55, worst drawdown 35% against 37%, crash year -14% against -6%), 15% +1,249% (2.59). Both at
+10% made +536%. The block after a stop hardly mattered: 6, 12 and 72 hours gave +1,083%, +1,078%
+and +1,115%, and `research/h109_cooldown_1h.py` found 1 hour (live since 8 October) alike
+(+1,079%, 2.51).

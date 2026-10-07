@@ -75,6 +75,7 @@ python -m research.h50_long_short   # the long-short screen
 | `h105_fill_gap.py` | The book fully invested, its idle share added by EMA gap |
 | `h106_idle_parking.py` | The book's idle cash parked in PAXG or a low-volatility stock basket |
 | `h107_trailing_stops.py` | Trailing stops on the live book's longs and shorts |
+| `h108_stop_methods.py`, `h109_cooldown_1h.py` | Percentage trailing stops and the block after a stop, 1 to 72 hours |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |
