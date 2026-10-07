@@ -280,7 +280,7 @@ class MultiHorizonTest(unittest.TestCase):
                              ("multi", [168, 336, 504], weights))
         self.assertEqual(load_config("config/comp_r54b.json").strategy.rotation_ranking, "return")
         live = load_config("config/comp.json").strategy
-        self.assertEqual((live.rotation_top, live.rotation_weight), (3, 0.55))
+        self.assertEqual((live.rotation_top, live.rotation_weight), (3, 0.0))
 
 
 class SettingsChangeTest(unittest.TestCase):

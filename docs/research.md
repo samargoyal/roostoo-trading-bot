@@ -1917,3 +1917,11 @@ to +56,085% against +102,471%, worst drawdown 44–52% against 39%, the crash ye
 against -17%, 14-day windows better in 0 or 1 of 6 folds. The fast regime flipped often and each
 flip re-picked the rotation and moved a fifth of the account; the slow BTC filter the rotation
 already has does the regime's job better.
+
+On 7 October 2026, with the account at -4.2% and the market falling, the user expected the fall
+to continue and switched the competition account to the efficiency book alone (rotation off;
+`config/comp.json`, the 55/45 settings kept in `config/comp_er_55.json`). In the backtests the
+book alone made +26% in the 2021–22 crash year against -17% for 55/45, and +6,709% over six years
+against +102,471%: a defensive choice that gives up most of a rally. Of the two-week windows in
+the 55/45 backtests that began 3–6% down after three days, 32% finished positive, with a median
+of +1.2% over the remaining eleven days.

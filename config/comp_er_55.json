@@ -8,7 +8,7 @@
     "rotation_horizons": [168, 336, 504],
     "rotation_horizon_weights": [2.0, 2.0, 1.0],
     "rotation_top": 3,
-    "rotation_weight": 0.0,
+    "rotation_weight": 0.55,
     "ls_er_hours": 720
   }
 }

@@ -32,8 +32,9 @@ class StrategyConfig:
     rotation beside the defensive book, and config/comp.json switches the competition account's
     book to the long-short trend book and ranks its rotation on several horizons (the research
     options rotation_ranking "multi", rotation_horizons and rotation_horizon_weights) with 3
-    coins in 55% of equity, and weights the book by each coin's efficiency ratio (ls_er_hours,
-    rounds 94-99). The alternatives kept are config/comp_er_75.json, config/comp_k2_3.json,
+    coins (since 7 October 2026 at 0%: the book alone), and weights the book by each coin's
+    efficiency ratio (ls_er_hours, rounds 94-99). The alternatives kept are config/comp_er_55.json,
+    config/comp_er_75.json, config/comp_k2_3.json,
     config/comp_k2.json, config/comp_r54b.json and config/comp_multi.json. Everything else under "Research options"
     is off by default and used only by research/ (see docs/research.md)."""
     universe: List[str] = field(default_factory=lambda: list(DEFAULT_UNIVERSE))
