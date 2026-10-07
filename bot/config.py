@@ -225,6 +225,10 @@ class StrategyConfig:
                                           # under 40% a bear one; "both", a bull or bear market only when
                                           # the two agree; anything else is neutral
     split_shares: List[float] = field(default_factory=lambda: [0.75, 0.55, 0.35])  # bull, neutral, bear
+    regime_index: str = ""                # round 109: the rotation's trend filter (and ls_absorb_rotation's
+                                          # switch) read from an equal-weight index of the coins other than
+                                          # BTC and the defensive pair, its 168h EMA against its 672h ("alts"),
+                                          # or off when either that or BTC's is off ("either")
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day

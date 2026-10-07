@@ -1970,3 +1970,24 @@ compounded total is within a few points of B1 in most years). Over 2020–26 the
 bull years (90% of 2023–24's gain) and lost in the crash year (-23 points, when the book made
 +38), and the two were close to even in 2025–26 (+40 and +38) and the 2018–19 holdout year, when
 the book made most of it.
+
+## An altcoin index for the switch (round 109)
+
+The user asked whether the market's bleeding could be tracked through a crypto index. The
+Nasdaq Crypto Index and the CME CF and Bloomberg Galaxy indices have no free history (and the
+Nasdaq index is about three quarters BTC, so it would switch with B1's BTC filter). Round 109
+(`research/round109_alt_index.py`, option `regime_index`) built an equal-weight index of the
+bot's coins other than BTC and PAXG and moved B1's switch onto it ("alts"), or off when either
+index is off ("either"), over every BTC crash since 2018 and every year:
+
+| Switch | Mean over the 8 crashes | Crash year 2021–22 | Six years | Worst drawdown | Mean median 14-day composite |
+|---|---|---|---|---|---|
+| none (55/45) | +19.3% | -17% | +102,974% | 39% | 10.48 |
+| BTC (B1, live) | +36.2% | -9% | +98,491% | 47% | 14.89 |
+| altcoin index | +31.3% | -5% | +36,814% | 43% | 10.52 |
+| either | +46.2% | +12% | +58,099% | 41% | 10.93 |
+
+The altcoin index alone switched more often and cost the bull years. "Either" protected best in
+crashes (positive in the crash year, +46% on average over the crashes) for about 40% less return
+over six years and a lower 14-day yardstick. B1's BTC switch stays: the best 14-day yardstick of
+all and nearly all of 55/45's return.

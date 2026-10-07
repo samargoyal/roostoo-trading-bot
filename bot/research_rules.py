@@ -62,8 +62,9 @@ class ResearchRules:
         """Rounds 61 and 62: while the rotation is out, its share runs the long-short book."""
         c = self.cfg
         share = None
-        if (c.ls_absorb_rotation > 0 and c.book_mode == "long_short" and regime is not None
-                and regime.ema_trend_fast <= regime.ema_trend_slow
+        bear = (not getattr(self, "_combined_trend_on", True)) if c.regime_index else (
+            regime is not None and regime.ema_trend_fast <= regime.ema_trend_slow)
+        if (c.ls_absorb_rotation > 0 and c.book_mode == "long_short" and regime is not None and bear
                 and (c.ls_absorb_sma_hours <= 0 or 0 < regime.close < regime.sma_long)):
             # The rotation is out of the market: its share (bar halted coins) joins the book.
             rotation = {p: w for p, w in rotation.items() if p in frozen}
@@ -98,6 +99,10 @@ class ResearchRules:
             elif state.rotation_on_since == 0:
                 state.rotation_on_since = ts
             trend_on = trend_on and ts - state.rotation_on_since >= c.rotation_reentry_hours * HOUR_MS
+        if c.regime_index:                                                # round 109
+            alt_on = self._alt_index_on(signals, ts)
+            trend_on = alt_on if c.regime_index == "alts" else (trend_on and alt_on)
+            self._combined_trend_on = trend_on
         return trend_on
 
     def _research_entry_due(self, due, trend_on, hour, last, state):
@@ -1013,6 +1018,30 @@ class ResearchRules:
             sigma = math.sqrt(sum((x - mean) ** 2 for x in portfolio) / (length - 1) * 24)
         self._volatility_day, self._volatility = day, sigma
         return sigma
+
+    def _alt_index_on(self, signals, ts):
+        """Round 109: an equal-weight index of the coins other than BTC and the defensive pair (the
+        mean of their hourly log returns, summed), True while its 168h EMA is above its 672h EMA.
+        Built from the indicators' return history on the first call, then updated hourly."""
+        c = self.cfg
+        pairs = [p for p in signals if p not in (c.regime_pair, c.defensive_pair) and p in self.indicators]
+        a_f, a_s = 2.0 / 169, 2.0 / 673
+        if getattr(self, "_alt_ts", None) is None:
+            hist = [list(self.indicators[p].returns) for p in pairs]
+            n = max((len(h) for h in hist), default=0)
+            level = f = s = 0.0
+            for k in range(n, 0, -1):
+                rs = [h[-k] for h in hist if len(h) >= k]
+                level += sum(rs) / len(rs) if rs else 0.0
+                f, s = (level, level) if k == n else (f + a_f * (level - f), s + a_s * (level - s))
+            self._alt_level, self._alt_f, self._alt_s, self._alt_ts = level, f, s, ts
+        elif ts > self._alt_ts:
+            rs = [self.indicators[p].returns[-1] for p in pairs if self.indicators[p].returns]
+            self._alt_level += sum(rs) / len(rs) if rs else 0.0
+            self._alt_f += a_f * (self._alt_level - self._alt_f)
+            self._alt_s += a_s * (self._alt_level - self._alt_s)
+            self._alt_ts = ts
+        return self._alt_f > self._alt_s
 
     def _research_split(self, signals):
         """Round 106: the rotation's share of equity by a fast regime read each hour."""
