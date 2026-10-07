@@ -287,7 +287,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `4e6f68e`, 7 October 2026 | `4e6f68e` | The same, trading a coin only while its 24h EMA is at least 0.4% above or below its 72h EMA (H104), kept in `config/comp_book_band.json` |
 | The restart after `bfad8d9`, 8 October 2026 | `bfad8d9` | The same, a stopped coin blocked for 1 hour instead of 24 (the user's choice), kept in `config/comp_book_band_1h.json` |
 | The restart after `503ad01`, 8 October 2026 | `503ad01` | The same with trailing stops: shorts also at 10% above their lowest close, longs 8 ATRs below their highest (H107, H108), kept in `config/comp_book_stops_1h.json` |
-| The restart after this push, 8 October 2026 | the commit that adds this row | The same with the 24-hour block after a stop and each coin weighted by its HAR volatility forecast (H111, H112) |
+| The restart after `31305a8`, 8 October 2026 | `31305a8` | The same with the 24-hour block after a stop and each coin weighted by its HAR volatility forecast (H111, H112), kept in `config/comp_book_har_24h.json` |
+| The restart after this push, 8 October 2026 | the commit that adds this row | The same with a 6-hour block after a stop (the user's choice) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -436,11 +437,11 @@ the long-short book weighted by each coin's 30-day efficiency ratio, its shorts 
 EMAs, the book taking the whole account while BTC's filter is off; since the last change of 7
 October the rotation is off and the whole book follows 24/72-hour EMAs, holding a coin only
 while the gap between them is at least 0.4% (`ls_band`), and a stopped coin may be traded again
-after 24 hours (`stop_cooldown_hours`). Shorts are covered 10 ATRs or 10% above their lowest
+after 6 hours (`stop_cooldown_hours`). Shorts are covered 10 ATRs or 10% above their lowest
 close since entry, whichever comes first, and longs sold 8 ATRs below their highest; each coin is
-weighted by its HAR volatility forecast (`ls_sizing`) times its efficiency. Fourteen alternatives
-are kept: `config/comp_book_stops_1h.json` (the same with a 1-hour block and last week's
-volatility), `config/comp_book_band_1h.json` (without the 10% and 8-ATR stops),
+weighted by its HAR volatility forecast (`ls_sizing`) times its efficiency. Fifteen alternatives
+are kept: `config/comp_book_har_24h.json` (the same with a 24-hour block),
+`config/comp_book_stops_1h.json` (a 1-hour block and last week's volatility), `config/comp_book_band_1h.json` (without the 10% and 8-ATR stops),
 `config/comp_book_band.json`
 (the same with the usual 24-hour block),
 `config/comp_book_fast.json` (the same without the minimum gap), `config/comp_book_fast_shorts.json` (the book alone, longs on 240/960 hours and shorts on

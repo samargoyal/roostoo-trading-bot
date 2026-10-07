@@ -2143,3 +2143,7 @@ made +1,494% over six years (14-day composite 3.55), with the HAR forecast +1,52
 14-day yardstick of any book, worst drawdown 38%), with signal-strength weights +1,460% (3.72) and
 with both +1,929% (4.01), the last two at worst drawdowns of 58–60% and crash years of -43% and
 -44%.
+
+On 8 October 2026 the user shortened the block after a stop to 6 hours (`config/comp.json`; the
+24-hour version kept in `config/comp_book_har_24h.json`), not yet backtested with the 10% short
+stop.
