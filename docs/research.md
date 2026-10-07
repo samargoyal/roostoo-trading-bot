@@ -1959,3 +1959,6 @@ Faster trends did not make the book better in crashes on average and cost it ret
 other years. Handing the rotation's share to the book while the BTC filter is off (B1) did best
 over the crashes on average and kept nearly all of 55/45's six-year return; its weak crashes
 were the 2021–22 bear market and the 2024 correction, where the book alone lost less.
+
+On 7 October 2026 the user chose B1 for the competition account (`config/comp.json`: 55/45 with
+`ls_absorb_rotation` 1.0; the book alone kept in `config/comp_book.json`).
