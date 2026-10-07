@@ -2069,3 +2069,8 @@ is within it of the 72h) to that book: 0.5% made +1,023% over six years against 
 (crash mean +21.1%, worst drawdown 36%, 14-day composite 2.05 against 2.13); wider bands made
 less and less (1%: +440%, 0.53; 2%: +119%, -1.50; 3% and 5%: -4%, below zero). A coin whose fast
 EMAs have moved apart has usually already made its move. B1 stayed far ahead (+98,491%, 14.89).
+
+`research/h104_band_grid.py` refined the minimum gap from 0.1% to 1% in steps of 0.1%. The best
+were 0.2%–0.5% (six years +955% to +1,067% against +642% without a band; 14-day composite 2.05
+to 2.56 against 2.13; 0.4% the highest total and 2.46), and the curve was flat across that range,
+so no single value stands out; from 0.6% the results fell away. All stayed far below B1.
