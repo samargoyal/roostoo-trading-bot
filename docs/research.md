@@ -1891,3 +1891,29 @@ against +102,471%, both with a worse crash year (-36% and -34% against -17%). Ne
 gave up both of its jobs: riding the market in bull years and shorting it in bear years. Its
 edge is the direction of each coin's trend, not one coin against another; the weak half of
 crypto bounces too often to short as a hedge.
+
+## Winners against losers, and a regime-driven split (rounds 104 to 106)
+
+The user asked for a book long the winners and short the losers, re-chosen dynamically, and
+for the 55/45 split to follow a fast regime. Round 104 (`research/round104_winners_losers.py`)
+replaced the book with the best and worst coins on the rotation's ranking, re-ranked every hour:
+long 5 / short 5 dollar neutral (and 3 or 8 a side), shorts only in bear markets, or only in
+downtrends. All lost everything over the six years on the book alone. A diagnosis run found the
+cause: re-ranking hourly, the book traded about five times its value a day (498%, against 25%
+for the efficiency book), and the fees ruined it. Round 105 (`research/round105_dynamic_winners.py`)
+made the count dynamic (winners and losers by how far each coin's standardised score stands from
+the rest, entering at +-1 sd and leaving at 0) with that hysteresis, hourly or daily, by sign
+and size of the score, or as dual momentum. Turnover fell to 73–92% a day, still three times the
+book's, and every design still lost on the book alone or made a fraction of it (the best, every
+coin by its score re-ranked daily, +237% over six years against +6,666%, worst drawdown 60%);
+in the live bot the best, dual momentum, made +58,087% against +102,471% with a worse crash
+year. Crypto's losers bounce too often to short, and rankings move too fast to trade cheaply.
+
+Round 106 (`research/round106_dynamic_split.py`, option `split_regime`) set the rotation's share
+every hour at 75% in a bull market, 55% neutral and 35% in a bear one, read from BTC against its
+50- and 200-hour EMAs, from the share of coins up over 72 hours, or both, with neighbours 70/55/40
+and 80/55/30. Every version did worse than the fixed split, by every measure: six years +13,473%
+to +56,085% against +102,471%, worst drawdown 44–52% against 39%, the crash year -39% to -47%
+against -17%, 14-day windows better in 0 or 1 of 6 folds. The fast regime flipped often and each
+flip re-picked the rotation and moved a fifth of the account; the slow BTC filter the rotation
+already has does the regime's job better.

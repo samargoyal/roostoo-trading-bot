@@ -270,6 +270,7 @@ class Strategy(ResearchRules):
         c = self.cfg
         account = weights
         signals = self.signals()
+        self._research_split(signals)                                       # research: off
         drawdown = self._update_brake(equity, state, signals)
         rotation = self._rotation(ts, signals, state, frozen)
         rotation = self._research_rotation_overrides(rotation, account, equity, state, frozen)

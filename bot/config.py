@@ -201,6 +201,27 @@ class StrategyConfig:
                                           # half the book's gross (an empty side's half in cash); "rank",
                                           # long the stronger half of the coins by trend (EMA gap over
                                           # volatility) and short the weaker half, each half the gross
+    ls_xs_n: int = 0                      # > 0 (round 104): the book long the N best coins on the rotation's
+                                          # ranking and short the N worst, re-ranked every hour
+    ls_xs_short: str = "always"           # the shorts: "always", "bear" (while the rotation's BTC filter is
+                                          # off) or "trend" (only coins in their own downtrend)
+    ls_xs_mode: str = ""                  # round 105, winners and losers chosen dynamically from the
+                                          # rotation's ranking, standardised across the coins each hour (z):
+                                          # "z", long above +ls_xs_z and short below -ls_xs_z (as many as
+                                          # pass); "weighted", every coin long or short by the sign of z,
+                                          # sized by |z|; "dual", long above +ls_xs_z with a positive
+                                          # 14-day return, short below -ls_xs_z in its own downtrend
+    ls_xs_z: float = 1.0
+    ls_xs_exit: float = 0.0               # "z" and "dual": a winner stays until its z falls to this, a loser
+                                          # until it rises to minus this (hysteresis against churn)
+    ls_xs_daily: bool = False             # re-rank once a day at 00:00 UTC instead of every hour
+    split_regime: str = ""                # round 106, the rotation's share set every hour by the regime:
+                                          # "btc", BTC above its 50h and 200h EMAs with the 50h above the
+                                          # 200h is a bull market, below both with the 50h below a bear one;
+                                          # "breadth", over 60% of the coins up over 72 hours a bull market,
+                                          # under 40% a bear one; "both", a bull or bear market only when
+                                          # the two agree; anything else is neutral
+    split_shares: List[float] = field(default_factory=lambda: [0.75, 0.55, 0.35])  # bull, neutral, bear
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day

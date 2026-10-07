@@ -380,6 +380,31 @@ class ResearchRules:
             return None
         if abs(gap) < c.ls_band:
             return None
+        if c.ls_xs_mode:                                                  # round 105
+            z = self._ls_xs_z.get(pair)
+            if z is None:
+                return None
+            crowded = c.short_exclude_external and self.external_scores and self._external(ts).get(pair, 0.0) < 0
+            if c.ls_xs_mode == "weighted":
+                if z < 0 and crowded:
+                    return None
+                side = (1.0 if z > 0 else -1.0) * abs(z)               # sized by |z| (the later steps keep it)
+            else:
+                held = self._ls_xs_held.get(pair)
+                if held is None or (held < 0 and crowded):
+                    return None
+                side = float(held)
+        if c.ls_xs_n > 0:                                                 # round 104
+            if pair in self._ls_xs_long:
+                side = 1.0
+            elif pair in self._ls_xs_short:
+                if ((c.ls_xs_short == "bear" and trend_on) or (c.ls_xs_short == "trend" and s.ls_fast >= s.ls_slow)
+                        or (c.short_exclude_external and self.external_scores
+                            and self._external(ts).get(pair, 0.0) < 0)):
+                    return None
+                side = -1.0
+            else:
+                return None
         if c.ls_neutral == "rank":                                        # round 103
             z = getattr(self, "_ls_rank_z", {})
             if pair in z:
@@ -989,6 +1014,29 @@ class ResearchRules:
         self._volatility_day, self._volatility = day, sigma
         return sigma
 
+    def _research_split(self, signals):
+        """Round 106: the rotation's share of equity by a fast regime read each hour."""
+        c = self.cfg
+        if not c.split_regime:
+            return
+        btc = signals.get(c.regime_pair)
+        votes = []
+        if c.split_regime in ("btc", "both") and btc is not None:
+            if btc.close > btc.ema_fast > btc.ema_slow:
+                votes.append(1)
+            elif btc.close < btc.ema_fast < btc.ema_slow:
+                votes.append(-1)
+            else:
+                votes.append(0)
+        if c.split_regime in ("breadth", "both"):
+            ups = [sum(list(self.indicators[p].returns)[-72:]) > 0 for p in signals
+                   if p != c.defensive_pair and len(self.indicators[p].returns) >= 72]
+            share = sum(ups) / len(ups) if ups else 0.5
+            votes.append(1 if share > 0.6 else -1 if share < 0.4 else 0)
+        state = votes[0] if votes and all(v == votes[0] for v in votes) else 0
+        bull, neutral, bear = c.split_shares
+        c.rotation_weight = bull if state > 0 else bear if state < 0 else neutral
+
     def _research_ls_market(self, signals):
         """Round 89: the share of the book's coins in uptrends, and whether BTC fell more than
         short_btc_crash over the last 30 days."""
@@ -999,6 +1047,36 @@ class ResearchRules:
             self._ls_breadth = sum(trends) / len(trends) if trends else 0.5
         if c.ls_corr_cut > 0:
             self._ls_corr_high = self._mean_correlation(signals) > c.ls_corr_cut
+        if c.ls_xs_mode:                                                  # round 105
+            pool = [p for p, s in signals.items() if p != c.defensive_pair and s.volatility > 0
+                    and len(self.indicators[p].returns) >= max(c.rotation_horizons or [c.rotation_lookback])]
+            day = max((s.ts for s in signals.values()), default=0) // DAY_MS
+            if not (c.ls_xs_daily and getattr(self, "_ls_xs_day", None) == day):
+                self._ls_xs_day = day
+                score = self._multi_horizon(pool) if len(pool) > 2 else {}
+                if score:
+                    m = sum(score.values()) / len(score)
+                    sd = math.sqrt(sum((v - m) ** 2 for v in score.values()) / (len(score) - 1)) or 1.0
+                    self._ls_xs_z = {p: (v - m) / sd for p, v in score.items()}
+                else:
+                    self._ls_xs_z = {}
+                held, new = getattr(self, "_ls_xs_held", {}), {}
+                for p, z in self._ls_xs_z.items():
+                    s = signals[p]
+                    long_ok = c.ls_xs_mode != "dual" or s.return_rotation > 0
+                    short_ok = c.ls_xs_mode != "dual" or s.ls_fast < s.ls_slow
+                    if long_ok and (z > c.ls_xs_z or (held.get(p) == 1 and z > c.ls_xs_exit)):
+                        new[p] = 1
+                    elif short_ok and (z < -c.ls_xs_z or (held.get(p) == -1 and z < -c.ls_xs_exit)):
+                        new[p] = -1
+                self._ls_xs_held = new
+        if c.ls_xs_n > 0:                                                 # round 104
+            pool = [p for p, s in signals.items() if p != c.defensive_pair and s.volatility > 0
+                    and len(self.indicators[p].returns) >= max(c.rotation_horizons or [c.rotation_lookback])]
+            score = self._multi_horizon(pool) if len(pool) > 1 else {}
+            ranked = sorted(score, key=score.get, reverse=True)
+            n = min(c.ls_xs_n, len(ranked) // 2)
+            self._ls_xs_long, self._ls_xs_short = set(ranked[:n]), set(ranked[len(ranked) - n:])
         if c.ls_neutral == "rank":                                        # round 103
             z = {p: math.log(s.ls_fast / s.ls_slow) / s.volatility for p, s in signals.items()
                  if p != c.defensive_pair and s.ls_fast > 0 and s.ls_slow > 0 and s.volatility > 0}

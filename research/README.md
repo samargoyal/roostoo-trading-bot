@@ -62,6 +62,7 @@ python -m research.h50_long_short   # the long-short screen
 | `round101_book_at_55.py` | The squared efficiency tilt and fresh trends at the live split |
 | `h95_aggressive_sleeve.py`, `h96_more_aggressive.py` | An aggressive third sleeve (swings, breakouts, dip-buys, fast and all-in momentum, memes, concentrated books) in a 30/30/40 split |
 | `h97_two_books.py`, `round103_dollar_neutral.py` | Two books without momentum; a dollar-neutral book |
+| `round104_winners_losers.py`, `round105_dynamic_winners.py`, `round106_dynamic_split.py` | Winners against losers (fixed and dynamic counts) and a split set by a fast regime |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |
