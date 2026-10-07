@@ -2152,3 +2152,6 @@ stop.
 made +1,080% over six years (14-day composite 3.19, worst drawdown 41%), 12 hours +1,435% (3.80,
 36%) and 24 hours +1,578% (4.39, 38%). The shorter the block after a 10% short stop, the more often
 the book re-shorted into the bounce that stopped it.
+
+The user then chose the 12-hour block (`config/comp.json`; 6 hours kept in
+`config/comp_book_har_6h.json`).

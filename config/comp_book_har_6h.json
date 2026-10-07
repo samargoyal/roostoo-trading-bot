@@ -12,7 +12,7 @@
     "ls_er_hours": 720,
     "ls_absorb_rotation": 1.0,
     "ls_band": 0.004,
-    "stop_cooldown_hours": 12,
+    "stop_cooldown_hours": 6,
     "short_stop_pct": 0.1,
     "ls_long_stop_atr": 8.0,
     "ls_sizing": "har"
