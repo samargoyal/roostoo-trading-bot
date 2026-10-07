@@ -2074,3 +2074,6 @@ EMAs have moved apart has usually already made its move. B1 stayed far ahead (+9
 were 0.2%–0.5% (six years +955% to +1,067% against +642% without a band; 14-day composite 2.05
 to 2.56 against 2.13; 0.4% the highest total and 2.46), and the curve was flat across that range,
 so no single value stands out; from 0.6% the results fell away. All stayed far below B1.
+
+The user then set the minimum gap at 0.4% on the competition account (`config/comp.json`,
+`ls_band` 0.004; without it kept in `config/comp_book_fast.json`).

@@ -283,7 +283,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `ded8258`, 7 October 2026 | `ded8258` | 55/45 with the book taking the rotation's share while BTC's filter is off (round 107's B1), kept in `config/comp_b1.json` |
 | The restart after `8461a16`, 7 October 2026 | `8461a16` | B1 with the book's shorts on 24/72-hour EMAs (round 111), kept in `config/comp_b1_fast.json` |
 | The restart after `ec0b431`, 7 October 2026 | `ec0b431` | The efficiency book alone, its shorts on 24/72-hour EMAs, the rotation off (left the account about 94% in cash: most coins' two trends disagreed), kept in `config/comp_book_fast_shorts.json` |
-| The restart after this push, 7 October 2026 | the commit that adds this row | The efficiency book alone on 24/72-hour EMAs for longs and shorts alike, the rotation off (the user's choice) |
+| The restart after `ebe18e5`, 7 October 2026 | `ebe18e5` | The efficiency book alone on 24/72-hour EMAs for longs and shorts alike, the rotation off (the user's choice), kept in `config/comp_book_fast.json` |
+| The restart after this push, 7 October 2026 | the commit that adds this row | The same, trading a coin only while its 24h EMA is at least 0.4% above or below its 72h EMA (H104) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -430,8 +431,9 @@ settings are committed and a restart picks them up. `config/comp.json` runs the 
 account: a 55% rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1 beside
 the long-short book weighted by each coin's 30-day efficiency ratio, its shorts on 24/72-hour
 EMAs, the book taking the whole account while BTC's filter is off; since the last change of 7
-October the rotation is off and the whole book follows 24/72-hour EMAs. Ten alternatives are
-kept: `config/comp_book_fast_shorts.json` (the book alone, longs on 240/960 hours and shorts on
+October the rotation is off and the whole book follows 24/72-hour EMAs, holding a coin only
+while the gap between them is at least 0.4% (`ls_band`). Eleven alternatives are kept:
+`config/comp_book_fast.json` (the same without the minimum gap), `config/comp_book_fast_shorts.json` (the book alone, longs on 240/960 hours and shorts on
 24/72), `config/comp_b1_fast.json` (that with the 55% rotation), `config/comp_b1.json` (the same with the shorts on the book's own 240/960-hour EMAs),
 `config/comp_book.json` (the book alone), `config/comp_er_55.json` (55/45 without the switch), `config/comp_er_75.json`
 (the same at 75% rotation), `config/comp_k2_3.json`, 75% with
