@@ -1925,3 +1925,13 @@ book alone made +26% in the 2021–22 crash year against -17% for 55/45, and +6,
 against +102,471%: a defensive choice that gives up most of a rally. Of the two-week windows in
 the 55/45 backtests that began 3–6% down after three days, 32% finished positive, with a median
 of +1.2% over the remaining eleven days.
+
+Round 107 (`research/round107_crash_detector.py`) tested detectors that switch the 55/45 bot to
+the book alone and back. Handing the rotation's share to the book whenever the rotation's own
+BTC filter is off (B1, round 61's option `ls_absorb_rotation`) made +97,846% over six years
+against +102,471% fixed, a better crash year (-9% against -17%) and latest year (+92% against
++57%), better 14-day windows in 4 of 6 folds and both holdout years better on return (+145% and
++187% against +121% and +177%), but a deeper worst drawdown (47% against 39%, in 2024–25, when
+the filter flickered). Confirmation by BTC's 200-day average (B2) was in between; the fast
+detectors (BTC against its 50- and 200-hour EMAs, breadth, both) whipsawed and made a fifth to a
+quarter as much.
