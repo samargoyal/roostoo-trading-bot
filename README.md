@@ -291,7 +291,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `ed04bf8`, 8 October 2026 | `ed04bf8` | The same with a 6-hour block after a stop (the user's choice), kept in `config/comp_book_har_6h.json` |
 | The restart after `4ae7681`, 8 October 2026 | `4ae7681` | The same with a 12-hour block (H114: +1,435% over six years, 14-day composite 3.80, worst drawdown 36%), kept in `config/comp_book_har_12h.json` |
 | The restart after `8f9d312`, 8 October 2026, if the server pulled it before the next commit | `8f9d312` | Trailing stops at 5 ATRs for longs and shorts, every position also closed once it went past its entry price the wrong way: backtested at -93% over six years (H119) and replaced within hours; kept in `config/comp_book_5atr_cap0.json` |
-| The restart after this push, 8 October 2026 | the commit that adds this row | Trailing stops back at 10 ATRs (shorts) and 8 (longs), plus a cap 3 ATRs past the entry price (H118: +1,466% over six years, 14-day composite 4.03, worst drawdown 33%) |
+| The restart after `08a629f`, 8 October 2026 | `08a629f` | Trailing stops back at 10 ATRs (shorts) and 8 (longs), plus a cap 3 ATRs past the entry price (H118: +1,466% over six years, 14-day composite 4.03, worst drawdown 33%), kept in `config/comp_book_cap3.json` |
+| The restart after this push, 9 October 2026 | the commit that adds this row | Flat: the minimum EMA gap set to 100%, so the book holds nothing and the bot sells and covers everything (the user's choice, to restart its positions from cash); the next commit restores `config/comp_book_cap3.json` |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
