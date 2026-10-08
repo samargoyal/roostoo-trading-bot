@@ -2193,3 +2193,11 @@ at the entry price (`config/comp.json`: `short_stop_atr` 5, `ls_long_stop_atr` 5
 5-ATR trails alone made +1,039% (2.92) against +1,435% (3.80) for 10/8. At the user's choice the
 competition account moved to 10/8-ATR trails with the cap 3 ATRs past the entry (H118: +1,466%,
 4.03, worst drawdown 33%) a few hours after `8f9d312`.
+
+`research/h120_pyramid.py` tested pyramiding on the live book (the user: add to a position in
+profit while momentum is with it, cut it when momentum turns). Scaling down positions whose last
+24 hours went against them hurt every time (alone: +648% over six years against +1,466%;
+with scaling up 1.5x: +461%, 2x: +30%). Scaling up alone, 1.5x for a position in profit whose last
+24 hours went its way, made +1,523% with a 14-day composite of 4.20 against 4.03, but a worse worst
+drawdown (39% against 33%), crash year (-18% against -8%), latest year (-4% against +2%) and both
+holdout years (+23% and +42% against +40% and +66%). Option `ls_pyramid_*`, off.
