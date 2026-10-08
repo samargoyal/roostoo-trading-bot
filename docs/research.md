@@ -2176,3 +2176,9 @@ composite was high (14.61) for the same reason as the rotation's. Beside the liv
 336-hour breakouts made +1,717% against +1,435% (composite 4.00 against 3.80) but a deeper worst
 drawdown (42% against 36%) and lost in crashes (-7.6% on average against +18.3%); 50% made
 +1,475% (3.73, 58%).
+
+`research/h117_breakout_sides.py` lengthened the lookback to 60, 90 and 180 days and ran the
+breakout short-only (short below the N-hour low, flat above the N-hour high). Longer lookbacks did
+not help the longs (+406%, +738% and +37% over six years, worst drawdowns 71–87%). The shorts made
+money in the crashes (+31% to +74% on average over the eight) and lost 86–100% over six years at
+every lookback, giving it all back in the rallies between.
