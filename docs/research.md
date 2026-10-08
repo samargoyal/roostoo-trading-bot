@@ -2168,3 +2168,11 @@ best +637% (336 hours; 14-day composite 0.04, worst drawdown 52%) and lost at 24
 by side, the breakout longs made money at every lookback from 48 hours (+645% to +2,135%, best at
 336 hours) and the shorts lost 78–99% at every one: in crypto upside breakouts run and
 breakdowns snap back, as rounds 42 (Donchian channels) and 104 found.
+
+`research/h116_breakout_long.py` ran the breakouts long only (long above the N-hour high, flat
+below the N-hour low). Alone they made +338% to +2,161% over six years with worst drawdowns of
+78–86% and lost in every crash but one (-41% to -51% on average); the 72-hour version's 14-day
+composite was high (14.61) for the same reason as the rotation's. Beside the live book, 30% in the
+336-hour breakouts made +1,717% against +1,435% (composite 4.00 against 3.80) but a deeper worst
+drawdown (42% against 36%) and lost in crashes (-7.6% on average against +18.3%); 50% made
++1,475% (3.73, 58%).
