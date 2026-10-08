@@ -271,6 +271,7 @@ class Strategy(ResearchRules):
         """
         c = self.cfg
         account = weights
+        self.stop_fills: Dict[str, float] = {}      # research (intrabar_stops): stop prices for the backtester
         signals = self.signals()
         self._research_split(signals)                                       # research: off
         drawdown = self._update_brake(equity, state, signals)
@@ -662,6 +663,9 @@ class Strategy(ResearchRules):
             info = held[pair]
             info.lowest_close = min(info.lowest_close, s.close)
             ref = info.entry_close if c.stop_from_entry and info.entry_close > 0 else info.lowest_close
+            if c.intrabar_stops and self._intrabar_short_stop(pair, s, info, ref):
+                reasons[pair] = EXIT_SHORT_STOP
+                return True
             if ((c.short_stop_atr > 0 and s.close > ref + c.short_stop_atr * s.atr)
                     or (c.short_stop_pct > 0 and s.close > ref * (1.0 + c.short_stop_pct))
                     or (c.stop_cap_entry_atr >= 0 and info.entry_close > 0

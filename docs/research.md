@@ -2201,3 +2201,12 @@ with scaling up 1.5x: +461%, 2x: +30%). Scaling up alone, 1.5x for a position in
 24 hours went its way, made +1,523% with a 14-day composite of 4.20 against 4.03, but a worse worst
 drawdown (39% against 33%), crash year (-18% against -8%), latest year (-4% against +2%) and both
 holdout years (+23% and +42% against +40% and +66%). Option `ls_pyramid_*`, off.
+
+`research/h121_intrabar_stops.py` asked whether stops checked within the hour (option
+`intrabar_stops`: firing when the hour's high or low reaches the stop, filled at the stop level)
+would beat firing on the hourly close. They did far worse: the live book made +396% over six years
+against +1,466% (14-day composite 1.40 against 4.03, worst drawdown 41% against 33%, crash mean
++1.9% against +18.4%), and without the entry cap +563% against +1,435%. Wicks that touch a stop and
+reverse within the hour are common in crypto; the hourly close filters them, and that is worth more
+than exiting a real move an hour sooner. The fill at the exact stop level flatters the intra-hour
+version, so in practice it would do worse still.

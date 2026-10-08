@@ -247,6 +247,9 @@ class StrategyConfig:
                                           # with it gets this times its weight (from the book's cash)
     ls_pyramid_down: float = 1.0          # ... and one whose return is against it this times its weight
     ls_pyramid_hours: int = 24
+    intrabar_stops: bool = False          # H121 (backtest): the book's stops fire on the hour's high or low,
+                                          # filled at the stop level (or the open past it), as a stop checked
+                                          # every few minutes would, not at the hourly close
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day

@@ -28,7 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from bot.config import Config, load_config
 from bot.market_data import HOUR_MS, Bar, BinanceClient, load_history
 from bot.metrics import summarize
-from bot.planner import BUY, SELL, SHORT, plan_trades
+from bot.planner import BUY, COVER, SELL, SHORT, plan_trades
 from bot.roostoo import RoostooClient
 from bot.strategy import Strategy, StrategyState
 from bot.universe import fetch_candidates, select_universe
@@ -144,8 +144,11 @@ def run_backtest(cfg: Config, bars: Dict[str, List[Bar]], start_ms: int, end_ms:
                                    frozen if cfg.strategy.plan_around_halts else frozenset())
         planned = plan_trades(decision, weights, equity, now, state.last_fill_ts,
                               cfg.execution, cfg.strategy.min_position_weight, frozen)
+        stop_fills = getattr(strategy, "stop_fills", {})              # research: intrabar stops
         for t in planned:
             price = closes.get(t.pair)
+            if t.pair in stop_fills and t.side in (SELL, COVER):
+                price = stop_fills[t.pair]
             if not price:
                 continue
             slip = slippage if slippage_by_pair is None else slippage_by_pair.get(t.pair, slippage)

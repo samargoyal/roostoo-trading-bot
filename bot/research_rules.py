@@ -1054,6 +1054,45 @@ class ResearchRules:
         self._volatility_day, self._volatility = day, sigma
         return sigma
 
+    def _intrabar_short_stop(self, pair, s, info, ref) -> bool:
+        """H121: the lowest of the short's stop levels; True (and its fill price noted for the
+        backtester) when the hour's high reached it."""
+        c = self.cfg
+        levels = []
+        if c.short_stop_atr > 0:
+            levels.append(ref + c.short_stop_atr * s.atr)
+        if c.short_stop_pct > 0:
+            levels.append(ref * (1.0 + c.short_stop_pct))
+        if c.stop_cap_entry_atr >= 0 and info.entry_close > 0:
+            levels.append(info.entry_close + c.stop_cap_entry_atr * s.atr)
+        ind = self.indicators[pair]
+        if not levels or not ind.highs or len(ind.closes) < 2:
+            return False
+        level = min(levels)
+        if ind.highs[-1] < level:
+            return False
+        self.stop_fills[pair] = max(level, ind.closes[-2])           # a gap past the level fills at the open
+        return True
+
+    def _intrabar_long_stop(self, pair, s, info, ref) -> bool:
+        """H121: as _intrabar_short_stop for a long, on the hour's low."""
+        c = self.cfg
+        levels = []
+        if c.ls_long_stop_atr > 0:
+            levels.append(ref - c.ls_long_stop_atr * s.atr)
+        if c.ls_long_stop_pct > 0:
+            levels.append(ref * (1.0 - c.ls_long_stop_pct))
+        if c.stop_cap_entry_atr >= 0 and info.entry_close > 0:
+            levels.append(info.entry_close - c.stop_cap_entry_atr * s.atr)
+        ind = self.indicators[pair]
+        if not levels or not ind.lows or len(ind.closes) < 2:
+            return False
+        level = max(levels)
+        if ind.lows[-1] > level:
+            return False
+        self.stop_fills[pair] = min(level, ind.closes[-2])
+        return True
+
     def _alt_index_on(self, signals, ts):
         """Round 109: an equal-weight index of the coins other than BTC and the defensive pair (the
         mean of their hourly log returns, summed), True while its 168h EMA is above its 672h EMA.
@@ -1530,6 +1569,9 @@ class ResearchRules:
             return False
         info.highest_close = max(info.highest_close, s.close)
         ref = info.entry_close if c.stop_from_entry and info.entry_close > 0 else info.highest_close
+        if c.intrabar_stops and self._intrabar_long_stop(pair, s, info, ref):
+            reasons[pair] = EXIT_STOP
+            return True
         if ((c.ls_long_stop_atr > 0 and s.close < ref - c.ls_long_stop_atr * s.atr)
                 or (c.ls_long_stop_pct > 0 and s.close < ref * (1.0 - c.ls_long_stop_pct))
                 or (c.stop_cap_entry_atr >= 0 and info.entry_close > 0
