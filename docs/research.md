@@ -2210,3 +2210,10 @@ against +1,466% (14-day composite 1.40 against 4.03, worst drawdown 41% against 
 reverse within the hour are common in crypto; the hourly close filters them, and that is worth more
 than exiting a real move an hour sooner. The fill at the exact stop level flatters the intra-hour
 version, so in practice it would do worse still.
+
+`research/h122_gap_slope.py` used the EMA gap's slope (the user: hold while the gap widens, exit
+when it slows; option `ls_gap_slope_hours`). Exiting whenever the gap narrowed lost: over 3 hours
+-82% over six years, 6 hours -26%, 12 hours +61%, against +1,466% (14-day composite -3.30 to 0.07
+against 4.03). Asking it only of new positions changed little: +1,369% to +1,554% with composites
+of 3.54–3.78. A trend's gap narrows for hours at a time inside a move that then continues, so an
+exit on its slope sells the pauses.

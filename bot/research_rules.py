@@ -436,6 +436,19 @@ class ResearchRules:
                 elif profit > 0:
                     mult = c.ls_pyramid_up
             self.__dict__.setdefault("_ls_pyr", {})[pair] = mult
+        if c.ls_gap_slope_hours > 0:                                      # H122: the gap's slope
+            hist = self.__dict__.setdefault("_gap_hist", {})
+            gap_now = s.ls_fast / s.ls_slow - 1.0
+            past = hist.setdefault(pair, {})
+            past[ts] = gap_now
+            then = past.get(ts - c.ls_gap_slope_hours * HOUR_MS)
+            for t_old in [t for t in past if t < ts - 48 * HOUR_MS]:
+                del past[t_old]
+            if then is not None:
+                widening = (gap_now - then) * (1.0 if side > 0 else -1.0) > 0
+                held = state is not None and (pair in state.positions if side > 0 else pair in state.shorts)
+                if not widening and (c.ls_gap_slope_mode == "hold" or not held):
+                    return None
         if c.ls_fill_gap:                                                 # H105: each coin's EMA gap
             self.__dict__.setdefault("_ls_gap", {})[pair] = abs(math.log(s.ls_fast / s.ls_slow))
         if c.ls_hysteresis > 0:                                           # round 94

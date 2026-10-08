@@ -85,6 +85,7 @@ python -m research.h50_long_short   # the long-short screen
 | `h118_stop_from_entry.py`, `h119_live_stops.py` | Stops capped at the entry price or measured from it; the 5-ATR, cap-at-entry configuration |
 | `h120_pyramid.py` | Pyramiding: more weight to winners with momentum, less when it turns |
 | `h121_intrabar_stops.py` | Stops checked within the hour against on the hourly close |
+| `h122_gap_slope.py` | The EMA gap's slope as an exit or entry filter |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

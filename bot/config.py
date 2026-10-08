@@ -250,6 +250,10 @@ class StrategyConfig:
     intrabar_stops: bool = False          # H121 (backtest): the book's stops fire on the hour's high or low,
                                           # filled at the stop level (or the open past it), as a stop checked
                                           # every few minutes would, not at the hourly close
+    ls_gap_slope_hours: int = 0           # > 0 (H122): the EMA gap's change over this many hours must widen in
+                                          # the position's favour; "hold": no position while it narrows (exit
+                                          # on slowing momentum); "entry": only new positions need it
+    ls_gap_slope_mode: str = "hold"
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day
