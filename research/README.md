@@ -79,6 +79,7 @@ python -m research.h50_long_short   # the long-short screen
 | `h110_both_stops.py`, `h111_stops_24h.py`, `h112_weights.py` | The deployed stops with a 1- or 24-hour block; ways to weight the book's positions |
 | `h113_best_combo.py` | The best stops with the HAR forecast and signal-strength weights |
 | `h114_block_6h.py` | The block after a stop at 6, 12 and 24 hours on the live stops |
+| `h115_support_resistance.py` | Support/resistance breakouts and reversals, lookback the only parameter |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

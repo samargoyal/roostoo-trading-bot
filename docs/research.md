@@ -2155,3 +2155,16 @@ the book re-shorted into the bounce that stopped it.
 
 The user then chose the 12-hour block (`config/comp.json`; 6 hours kept in
 `config/comp_book_har_6h.json`).
+
+## Support and resistance (H115)
+
+The user asked for support/resistance breakout and reversal strategies with the lookback as the
+only parameter. `research/h115_support_resistance.py` (resistance the highest high and support
+the lowest low of the previous N hours; every coin equally weighted, costs paid) ran a breakout
+(long above resistance, short below support, stop and reverse) and a reversal (long on a failed
+breakdown below support, short on a failed breakout above resistance, out at the range's middle)
+at N = 24 to 720 hours, 2018–26. Every reversal lost 96–99% over six years. The breakouts made at
+best +637% (336 hours; 14-day composite 0.04, worst drawdown 52%) and lost at 24–48 hours. Split
+by side, the breakout longs made money at every lookback from 48 hours (+645% to +2,135%, best at
+336 hours) and the shorts lost 78–99% at every one: in crypto upside breakouts run and
+breakdowns snap back, as rounds 42 (Donchian channels) and 104 found.
