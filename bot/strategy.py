@@ -465,6 +465,10 @@ class Strategy(ResearchRules):
         if due and (c.rotation_ensemble or c.rotation_adaptive_lookbacks):
             self._research_ensemble(ts, signals, state, frozen, trend_on)
             state.rotation_settings = settings
+        elif due and c.rotation_short_losers:                             # research, H123
+            state.rotation_plan = self._research_short_losers(signals, frozen, trend_on, ts)
+            state.rotation_plan_ts = ts
+            state.rotation_settings = settings
         elif due:
             plan = {p: w for p, w in state.rotation_plan.items() if p in frozen}
             stuck = len([p for p in plan if p != c.defensive_pair])
@@ -513,7 +517,7 @@ class Strategy(ResearchRules):
             plan = {p: w for p, w in plan.items() if p == c.defensive_pair or p in frozen or w < 0}
         else:
             plan = {p: w for p, w in plan.items()                            # cover shorts at once,
-                    if w > 0 or p in frozen or c.rotation_short_share > 0}      # but a short leg's (84)
+                    if w > 0 or p in frozen or c.rotation_short_share > 0 or c.rotation_short_losers}      # but a short leg's (84)
         return self._research_sleeve_scale(plan, regime, ts, frozen)
 
     def _rotation_weights(self, picks: List[str], signals: Dict[str, Signal]) -> Dict[str, float]:

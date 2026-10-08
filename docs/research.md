@@ -2223,3 +2223,28 @@ On 9 October 2026 the user flattened the competition account to restart its posi
 bot sells its longs and covers its shorts on its own; the strategy is kept in
 `config/comp_book_cap3.json`, to be restored by the next commit.
 The user then restored it (`config/comp.json` equal to `config/comp_book_cap3.json` again).
+
+## Shorting the losers instead of buying the winners (H123, H124)
+
+The user asked for the original two-sleeve layout turned round: 30% shorting the 3 weakest coins on
+the rotation's 7/14/21-day ranking (option `rotation_short_losers`, re-picked daily, negative 2-week
+returns only, no crowded shorts) beside 70% in a book, judged first on the eight BTC crashes.
+
+| 30% sleeve + 70% book | Crash mean | Crash year | Worst drawdown | Six years | 14-day composite |
+|---|---|---|---|---|---|
+| none, the live fast book alone (H123) | +18.4% | -8% | 33% | +1,466% | 4.03 |
+| short 3 losers, fast book | +21.5% | -11% | 43% | +133% | 0.78 |
+| short 3 losers in downtrends, fast book | +21.1% | -12% | 40% | +230% | 1.25 |
+| short 3 losers in bears only, fast book | +14.4% | -10% | 32% | +597% | 2.60 |
+| long 3 winners, fast book | +18.8% | -21% | 37% | +11,749% | 10.55 |
+| K2 book alone (H124) | +26.7% | +32% | 43% | +2,813% | 3.01 |
+| short 3 losers, K2 book | +36.3% | +12% | 42% | +177% | 0.82 |
+| short 3 losers in bears, K2 book | +27.7% | +14% | 44% | +523% | 1.44 |
+| short 3 losers, efficiency book | +38.5% | -1% | 37% | +422% | 2.19 |
+| short 3 losers in bears, efficiency book | +29.7% | +3% | 39% | +1,134% | 2.55 |
+| long 3 winners, K2 book (the original) | +22.9% | +2% | 34% | +15,994% | 6.44 |
+
+Shorting the losers added up to about ten points over the crashes on the slow books and lost most
+of the return between them (losers bounce, and the sleeve has no stop). Buying the winners was far
+better on return and the 14-day yardstick with either book. For comparison, B1 (55% winners beside
+the efficiency book, the book alone in bear markets) made +98,491%, 14.89 and +36.2% over the crashes.

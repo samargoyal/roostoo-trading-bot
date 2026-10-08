@@ -254,6 +254,11 @@ class StrategyConfig:
                                           # the position's favour; "hold": no position while it narrows (exit
                                           # on slowing momentum); "entry": only new positions need it
     ls_gap_slope_mode: str = "hold"
+    rotation_short_losers: str = ""       # H123: the rotation shorts its rotation_top weakest coins on its
+                                          # ranking (negative 2-week return, not crowded, equal weights)
+                                          # instead of holding the strongest: "always", or "bear" (only while
+                                          # BTC's filter is off, cash otherwise); rotation_short_trend also
+                                          # asks each to be in its own downtrend
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day

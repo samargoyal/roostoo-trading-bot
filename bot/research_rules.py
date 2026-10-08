@@ -295,6 +295,22 @@ class ResearchRules:
         for pair in order[:c.rotation_shorts]:
             plan[pair] = -1.0 / c.rotation_shorts
 
+    def _research_short_losers(self, signals, frozen, trend_on, ts):
+        """H123: the sleeve short its weakest coins on the ranking, equally."""
+        c = self.cfg
+        if c.rotation_short_losers == "bear" and trend_on:
+            return {}
+        crowded = self._external(ts) if c.short_exclude_external and self.external_scores else {}
+        pool = [p for p, s in signals.items()
+                if p != c.defensive_pair and p not in frozen and s.return_rotation < 0
+                and crowded.get(p, 0.0) >= 0
+                and (not c.rotation_short_trend or 0 < s.ema_trend_fast < s.ema_trend_slow)]
+        if not pool:
+            return {}
+        score = self._multi_horizon(pool) if c.rotation_ranking == "multi" and len(pool) > 1 else             {p: signals[p].return_rotation for p in pool}
+        weak = sorted(pool, key=score.get)[:c.rotation_top]
+        return {p: -1.0 / c.rotation_top for p in weak}
+
     def _research_short_leg(self, plan, picks, signals, state, frozen, ts):
         """Round 84: while the filter is on, part of the sleeve shorts the weakest coins."""
         c = self.cfg
