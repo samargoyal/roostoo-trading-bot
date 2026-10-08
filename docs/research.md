@@ -2222,3 +2222,4 @@ On 9 October 2026 the user flattened the competition account to restart its posi
 `config/comp.json` set the minimum EMA gap (`ls_band`) to 100%, so the book targets nothing and the
 bot sells its longs and covers its shorts on its own; the strategy is kept in
 `config/comp_book_cap3.json`, to be restored by the next commit.
+The user then restored it (`config/comp.json` equal to `config/comp_book_cap3.json` again).
