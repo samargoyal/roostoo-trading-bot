@@ -290,7 +290,7 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `31305a8`, 8 October 2026 | `31305a8` | The same with the 24-hour block after a stop and each coin weighted by its HAR volatility forecast (H111, H112), kept in `config/comp_book_har_24h.json` |
 | The restart after `ed04bf8`, 8 October 2026 | `ed04bf8` | The same with a 6-hour block after a stop (the user's choice), kept in `config/comp_book_har_6h.json` |
 | The restart after `4ae7681`, 8 October 2026 | `4ae7681` | The same with a 12-hour block (H114: +1,435% over six years, 14-day composite 3.80, worst drawdown 36%), kept in `config/comp_book_har_12h.json` |
-| Not deployed, 8 October 2026 | `8f9d312` | Trailing stops at 5 ATRs for longs and shorts, every position also closed once it went past its entry price the wrong way: backtested at -93% over six years (H119), replaced before the server pulled it; kept in `config/comp_book_5atr_cap0.json` |
+| The restart after `8f9d312`, 8 October 2026, if the server pulled it before the next commit | `8f9d312` | Trailing stops at 5 ATRs for longs and shorts, every position also closed once it went past its entry price the wrong way: backtested at -93% over six years (H119) and replaced within hours; kept in `config/comp_book_5atr_cap0.json` |
 | The restart after this push, 8 October 2026 | the commit that adds this row | Trailing stops back at 10 ATRs (shorts) and 8 (longs), plus a cap 3 ATRs past the entry price (H118: +1,466% over six years, 14-day composite 4.03, worst drawdown 33%) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not

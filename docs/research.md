@@ -2192,4 +2192,4 @@ at the entry price (`config/comp.json`: `short_stop_atr` 5, `ls_long_stop_atr` 5
 -4.91); the cap at the entry price lost with either trailing setting (-88% with 10/8 ATRs), and the
 5-ATR trails alone made +1,039% (2.92) against +1,435% (3.80) for 10/8. At the user's choice the
 competition account moved to 10/8-ATR trails with the cap 3 ATRs past the entry (H118: +1,466%,
-4.03, worst drawdown 33%), before the server pulled `8f9d312`.
+4.03, worst drawdown 33%) a few hours after `8f9d312`.
