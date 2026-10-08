@@ -289,7 +289,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `503ad01`, 8 October 2026 | `503ad01` | The same with trailing stops: shorts also at 10% above their lowest close, longs 8 ATRs below their highest (H107, H108), kept in `config/comp_book_stops_1h.json` |
 | The restart after `31305a8`, 8 October 2026 | `31305a8` | The same with the 24-hour block after a stop and each coin weighted by its HAR volatility forecast (H111, H112), kept in `config/comp_book_har_24h.json` |
 | The restart after `ed04bf8`, 8 October 2026 | `ed04bf8` | The same with a 6-hour block after a stop (the user's choice), kept in `config/comp_book_har_6h.json` |
-| The restart after this push, 8 October 2026 | the commit that adds this row | The same with a 12-hour block (H114: +1,435% over six years, 14-day composite 3.80, worst drawdown 36%) |
+| The restart after `4ae7681`, 8 October 2026 | `4ae7681` | The same with a 12-hour block (H114: +1,435% over six years, 14-day composite 3.80, worst drawdown 36%), kept in `config/comp_book_har_12h.json` |
+| The restart after this push, 8 October 2026 | the commit that adds this row | Trailing stops at 5 ATRs for longs and shorts, and every position also closed once it goes past its entry price the wrong way (the user's choice) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -438,10 +439,12 @@ the long-short book weighted by each coin's 30-day efficiency ratio, its shorts 
 EMAs, the book taking the whole account while BTC's filter is off; since the last change of 7
 October the rotation is off and the whole book follows 24/72-hour EMAs, holding a coin only
 while the gap between them is at least 0.4% (`ls_band`), and a stopped coin may be traded again
-after 12 hours (`stop_cooldown_hours`). Shorts are covered 10 ATRs or 10% above their lowest
-close since entry, whichever comes first, and longs sold 8 ATRs below their highest; each coin is
-weighted by its HAR volatility forecast (`ls_sizing`) times its efficiency. Sixteen alternatives
-are kept: `config/comp_book_har_24h.json` (the same with a 24-hour block),
+after 12 hours (`stop_cooldown_hours`). Shorts are covered 5 ATRs or 10% above their lowest
+close since entry, longs 5 ATRs below their highest, and any position once it closes past
+its entry price the wrong way (`stop_cap_entry_atr` 0), whichever comes first; each coin is
+weighted by its HAR volatility forecast (`ls_sizing`) times its efficiency. Seventeen alternatives
+are kept: `config/comp_book_har_12h.json` (10-ATR short and 8-ATR long trails, no entry cap),
+`config/comp_book_har_24h.json` (those with a 24-hour block),
 `config/comp_book_har_6h.json` (a 6-hour block),
 `config/comp_book_stops_1h.json` (a 1-hour block and last week's volatility), `config/comp_book_band_1h.json` (without the 10% and 8-ATR stops),
 `config/comp_book_band.json`

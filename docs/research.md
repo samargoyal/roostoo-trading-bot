@@ -2182,3 +2182,8 @@ breakout short-only (short below the N-hour low, flat above the N-hour high). Lo
 not help the longs (+406%, +738% and +37% over six years, worst drawdowns 71–87%). The shorts made
 money in the crashes (+31% to +74% on average over the eight) and lost 86–100% over six years at
 every lookback, giving it all back in the rallies between.
+
+On 8 October 2026 the user set the trailing stops to 5 ATRs for longs and shorts and capped them
+at the entry price (`config/comp.json`: `short_stop_atr` 5, `ls_long_stop_atr` 5,
+`stop_cap_entry_atr` 0, the 10% short stop and 12-hour block kept; the previous version in
+`config/comp_book_har_12h.json`), before H118's results.

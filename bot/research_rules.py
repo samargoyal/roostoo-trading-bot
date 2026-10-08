@@ -1511,8 +1511,11 @@ class ResearchRules:
         if info is None:
             return False
         info.highest_close = max(info.highest_close, s.close)
-        if ((c.ls_long_stop_atr > 0 and s.close < info.highest_close - c.ls_long_stop_atr * s.atr)
-                or (c.ls_long_stop_pct > 0 and s.close < info.highest_close * (1.0 - c.ls_long_stop_pct))):
+        ref = info.entry_close if c.stop_from_entry and info.entry_close > 0 else info.highest_close
+        if ((c.ls_long_stop_atr > 0 and s.close < ref - c.ls_long_stop_atr * s.atr)
+                or (c.ls_long_stop_pct > 0 and s.close < ref * (1.0 - c.ls_long_stop_pct))
+                or (c.stop_cap_entry_atr >= 0 and info.entry_close > 0
+                    and s.close < info.entry_close - c.stop_cap_entry_atr * s.atr)):
             reasons[pair] = EXIT_STOP
             return True
         return False

@@ -238,6 +238,11 @@ class StrategyConfig:
                                           # close since entry (beside short_stop_atr)
     ls_vol_power: float = 1.0             # H112: the book's weights 1 / volatility ** this (0 equal weights,
                                           # 2 inverse variance), re-scaled to the book's usual gross
+    stop_from_entry: bool = False         # H118: the book's stops measured from the price it entered at
+                                          # instead of the best close since (no trailing)
+    stop_cap_entry_atr: float = -1.0     # >= 0 (H118): beside the trailing stops, a position is also closed
+                                          # once it is this many ATRs beyond its entry price the wrong way
+                                          # (0: at the entry price), so the stop never sits past the entry
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day

@@ -71,12 +71,14 @@ from bot.research_rules import ResearchRules, _normal_scores
 class PositionInfo:
     entry_ts: int         # ms; when the trend position was opened
     highest_close: float  # highest hourly close since entry, for the trailing stop
+    entry_close: float = 0.0  # the close when it was opened (stop_from_entry; 0 in older state files)
 
 
 @dataclass
 class ShortInfo:
     entry_ts: int         # ms; when the short was opened
     lowest_close: float   # lowest hourly close since entry, for the trailing stop
+    entry_close: float = 0.0  # the close when it was opened (stop_from_entry; 0 in older state files)
 
 
 @dataclass
@@ -410,7 +412,7 @@ class Strategy(ResearchRules):
                 if pair == c.defensive_pair and (decision is None or decision.reasons.get(pair) != ENTRY):
                     continue
                 close = signals[pair].close if pair in signals else 0.0
-                state.positions[pair] = PositionInfo(entry_ts=ts, highest_close=close)
+                state.positions[pair] = PositionInfo(entry_ts=ts, highest_close=close, entry_close=close)
             elif not held and pair in state.positions:
                 del state.positions[pair]
                 if decision is not None and decision.reasons.get(pair) == EXIT_STOP:
@@ -427,7 +429,8 @@ class Strategy(ResearchRules):
             short = weights.get(pair, 0.0) < -c.min_position_weight
             if short and pair not in state.shorts:
                 close = signals[pair].close if pair in signals else 0.0
-                state.shorts[pair] = ShortInfo(entry_ts=ts, lowest_close=close if close > 0 else 1e18)
+                state.shorts[pair] = ShortInfo(entry_ts=ts, lowest_close=close if close > 0 else 1e18,
+                                               entry_close=max(close, 0.0))
             elif not short and pair in state.shorts:
                 del state.shorts[pair]
                 if decision is not None and decision.reasons.get(pair) == EXIT_SHORT_STOP:
@@ -658,8 +661,11 @@ class Strategy(ResearchRules):
         if pair in held and (c.short_stop_atr > 0 or c.short_stop_pct > 0):
             info = held[pair]
             info.lowest_close = min(info.lowest_close, s.close)
-            if ((c.short_stop_atr > 0 and s.close > info.lowest_close + c.short_stop_atr * s.atr)
-                    or (c.short_stop_pct > 0 and s.close > info.lowest_close * (1.0 + c.short_stop_pct))):
+            ref = info.entry_close if c.stop_from_entry and info.entry_close > 0 else info.lowest_close
+            if ((c.short_stop_atr > 0 and s.close > ref + c.short_stop_atr * s.atr)
+                    or (c.short_stop_pct > 0 and s.close > ref * (1.0 + c.short_stop_pct))
+                    or (c.stop_cap_entry_atr >= 0 and info.entry_close > 0
+                        and s.close > info.entry_close + c.stop_cap_entry_atr * s.atr)):
                 reasons[pair] = EXIT_SHORT_STOP
                 return True
         if c.short_entry_channel > 0:

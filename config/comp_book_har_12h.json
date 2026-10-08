@@ -2,7 +2,7 @@
   "strategy": {
     "book_mode": "long_short",
     "ls_trend": [24, 72],
-    "short_stop_atr": 5.0,
+    "short_stop_atr": 10.0,
     "short_exclude_external": true,
     "rotation_ranking": "multi",
     "rotation_horizons": [168, 336, 504],
@@ -14,8 +14,7 @@
     "ls_band": 0.004,
     "stop_cooldown_hours": 12,
     "short_stop_pct": 0.1,
-    "ls_long_stop_atr": 5.0,
-    "ls_sizing": "har",
-    "stop_cap_entry_atr": 0.0
+    "ls_long_stop_atr": 8.0,
+    "ls_sizing": "har"
   }
 }
