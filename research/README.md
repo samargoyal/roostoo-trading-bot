@@ -82,6 +82,7 @@ python -m research.h50_long_short   # the long-short screen
 | `h115_support_resistance.py` | Support/resistance breakouts and reversals, lookback the only parameter |
 | `h116_breakout_long.py` | Long-only breakouts, alone and beside the live book |
 | `h117_breakout_sides.py` | Breakouts long-only and short-only, lookbacks from 3 to 180 days |
+| `h118_stop_from_entry.py`, `h119_live_stops.py` | Stops capped at the entry price or measured from it; the 5-ATR, cap-at-entry configuration |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

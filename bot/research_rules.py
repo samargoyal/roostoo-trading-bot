@@ -424,6 +424,18 @@ class ResearchRules:
             return None                                                   # round 90
         if c.ls_vol_power != 1.0:                                         # H112
             self.__dict__.setdefault("_ls_sigma", {})[pair] = s.volatility
+        if (c.ls_pyramid_up != 1.0 or c.ls_pyramid_down != 1.0) and state is not None:   # H120
+            info = state.positions.get(pair) if side > 0 else state.shorts.get(pair)
+            entry = getattr(info, "entry_close", 0.0) if info is not None else 0.0
+            mult = 1.0
+            if entry > 0:
+                profit = (s.close / entry - 1.0) * (1.0 if side > 0 else -1.0)
+                move = self._hours_return(pair, c.ls_pyramid_hours) * (1.0 if side > 0 else -1.0)
+                if move < 0:
+                    mult = c.ls_pyramid_down
+                elif profit > 0:
+                    mult = c.ls_pyramid_up
+            self.__dict__.setdefault("_ls_pyr", {})[pair] = mult
         if c.ls_fill_gap:                                                 # H105: each coin's EMA gap
             self.__dict__.setdefault("_ls_gap", {})[pair] = abs(math.log(s.ls_fast / s.ls_slow))
         if c.ls_hysteresis > 0:                                           # round 94
@@ -613,6 +625,12 @@ class ResearchRules:
             new = {p: v * sig.get(p, 1.0) ** (1.0 - c.ls_vol_power) for p, v in raw.items()}
             after = sum(abs(v) for v in new.values())
             raw = {p: v * before / after for p, v in new.items()} if after > 0 else raw
+        if (c.ls_pyramid_up != 1.0 or c.ls_pyramid_down != 1.0) and raw:   # H120: pyramid winners
+            pyr = getattr(self, "_ls_pyr", {})
+            new = {p: v * pyr.get(p, 1.0) for p, v in raw.items()}
+            room = getattr(self, "_ls_slots", 0.0)
+            total = sum(abs(v) for v in new.values())
+            raw = {p: v * room / total for p, v in new.items()} if room > 0 and total > room else new
         if c.ls_fill_gap and raw:                                         # H105: fill the idle share by gap
             gaps = getattr(self, "_ls_gap", {})
             left = getattr(self, "_ls_slots", 0.0) - sum(abs(v) for v in raw.values())

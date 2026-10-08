@@ -243,6 +243,10 @@ class StrategyConfig:
     stop_cap_entry_atr: float = -1.0     # >= 0 (H118): beside the trailing stops, a position is also closed
                                           # once it is this many ATRs beyond its entry price the wrong way
                                           # (0: at the entry price), so the stop never sits past the entry
+    ls_pyramid_up: float = 1.0            # H120: a held position in profit whose ls_pyramid_hours return is
+                                          # with it gets this times its weight (from the book's cash)
+    ls_pyramid_down: float = 1.0          # ... and one whose return is against it this times its weight
+    ls_pyramid_hours: int = 24
     ls_vol_manage: str = ""               # "ewma" or "har": the book scaled down by BTC's volatility
                                           # forecast against its typical level (round 87)
     ls_cov_hours: int = 720               # hours of returns behind that covariance, re-solved once a day

@@ -52,8 +52,10 @@ class EfficiencyRatioTest(unittest.TestCase):
         before, live = (read(p)["strategy"] for p in ("config/comp_k2_3.json", "config/comp.json"))
         self.assertEqual(dict(before, ls_er_hours=720, rotation_weight=0.0, ls_absorb_rotation=1.0,
                               ls_trend=[24, 72], ls_band=0.004, stop_cooldown_hours=12, short_stop_pct=0.10,
-                              ls_long_stop_atr=5.0, short_stop_atr=5.0, stop_cap_entry_atr=0.0,
+                              ls_long_stop_atr=8.0, short_stop_atr=10.0, stop_cap_entry_atr=3.0,
                               ls_sizing="har"), live)
+        self.assertEqual(dict(live, ls_long_stop_atr=5.0, short_stop_atr=5.0, stop_cap_entry_atr=0.0),
+                         read("config/comp_book_5atr_cap0.json")["strategy"])
         live = dict(live, ls_long_stop_atr=8.0, short_stop_atr=10.0)
         del live["stop_cap_entry_atr"]
         self.assertEqual(live, read("config/comp_book_har_12h.json")["strategy"])
