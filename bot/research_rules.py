@@ -22,6 +22,10 @@ if TYPE_CHECKING:  # type hints only: bot.strategy imports this module
     from bot.strategy import StrategyState
 
 DAY_MS = 24 * HOUR_MS
+# Research (H138): {pair: {hour open ts: (lowest minute close, highest minute close)}}. When a pair is
+# here, intrabar_stops checks its stops against these instead of the hour's wicks, as a bot that
+# looked every minute would; the bars, and so the ATR, are unchanged.
+INTRABAR_EXTREMES: Dict[str, Dict[int, tuple]] = {}
 
 
 class ResearchRules:
@@ -1098,7 +1102,10 @@ class ResearchRules:
         if not levels or not ind.highs or len(ind.closes) < 2:
             return False
         level = min(levels)
-        if ind.highs[-1] < level:
+        high = ind.highs[-1]
+        if pair in INTRABAR_EXTREMES:
+            high = INTRABAR_EXTREMES[pair].get(ind.last_ts, (None, high))[1]
+        if high < level:
             return False
         self.stop_fills[pair] = max(level, ind.closes[-2])           # a gap past the level fills at the open
         return True
@@ -1117,7 +1124,10 @@ class ResearchRules:
         if not levels or not ind.lows or len(ind.closes) < 2:
             return False
         level = max(levels)
-        if ind.lows[-1] > level:
+        low = ind.lows[-1]
+        if pair in INTRABAR_EXTREMES:
+            low = INTRABAR_EXTREMES[pair].get(ind.last_ts, (low, None))[0]
+        if low > level:
             return False
         self.stop_fills[pair] = min(level, ind.closes[-2])
         return True
@@ -1420,24 +1430,31 @@ class ResearchRules:
     def _rotation_stops(self, ts: int, signals: Dict[str, Signal], state: StrategyState,
                         frozen: AbstractSet[str]) -> None:
         """Trailing stops on the rotation's picks: a pick that closes too far below its highest
-        close since it was picked leaves the plan (its slot stays in cash until the next
-        rebalance) and cannot be picked again for stop_cooldown_hours."""
+        close since it was picked, or (rotation_stop_entry) below the close it was picked at,
+        leaves the plan (its slot stays in cash until the next rebalance) and cannot be picked
+        again for stop_cooldown_hours."""
         c = self.cfg
         for pair in [p for p in state.rotation_highs if state.rotation_plan.get(p, 0.0) <= 0]:
             del state.rotation_highs[pair]
+        if c.rotation_stop_entry >= 0:
+            for pair in [p for p in state.rotation_entry_close if state.rotation_plan.get(p, 0.0) <= 0]:
+                del state.rotation_entry_close[pair]
         for pair, weight in list(state.rotation_plan.items()):
             s = signals.get(pair)
             if weight <= 0 or pair == c.defensive_pair or s is None or pair in frozen:
                 continue
             high = max(state.rotation_highs.get(pair, s.close), s.close)
             state.rotation_highs[pair] = high
+            entry = state.rotation_entry_close.setdefault(pair, s.close) if c.rotation_stop_entry >= 0 else 0.0
             hit = ((c.rotation_stop_atr > 0 and s.close < high - c.rotation_stop_atr * s.atr)
+                   or (c.rotation_stop_entry >= 0 and s.close < entry * (1.0 - c.rotation_stop_entry))
                    or (c.rotation_stop_pct > 0 and s.close < high * (1.0 - c.rotation_stop_pct))
                    or (c.rotation_donchian_exit > 0
                        and s.close < self._channel(pair, c.rotation_donchian_exit, high=False)))
             if hit:
                 del state.rotation_plan[pair]
                 del state.rotation_highs[pair]
+                state.rotation_entry_close.pop(pair, None)
                 state.rotation_cooldown[pair] = ts + c.stop_cooldown_hours * HOUR_MS
         for pair in [p for p, until in state.rotation_cooldown.items() if until <= ts]:
             del state.rotation_cooldown[pair]

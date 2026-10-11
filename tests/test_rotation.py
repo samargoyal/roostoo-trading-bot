@@ -203,6 +203,28 @@ class ResidualAndZTest(unittest.TestCase):
         later = make(market(), rotation_stop_atr=8.0).decide(3 * DAY, 1.0, {}, state)
         self.assertIn("SOL/USD", later.rotation)
 
+    def test_entry_stop_drops_a_pick_that_closes_below_its_entry_price(self):
+        state = StrategyState()
+        make(market(), rotation_stop_entry=0.0).decide(DAY, 1.0, {}, state)
+        self.assertEqual(state.rotation_entry_close["SOL/USD"], 110.0)
+        dipped = market()
+        dipped["SOL/USD"] = sig(0.40)._replace(close=110.0)              # at the entry: kept
+        self.assertIn("SOL/USD", make(dipped, rotation_stop_entry=0.0).decide(DAY + HOUR_MS, 1.0, {}, state).rotation)
+        dipped["SOL/USD"] = sig(0.40)._replace(close=109.9)              # just below it: out
+        d = make(dipped, rotation_stop_entry=0.0).decide(DAY + 2 * HOUR_MS, 1.0, {}, state)
+        self.assertNotIn("SOL/USD", d.rotation)
+        self.assertNotIn("SOL/USD", state.rotation_entry_close)
+        self.assertIn("ETH/USD", d.rotation)
+
+    def test_entry_stop_with_a_margin(self):
+        state = StrategyState()
+        make(market(), rotation_stop_entry=0.05).decide(DAY, 1.0, {}, state)
+        dipped = market()
+        dipped["SOL/USD"] = sig(0.40)._replace(close=105.0)              # 4.5% below the entry: kept
+        self.assertIn("SOL/USD", make(dipped, rotation_stop_entry=0.05).decide(DAY + HOUR_MS, 1.0, {}, state).rotation)
+        dipped["SOL/USD"] = sig(0.40)._replace(close=104.0)              # 5.5% below: out
+        self.assertNotIn("SOL/USD", make(dipped, rotation_stop_entry=0.05).decide(DAY + 2 * HOUR_MS, 1.0, {}, state).rotation)
+
     def test_picks_must_beat_btc_and_btc_fills_the_rest(self):
         signals = market()
         signals["BTC/USD"] = sig(0.25)                      # only SOL (0.40) beats BTC

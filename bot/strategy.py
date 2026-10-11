@@ -507,7 +507,8 @@ class Strategy(ResearchRules):
             state.rotation_plan = plan
             state.rotation_plan_ts = ts
             state.rotation_settings = settings
-        if c.rotation_stop_atr > 0 or c.rotation_stop_pct > 0 or c.rotation_donchian_exit > 0:
+        if (c.rotation_stop_atr > 0 or c.rotation_stop_pct > 0 or c.rotation_stop_entry >= 0
+                or c.rotation_donchian_exit > 0):
             self._rotation_stops(ts, signals, state, frozen)
         self._research_rotation_exits(ts, signals, state, frozen)
         plan = dict(state.rotation_plan)

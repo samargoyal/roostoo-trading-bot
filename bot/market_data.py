@@ -5,6 +5,7 @@ Roostoo history: they warm up the indicators, drive the live signals and feed th
 backtest. Backtest history is cached as CSV under data/.
 """
 import csv
+import json
 import logging
 import os
 import time
@@ -67,6 +68,11 @@ class BinanceClient:
         rows = self._get("/fapi/v1/fundingRate",
                          {"symbol": symbol, "startTime": start_ms, "endTime": end_ms, "limit": 1000})
         return [(int(r["fundingTime"]), float(r["fundingRate"])) for r in rows]
+
+    def book_tickers(self, symbols: List[str]) -> Dict[str, Tuple[float, float]]:
+        """Best bid and ask now, {symbol: (bid, ask)}, for several symbols in one request."""
+        rows = self._get("/api/v3/ticker/bookTicker", {"symbols": json.dumps(symbols, separators=(",", ":"))})
+        return {r["symbol"]: (float(r["bidPrice"]), float(r["askPrice"])) for r in rows}
 
     def recent_closed(self, symbol: str, count: int, at_ms: Optional[int] = None) -> List[Bar]:
         """The last `count` hourly candles that had closed by `at_ms` (default: now)."""

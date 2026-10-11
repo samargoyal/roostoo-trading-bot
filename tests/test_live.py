@@ -101,6 +101,90 @@ class LiveBotTest(unittest.TestCase):
         self.assertEqual(len(self.rows("equity.csv")), 2)
 
 
+class MinuteCheckTest(unittest.TestCase):
+    """live.minute_checks (H138): early cycles between the hours that only exit."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        series, prices = market()
+        self.binance = FakeBinance(series)
+        self.exchange = FakeExchange(prices)
+        cfg = make_config()
+        cfg.live.minute_checks = True
+        self.bot = LiveBot(cfg, self.dir, client=self.exchange, binance=self.binance, sleep=lambda s: None)
+        self.bot.start()
+        self.bot.cycle()
+        self.later = NOW + 20 * 60 * 1000
+        self.exchange.now = self.later
+        self.next_run = NOW + HOUR_MS
+
+    def tearDown(self):
+        shutil.rmtree(self.dir)
+
+    def check(self):
+        return self.bot.minute_check(self.exchange.ticker(), self.exchange.now, self.next_run)
+
+    def test_quiet_minute_sends_nothing(self):
+        placed = len(self.exchange.placed)
+        self.assertFalse(self.check())
+        self.assertEqual(len(self.exchange.placed), placed)
+
+    def test_no_early_cycle_just_before_the_hourly_one(self):
+        self.exchange.prices["BTC/USD"] *= 0.3
+        self.exchange.now = self.next_run - 60_000
+        for _ in range(5):
+            self.assertFalse(self.check())
+
+    def test_a_stop_sends_only_that_exit(self):
+        from bot.reasons import ENTRY, EXIT_STOP
+        from bot.strategy import Decision, Strategy
+        real = Strategy.decide
+
+        def decide(strategy, ts, equity, weights, state, frozen=frozenset()):
+            d = real(strategy, ts, equity, weights, state, frozen)
+            targets, reasons = dict(d.targets), dict(d.reasons)
+            targets["ETH/USD"], reasons["ETH/USD"] = 0.0, EXIT_STOP        # ETH stopped out
+            targets["BTC/USD"], reasons["BTC/USD"] = targets["BTC/USD"] + 0.2, ENTRY   # and a buy wanted
+            return Decision(d.ts, d.risk_on, d.exposure_limit, d.drawdown, d.brake_on, targets, reasons,
+                            d.scores, d.rotation)
+        placed = len(self.exchange.placed)
+        Strategy.decide = decide
+        try:
+            self.assertTrue(self.check())
+        finally:
+            Strategy.decide = real
+        new = self.exchange.placed[placed:]
+        self.assertTrue(new)
+        self.assertEqual({(o["Pair"], o["Side"]) for o in new}, {("ETH/USD", "SELL")})
+
+    def test_btc_filter_must_stay_off_before_the_rotation_leaves(self):
+        picks = {p for p, w in self.bot.state.rotation_plan.items() if w > 0}
+        self.assertTrue(picks)
+        self.assertTrue(self.bot.last_trend_on)
+        from bot.strategy import Strategy
+        real = Strategy.signals
+
+        def signals(strategy):                                             # BTC's filter turns off
+            out = real(strategy)
+            btc = out["BTC/USD"]
+            out["BTC/USD"] = btc._replace(ema_trend_fast=btc.ema_trend_slow * 0.99)
+            return out
+        placed = len(self.exchange.placed)
+        Strategy.signals = signals
+        try:
+            self.assertFalse(self.check())
+            self.assertFalse(self.check())
+            self.assertEqual(len(self.exchange.placed), placed)            # not yet: 2 minutes
+            self.assertTrue(self.check())                                  # the third minute
+        finally:
+            Strategy.signals = real
+        new = self.exchange.placed[placed:]
+        self.assertTrue(new)
+        self.assertTrue(all(o["Side"] == "SELL" and o["Pair"] in picks for o in new))
+        self.assertFalse(self.bot.last_trend_on)
+        self.assertFalse(self.check())                                     # done for this turn
+
+
 class HelpersTest(unittest.TestCase):
     def test_portfolio_value_counts_locked_funds(self):
         wallet = {"USD": {"Free": 100.0, "Lock": 50.0}, "BTC": {"Free": 0.5, "Lock": 0.5},

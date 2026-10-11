@@ -2249,6 +2249,85 @@ of the return between them (losers bounce, and the sleeve has no stop). Buying t
 better on return and the 14-day yardstick with either book. For comparison, B1 (55% winners beside
 the efficiency book, the book alone in bear markets) made +98,491%, 14.89 and +36.2% over the crashes.
 
+## Scalping with resting limit orders (H125)
+
+The user asked for scalping strategies again. H86 had entered every scalp at a bar's close, paying
+the taker fee and the spread to get in. `research/h125_passive_scalping.py` tests the structure
+that suits the 0.05% maker fee instead: a limit order resting below the price (above it, for
+shorts) that fills only when the market trades through it, and a profit target that is itself a
+resting limit; stops and time exits at market. Shorts can be opened with a limit price, but /v6
+charges 0.1% to open and close and closes at market, so only longs get the maker fee on both legs.
+Four designs on 5-minute bars of 16 coins, 2020–26, written down before running: orders 2 or 3 sd
+beyond the 1-hour VWAP (PS1), the same only with the 4h/16h trend (PS2), 1.5 five-minute ATRs from
+the close (PS3), and the bot's hour, 0.5 or 1 hourly ATR from the hour's close (PS4). Fills were
+tested on a touch and, as a stress, 10 basis points through.
+
+| Design (fills on a touch) | Trades | At target | Gross bp/trade, long / short | Net bp/trade, long / short | Folds net > 0 |
+|---|---|---|---|---|---|
+| PS1 VWAP band, k = 2 | 555k / 543k | 32% | -18 / -20 | -34 / -43 | 0/6 |
+| PS1 VWAP band, k = 3 | 236k / 228k | 37% | -15 / -19 | -31 / -43 | 0/6 |
+| PS2 trend dips | 254k / 259k | 33% | -17 / -18 | -33 / -42 | 0/6 |
+| PS3 ATR ladder | 223k / 210k | 62% | -0 / -3 | -14 / -26 | 0/6 |
+| PS4 hourly, m = 0.5 | 257k / 248k | 29% | -15 / -21 | -32 / -45 | 0/6 |
+| PS4 hourly, m = 1 | 85k / 80k | 28% | -26 / -36 | -43 / -60 | 0/6 |
+
+All 28 cases lost money in every fold, and the stress fills lost 10 to 18 basis points a trade
+more. Resting orders fill when the price is running at them, so the gross edge is zero at best
+(the ATR ladder) and clearly negative for the VWAP and hourly bands, where the stop or the time
+exit comes before the reversion. Even a zero gross edge cannot pay the 10 basis points of a maker
+round trip. With H60, H86 and H87 this closes scalping on Roostoo's fees: no entry style, market or
+passive, has a positive edge inside an hour on these coins.
+
+## Scalps under a minute: 1-minute and 1-second bars (H126, H127)
+
+The user asked for scalping with every trade closed within a minute. `bot/scalper.py` now does that
+(off by default; it enters only when Roostoo's own price already matches Binance's, so it never
+trades on Roostoo's delay in copying prices), and two tests measured whether any such scalp pays.
+
+**H126** (`research/h126_minute_scalping.py`, data from `research/klines1m.py`) used 1-minute bars of
+64 crypto pairs, September 2025 to September 2026: a signal at a minute's close, in at the next
+minute's open at market, out within that minute (a target of 1 or 2 sd as a resting limit, a 2 sd
+stop, or the minute's close). Six families, longs and shorts, fixed before running: bursts
+followed and faded, taker flow, hour breakouts, BTC leading the altcoins, pullbacks in a trend.
+All 32 lost 24 to 34 basis points a trade after costs, in every quarter; following a burst and
+fading it lost about the same before fees, so there is no direction to the next minute to trade.
+
+**H127** (`research/h127_second_scalping.py`, data from `research/klines1s.py`) ran the scalper
+second by second on 1-second bars of 20 pairs (majors and cheap, volatile coins), July to
+September 2026: a signal read every second, the order one second later, the exit checked on each
+second's high and low until the target, the stop or 55 seconds.
+
+| Family (longs) | Trades a day | Gross bp a trade | Net bp a trade | Months net > 0 |
+|---|---|---|---|---|
+| S1 follow a 15 bp move in 20 s (the scalper's rule), 25/20 bp exits | 3,402 | -3.7 | -23.0 | 0/3 |
+| S1 follow a 30 bp move in 20 s | 739 | -3.4 | -22.1 | 0/3 |
+| S2 fade a 30 bp move in 20 s | 718 | -2.7 | -21.5 | 0/3 |
+| S3 volume burst | 4,550 | -4.1 | -23.8 | 0/3 |
+| S4 taker flow | 12,979 | -3.5 | -23.3 | 0/3 |
+| S5 BTC leads | 2,346 | -2.3 | -21.9 | 0/3 |
+| S6 spike fade | 2,002 | -2.8 | -22.4 | 0/3 |
+
+All 32 cases (shorts and the scaled exits are no better) lost money in every month. The gross
+figures include the spread, so the moves themselves are worth about nothing; the 15 to 20 basis
+points of fees on each round trip are the loss. The cheapest pairs to trade lost about 20 a
+trade, the widest 32 to 36. At the scalper's $1,000 a trade, its own rule costs about $2.30 a
+trade; its daily loss limit ($200) would stop it after roughly 90 trades a day.
+
+A selectivity check afterwards: following or fading only the biggest moves, 50, 75, 100 or 150
+basis points in 20 seconds (from about 160 trades a day across the 20 pairs down to 4), with the
+25/20 point exits or exits at the move's own size. Fewer, bigger signals did not make better
+trades: every case lost 17 to 31 basis points a trade after costs, before fees between -11 and
++2, and none made money in any month.
+
+**H128** (`research/h128_hot_coins.py`) scalped only the 3 pairs most in play at a time, chosen
+from the hours before: the biggest 24-hour volume surge against the week before (D1), the
+biggest 24-hour movers (D2), the most volatile over 24 hours (D3), or the busiest last hour
+against the day before (D4). Same simulation and signals as H127 (follow or fade a 15 or 30 bp
+move in 20 seconds, volume bursts, spike fades; longs and shorts). Picking the hot pairs raised the
+win rate by 4 to 7 points but not the result: every case lost 21 to 26 basis points a trade after
+costs, within a point of the same signal on all 20 pairs, and none made money in any month. The
+hot pairs move more, but no more predictably within a minute.
+
 ## The odds of a 6.6% week (H129)
 
 On 12 October 2026 the account was at -6% with six days of the competition left. Cash cannot win
@@ -2268,3 +2347,151 @@ B1 most often gained 6.6% in six days, overall and in the latest year, for about
 a 5% loss as the book alone. The user chose B1 with a 60% rotation (`config/comp_b1_60.json`),
 live from 12 October 2026: a little more often up 6.6% than at 55%, for a little more often down 5%.
 Even B1 reaches the gain in only about one window in five.
+
+## A strategy that wins 60% of its trades with wins 1.5 times its losses (H130, H131)
+
+The user asked for a strategy whose trades win at least 60% of the time with the average win well
+above the average loss (taken as 1.5 times), returns secondary, fitted on history and then run on
+the competition's first week. Protocol, fixed before running: develop on entries from October 2020
+to October 2024, validate on October 2024 to October 2026, and (H131) a holdout from October 2018 to
+October 2020; a design must meet the brief, with a positive mean net return, in each. Trades: a
+signal at a daily close on any Roostoo crypto pair, in at the next hour at market, out at a target
+(a limit), a stop or a time limit, checked hour by hour (the stop first when both are touched);
+Roostoo's fees and half the spread.
+
+`research/h130_high_win_rate.py` searched 1,650 designs: dips in uptrends (by size, by RSI(2),
+three down days), pullbacks after a new high, capitulation days, crowded funding, longs and their
+short mirrors, with targets of 0.5 to 3 ATRs, stops of 1 to 4 and holding times of 2 to 10 days.
+None met the brief in development. Dip buying won up to 80% of its trades but lost more on a loser
+than it made on a winner; the nearest miss was buying every pair at the close of a day BTC fell 6%
+or more (58% and a ratio of 1.26 in development, 57% and 1.80 in validation).
+
+`research/h131_capitulation.py` refined that family (1,008 designs: BTC down 5 to 8%; filters on
+the pair's day, its trend, BTC's trend, funding, how far it fell; targets, stops and holding
+times). One design met the brief in all three periods: **on a day BTC closes down 6% or more, buy
+each pair that closed in the upper half of its day's range; sell at +1.5 ATRs (a limit), at a stop
+3 ATRs down, or after 3 days.**
+
+| Period | Trades | Crash days | Win rate | Average win | Average loss | Ratio | Mean net |
+|---|---|---|---|---|---|---|---|
+| Development, 2020-24 | 213 | 31 | 64.3% | +13.5% | -8.7% | 1.54 | +5.5% |
+| Validation, 2024-26 | 71 | 4 | 74.6% | +15.7% | -7.2% | 2.18 | +9.9% |
+| Holdout, 2018-20 | 46 | 12 | 76.1% | +10.8% | -4.0% | 2.70 | +7.3% |
+| The competition, 4-11 October 2026 | 0 | 0 | | | | | |
+
+It meets the brief, with three cautions. It trades only on crash days, about six a year (49 from
+2018 to 2026, two thirds of them profitable on average, the median day +4.2%, the worst -31% on 18
+May 2021), so its trades come in correlated batches: validation's 71 trades are mostly one day (48
+on 11 October 2025). Its neighbours in development reach the win rate but fall just short of the
+ratio (a 2-ATR stop: 64% and 1.45). And it was the one design of 1,008 to pass all three periods.
+BTC fell at most 2.6% in a day in the competition's first week, so it made no trade there.
+
+`research/h132_frequent_bounces.py` then required the same brief from signals that trade often (500
+trades or more in development, at least one in the competition's first week): a pair falling k sd
+on the day and closing in the upper half of its range (alone, in its uptrend, or with BTC in a bull
+market; shorts mirrored), BTC down 2, 3 or 4% with the pair closing in the upper half, 70 or 80% of
+pairs down with the pair in the upper half, and an hourly version (an hour down 3 or 4 sd on twice
+the usual volume, closing in its upper half; out within 6 to 24 hours). None of 513 designs met the
+brief. The frequent ones settle at a win rate of 50 to 57% with wins 1.1 to 1.8 times losses. The
+nearest, BTC down 3% with the pair in the upper half (out at +1.5 ATRs, a 3-ATR stop or 3 days),
+won 61.7% with a ratio of 1.23 in development but 52.4% in validation and 55.1% in the holdout,
+and made no trade in the competition week; the hourly bounce (3 sd, out at +1 ATR, a 3-ATR stop or
+24 hours) won 57% (ratio 1.67) in development, 53% (1.37) in validation and 46% (1.08) in the
+holdout, about one trade every two to four days, and one winning trade (+2.3%) in the competition
+week. Across the three rounds, designs that trade often reach a 60% win rate only with wins smaller
+than losses, or wins 1.5 times losses only with a win rate near 50%.
+
+`research/h133_minute_watch.py` took up the user's point that the bot can watch every pair every few
+seconds (one ticker call prices all of them, 30 calls a minute): signals on 1-minute bars of all 64
+pairs (minute and five-minute flushes on heavy volume closing off their lows, a break of the last
+hour's low reclaimed within the minute, shorts mirrored; alone or with the day's trend), held 30
+minutes to 6 hours with targets and stops in units of the pair's hourly move; developed on September
+2025 to March 2026, validated on March to October 2026, then the competition from 4 October. None
+of 405 designs met the brief, and the families lost money after costs in development, validation and
+the competition alike: the flush buys won 34 to 47% (-0.1 to -0.6% a trade), the reclaims 33%
+(-0.2 to -0.3%), and the only win rates above 60% (flushes in an uptrend, 68 to 78%) came with wins
+0.4 times the losses. Watching faster finds more signals, but none with an edge after fees.
+
+`research/h134_strong_coin_dips.py` (the user: keep experimenting) bought hourly weakness in coins
+strong on longer horizons, several trades a day: RSI(2) below 10 or 5 above the 50-day average and up
+on the week; a 1- or 4-hour dip of 2 or 3 sd beyond what the pair's beta to BTC implies, in the same
+uptrend; a 2 sd hourly drop in one of the 10 best pairs over 14 days; shorts mirrored. None of 351
+designs met the brief or a looser one (55%, 1.2 times). The best, the 4-hour residual dip of 2 sd
+(out at +1.5 daily moves, a 2-move stop or 12 hours, about 4 trades a day), made money in every
+historical period (+0.52%, +0.18% and +0.27% a trade in development, validation and the holdout,
+winning 47 to 53% with a ratio of 1.1 to 1.3) but lost in the competition week (21 trades, -0.63%).
+The shorts lost money throughout.
+
+`research/h135_meta_labels.py` meta-labeled H134's long signals: a gradient-boosted classifier,
+trained on development trades only (features at entry: the signals, residual depth, RSI(2),
+volatility, trend, BTC's moves, volume, time of day, beta, spread, breadth, the 14-day rank), rates
+each candidate, and only trades above a cutoff (the lowest out-of-fold probability whose
+development trades won 62%) are taken. The ranking held out of sample: in validation the win rate
+and mean rose steadily with the probability, from 45.9% (-0.05% a trade, 18 a day) for all
+candidates to 63.4% (+1.43% a trade, ratio 1.41, 0.9 a day) at the cutoff of 0.67. The holdout was
+weaker at the same cutoff (57.9%, ratio 0.98, +0.65%), and the competition week, a selloff, gave one
+trade above it (-0.27%) and losses below it (50 trades at 0.50 or more won 32%).
+
+`research/h136_meta_exits.py` re-ran H135 with wider exits (targets of 2, 2.5 and 3 daily moves,
+held 12 or 24 hours). The best, a target of 2 held 12 hours, won 64.6% in validation with wins 1.49
+times losses (+1.66% a trade, 0.7 a day), but 53.3% (ratio 0.93, +0.13%) in the holdout and made no
+trade in the competition week. The other exits were weaker in validation. The holdout ratio stayed
+near 1 throughout.
+
+## Faster decisions for B1, and randomness checks (H137)
+
+The user asked to use the 30 calls a minute for the live strategy, and for checks at the 5% level.
+
+Faster decisions do not help B1 (backtests from October 2023 to October 2026, taker fees):
+
+| B1 60/40 | Gain of 6.6% in six days | Loss of 10% in six days | Three years | Worst drawdown |
+|---|---|---|---|---|
+| Rotation re-picked daily (live) | 22.9% | 4.2% | +2,086% | 50% |
+| Every 12 hours | 22.5% | 4.7% | +1,339% | 53% |
+| Every 4 hours | 21.8% | 4.6% | +992% | 59% |
+| Every hour | 21.4% | 6.3% | +364% | 68% |
+| Stops on the hour's high or low (within the hour) | 22.6% | 4.3% | +1,696% | 52% |
+
+`research/h137_significance.py`, fixed before running:
+
+- **B1 and the kept setups**, the mean daily return over the three years, a moving-block bootstrap
+  (7-day blocks, 10,000 resamples): B1 60/40 p = 0.0013 (by year 0.012, 0.096 and 0.055); B1 55/45
+  0.0018; K2 with 3 coins 0.0004; R54b 0.0005; the book alone on 24/72-hour EMAs (live 9 to 12
+  October) 0.25. Deflated Sharpe ratios (the chance of beating the best of N unskilled designs):
+  B1 60/40 0.92 (N = 100) and 0.79 (N = 1,000); K2 0.96 and 0.88; R54b 0.95 and 0.86; the fast
+  book 0.11 and 0.04.
+- **H135's meta-labeled dip buys** at the cutoff: against the same number of candidates picked at
+  random (1,000 shuffles), p = 0.001 for the mean and the win rate in validation (63.4% and +1.43%
+  against 46.3% and -0.02% at random) and p = 0.003 and 0.001 in the holdout (57.9% and +0.65%
+  against 51.6% and +0.11%); the mean above zero (whole days resampled) p = 0.0012 in validation and
+  0.13 in the holdout.
+- **H131's capitulation buy**, whole days resampled: p = 0.0105, 0.0039 (four days) and 0.0045 in
+  development, validation and the holdout, 0.0002 over all 49 days, against a Bonferroni level of
+  0.00005 for the 1,008 designs tried.
+- **H134's 4-hour residual dip**: p = 0.0002 in development, 0.17 in validation, 0.11 in the
+  holdout.
+
+So B1's edge is unlikely to be luck before allowing for the designs tried (and less certain after:
+a deflated Sharpe ratio of 0.79 to 0.92), the fast book's backtest edge is indistinguishable from
+luck, the meta-label model picks better trades than chance in both out-of-sample periods though
+their profit is significant only in validation, the capitulation buy does not survive the
+correction for 1,008 tries, and the residual dip's edge out of sample could be noise.
+
+`research/h138_minute_checks.py` (the user: check the book and the rotation's exit every minute).
+Stops checked on each minute's close, simulated with each hour's lowest and highest minute close
+(option `INTRABAR_EXTREMES` in `bot/research_rules.py`, the ATR unchanged), October 2025 to 11
+October 2026:
+
+| B1 60/40, stops checked | Year | Worst drawdown | Stop exits | Competition week |
+|---|---|---|---|---|
+| On the hour's close (live) | +82.5% | 31.2% | 649 | -5.7% |
+| Every minute | +81.7% | 30.4% | 721 | -5.6% |
+| Every wick (H121) | +78.5% | 30.8% | 733 | -5.7% |
+| 8-ATR long stops, hourly | +72.7% | 31.0% | 1,212 | -7.2% |
+| 8-ATR long stops, every minute | +62.6% | 30.7% | 1,335 | -7.3% |
+
+Minute checks are a wash for B1's stops (a point less return, a point less drawdown), and adding
+long stops cost return either way. BTC's rotation filter turned 13.8 times a year since 2018; with
+minute data (since September 2025) the cross showed within the hour's first minutes, and acting on
+it then would have added about +1.2% over the 9 turns off (the rotation out sooner) and lost about
+0.5% over the 10 turns on, about +0.7% over the year in all.

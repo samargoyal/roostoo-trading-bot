@@ -23,6 +23,7 @@ delisted), instead of failing, and the strategy plans the rest of the portfolio 
 (strategy.plan_around_halts).
 """
 import argparse
+import copy
 import json
 from concurrent.futures import ThreadPoolExecutor
 import logging
@@ -40,7 +41,8 @@ from bot.execution import Executor, OrderResult, halted_pairs, parse_rules
 from bot.indicators import Signal
 from bot.journal import Journal, StateStore, setup_logging, utc_iso
 from bot.market_data import HOUR_MS, Bar, BinanceClient, BinanceError, binance_symbol
-from bot.planner import PlannedTrade, plan_trades
+from bot.planner import COVER, SELL, PlannedTrade, plan_trades
+from bot.reasons import EXIT_SHORT_STOP, EXIT_STOP
 from bot.roostoo import RoostooAuthError, RoostooClient, RoostooError
 from bot.strategy import Decision, Strategy, StrategyState
 
@@ -150,6 +152,12 @@ class LiveBot:
         self.frozen: Set[str] = set()   # pairs Roostoo is not trading, as of the last check
         self.breakers = Breakers(cfg.breakers) if cfg.breakers.enabled else None
         self.binance_failed: Set[str] = set()   # pairs whose candles could not be fetched this cycle
+        # minute checks (live.minute_checks): what the last hourly cycle saw and did
+        self.last_trend_on: Optional[bool] = None
+        self.last_weights: Dict[str, float] = {}
+        self.last_equity = 0.0
+        self.filter_off_minutes = 0
+        self.early_cycles: Dict[int, int] = {}  # hour -> early cycles run in it
 
     # ---- lifecycle -------------------------------------------------------------
 
@@ -195,6 +203,7 @@ class LiveBot:
             if now >= next_run:
                 return
             if now >= next_sample:
+                quotes = None
                 try:
                     quotes = self.client.ticker()
                     self.sampler.add(quotes, now)
@@ -202,12 +211,25 @@ class LiveBot:
                         self.breakers.sample(quotes)
                 except RoostooError as exc:
                     log.warning("ticker sample failed: %s", exc)
-                next_sample = now + self.cfg.live.ticker_sample_sec * 1000
+                minute = self.cfg.live.minute_checks
+                if minute and quotes:
+                    try:
+                        self.minute_check(quotes, now, next_run)
+                    except RoostooAuthError:
+                        raise
+                    except Exception:  # noqa: BLE001 - the hourly cycle still runs; leave a traceback
+                        log.exception("minute check failed")
+                every = min(60, self.cfg.live.ticker_sample_sec) if minute else self.cfg.live.ticker_sample_sec
+                next_sample = now + every * 1000
             self.sleep(min(15.0, max((next_run - now) / 1000.0, 0.1)))
 
     # ---- one hourly cycle ------------------------------------------------------
 
-    def cycle(self) -> None:
+    def cycle(self, provisional: Optional[Dict[str, Dict[str, float]]] = None,
+              only: Optional[Callable[[PlannedTrade], bool]] = None) -> None:
+        """One cycle. With `provisional` (Roostoo quotes, from a minute check) the last hourly
+        cycle's candles plus a bar for the hour so far at those prices stand in for Binance's,
+        and only the trades `only` accepts are sent."""
         self.client.sync_clock()
         if not self.dry_run and self.client.pending_count():
             log.warning("cancelling orders left open: %s", self.client.cancel_order())
@@ -215,10 +237,13 @@ class LiveBot:
         started = self.client.now_ms()
         strategy = Strategy(self.cfg.strategy, external_scores=self._funding_scores(started))
         universe = self.cfg.strategy.universe
-        self.binance_failed = set()
-        # Binance candles for ~46 pairs, a few pages each: fetched six at a time.
-        with ThreadPoolExecutor(max_workers=6) as pool:
-            history = dict(zip(universe, pool.map(lambda p: self._bars(p, started), universe)))
+        if provisional is not None:
+            history = self._provisional_history(provisional, started)
+        else:
+            self.binance_failed = set()
+            # Binance candles for ~46 pairs, a few pages each: fetched six at a time.
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                history = dict(zip(universe, pool.map(lambda p: self._bars(p, started), universe)))
         for pair in universe:
             for bar in history[pair]:
                 strategy.update(pair, bar)
@@ -239,6 +264,8 @@ class LiveBot:
                                    frozen if self.cfg.strategy.plan_around_halts else frozenset())
         trades = plan_trades(decision, weights, equity, now, self.state.last_fill_ts,
                              self.cfg.execution, self.cfg.strategy.min_position_weight, frozen)
+        if only is not None:
+            trades = [t for t in trades if only(t)]
         limit_only: Set[str] = set()
         if self.breakers is not None:
             self.breakers.sample(quotes)
@@ -266,6 +293,73 @@ class LiveBot:
         strategy.reconcile(now, weights, decision, self.state)
         self._record_equity(equity, cash, values, decision)
         self.store.save(self.state)
+        self.last_weights, self.last_equity = dict(weights), equity
+        if provisional is None:
+            regime = signals.get(self.cfg.strategy.regime_pair)
+            self.last_trend_on = None if regime is None else regime.ema_trend_fast > regime.ema_trend_slow
+            self.filter_off_minutes = 0
+
+    # ---- minute checks (live.minute_checks, research H138) ------------------------
+
+    def _provisional_history(self, quotes: Dict[str, Dict[str, float]], now_ms: int) -> Dict[str, List[Bar]]:
+        """The last hourly cycle's candles plus one for the hour so far at Roostoo's mid price."""
+        out = {}
+        hour = now_ms // HOUR_MS * HOUR_MS
+        for pair in self.cfg.strategy.universe:
+            bars = list(self.history.get(pair, []))
+            q = quotes.get(pair) or {}
+            bid, ask = float(q.get("MaxBid") or 0), float(q.get("MinAsk") or 0)
+            if bars and bid > 0 and ask > 0 and bars[-1].ts < hour:
+                price, last = (bid + ask) / 2, bars[-1].close
+                bars.append(Bar(max(hour, bars[-1].ts + HOUR_MS), last, max(last, price), min(last, price), price, 0.0))
+            out[pair] = bars
+        return out
+
+    def minute_check(self, quotes: Dict[str, Dict[str, float]], now_ms: int, next_run: int) -> bool:
+        """Re-run the strategy on the minute's prices; on a stop, or BTC's filter staying off for
+        live.minute_persist minutes, run an early cycle that only exits. Returns whether it did."""
+        live = self.cfg.live
+        hour = now_ms // HOUR_MS
+        if (not self.history or self.last_trend_on is None or next_run - now_ms < 120_000
+                or self.early_cycles.get(hour, 0) >= live.minute_max_early):
+            return False
+        strategy = Strategy(self.cfg.strategy, external_scores=self.funding_table)
+        for pair, bars in self._provisional_history(quotes, now_ms).items():
+            for bar in bars:
+                strategy.update(pair, bar)
+        signals = strategy.signals()
+        regime = signals.get(self.cfg.strategy.regime_pair)
+        trend_on = regime is not None and regime.ema_trend_fast > regime.ema_trend_slow
+        picks = {p for p, w in self.state.rotation_plan.items() if w > 0}
+        if self.last_trend_on and not trend_on and picks:
+            self.filter_off_minutes += 1
+        else:
+            self.filter_off_minutes = 0
+        filter_exit = self.filter_off_minutes >= live.minute_persist
+        decision = strategy.decide(now_ms, self.last_equity or 1.0, self.last_weights, copy.deepcopy(self.state))
+        stops = {p for p, r in decision.reasons.items()
+                 if r in (EXIT_STOP, EXIT_SHORT_STOP) and abs(self.last_weights.get(p, 0.0)) > 1e-6}
+        if not filter_exit and not stops:
+            return False
+        why = []
+        if filter_exit:
+            why.append("BTC's filter off for %d minutes, the rotation leaves %s"
+                       % (self.filter_off_minutes, ", ".join(sorted(picks))))
+        if stops:
+            why.append("stops hit on %s" % ", ".join(sorted(stops)))
+        log.warning("minute check: %s; early cycle, exits only", "; ".join(why))
+
+        def only(t: PlannedTrade) -> bool:
+            if t.side not in (SELL, COVER):
+                return False
+            return t.reason in (EXIT_STOP, EXIT_SHORT_STOP) or (filter_exit and t.side == SELL and t.pair in picks)
+
+        self.early_cycles = {hour: self.early_cycles.get(hour, 0) + 1}
+        self.cycle(provisional=quotes, only=only)
+        if filter_exit:
+            self.filter_off_minutes = 0
+            self.last_trend_on = False
+        return True
 
     def _funding_scores(self, now_ms: int) -> Dict[int, Dict[str, float]]:
         """{day: {pair: mean funding rate over live.funding_hours up to that day's 00:00}}, for the

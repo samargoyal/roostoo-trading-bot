@@ -46,6 +46,10 @@ python -m research.h50_long_short   # the long-short screen
 | `h50_long_short.py` | Long-short books (screen for rounds 50–64; the live long-short book came from round 54) |
 | `h60_swing_mft.py`, `h61_swing.py` | 53 swing and 28 medium-frequency strategies, alone and beside the bot |
 | `h86_scalping.py` | Seven scalping strategies on 5-minute bars, longs and shorts judged apart |
+| `h125_passive_scalping.py` | Scalping with resting limit entries and targets (maker fees), longs and shorts apart |
+| `h126_minute_scalping.py`, `klines1m.py` | Scalps closed within a minute, on 1-minute bars of 64 pairs |
+| `h127_second_scalping.py`, `klines1s.py` | The scalper simulated second by second on 1-second bars of 20 pairs |
+| `h128_hot_coins.py` | The same, only on the 3 pairs most in play (volume surge, movers, volatility, busy hour) |
 | `h87_orb.py` | Opening-range breakouts at the Asia, London and US opens and the UTC day, 252 designs |
 | `h88_williams_r.py`, `round86_williams_r.py` | Williams %R alone (five designs) and on the rotation |
 | `h89_rsi3_vwap.py` | The RSI(3) + EMA + VWAP dip-buy, daily, 4-hour and hourly |
@@ -88,6 +92,10 @@ python -m research.h50_long_short   # the long-short screen
 | `h122_gap_slope.py` | The EMA gap's slope as an exit or entry filter |
 | `h123_short_losers.py`, `h124_short_losers_orig.py` | 30% shorting the weakest coins (or buying the strongest) beside the fast or the original book, over the crashes |
 | `h129_six_day_odds.py` | The odds of a 6.6% gain in six days for the kept competition setups |
+| `h130_high_win_rate.py`, `h131_capitulation.py`, `h132_frequent_bounces.py` | A 60% win rate with wins 1.5x losses: 1,650 designs, capitulation buys refined, signals that trade often, and minute-by-minute watching (h133) |
+| `h134_strong_coin_dips.py`, `h135_meta_labels.py`, `h136_meta_exits.py` | Hourly dips in strong coins, meta-labeled by a classifier, with wider exits |
+| `h137_significance.py` | Randomness checks: block bootstrap, deflated Sharpe, permutation against random picks |
+| `h138_minute_checks.py` | B1 checked every minute: stops on minute closes, and the rotation filter within the hour |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

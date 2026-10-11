@@ -24,9 +24,9 @@ COLUMNS = ["ts", "open", "high", "low", "close", "volume", "close_ts", "quote_vo
            "taker_buy_base", "taker_buy_quote", "ignore"]
 
 
-def month(args):
+def month(args, url=URL):
     symbol, (y, m) = args
-    r = requests.get(URL.format(s=symbol, y=y, m=m), timeout=60)
+    r = requests.get(url.format(s=symbol, y=y, m=m), timeout=60)
     if r.status_code != 200:
         return None
     z = zipfile.ZipFile(io.BytesIO(r.content))

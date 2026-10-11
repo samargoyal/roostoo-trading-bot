@@ -399,6 +399,8 @@ class StrategyConfig:
     rotation_stop_atr: float = 0.0        # > 0: drop a pick that closes this many ATRs below its highest
                                           # close since it was picked (research round 20)
     rotation_stop_pct: float = 0.0        # > 0: drop a pick that falls this fraction below that high
+    rotation_stop_entry: float = -1.0     # >= 0: drop a pick that closes this fraction below the close it
+                                          # was picked at (0: the entry price itself)
     rotation_shorts: int = 0              # > 0: while the trend filter is off, the sleeve shorts this many
                                           # coins instead (research H31; off: Roostoo /v6 untested)
     rotation_short_ranking: str = "return"  # "return": the weakest 2-week returns; "volatility": the wildest;
@@ -549,6 +551,12 @@ class LiveConfig:
     funding_url: str = "https://fapi.binance.com"   # Binance USD-M futures, for funding rates
     funding_hours: int = 72             # with strategy.short_exclude_external: no short on a coin whose
                                         # funding averaged below zero over this many hours (round 54)
+    minute_checks: bool = False         # H138: between hourly cycles, re-check every minute on Roostoo's
+                                        # prices (one ticker call) and exit early: a stop hit on the minute's
+                                        # price, or the rotation's BTC filter turning off for minute_persist
+                                        # minutes in a row. Early cycles send exits only.
+    minute_persist: int = 3             # minutes the filter must stay off before the rotation exits
+    minute_max_early: int = 3           # early cycles allowed in any one hour
 
 
 @dataclass
@@ -572,6 +580,29 @@ class BreakerConfig:
     max_state_mismatch: float = 0.02    # A9: holdings moved this much between cycles: no new entries
     trading_halt: bool = False          # A10: no orders at all (changed only by a commit)
     reduce_only: bool = False           #      exits only (and the activity trade)
+
+
+@dataclass
+class ScalperConfig:
+    """The sub-minute scalper (python -m bot.scalper), a separate process beside the hourly bot.
+    Research H125 and the 1-minute check found no edge inside a minute after Roostoo's fees, so
+    expect it to lose roughly the fees it pays; off unless enabled."""
+    enabled: bool = False
+    pairs: List[str] = field(default_factory=lambda: ["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD"])
+    trade_usd: float = 1000.0             # USD per scalp, bought at market
+    lookback_sec: int = 20                # entry: Binance's mid rose at least entry_move over this many seconds
+    entry_move: float = 0.0015
+    target: float = 0.0025                # resting limit sell this far above the fill (maker fee)
+    stop: float = 0.002                   # Binance's bid this far below the fill: sell at market
+    max_hold_sec: int = 55                # always out within a minute
+    max_gap: float = 0.0005               # enter only if Roostoo's mid is this close to Binance's (no lag trading)
+    cooldown_sec: int = 60                # no new scalp in a pair this soon after one closes
+    poll_sec: float = 1.0                 # Binance best bid/ask, one request for all pairs
+    max_calls_per_minute: int = 8         # Roostoo calls; with the hourly bot's 20, under the limit of 30
+    pause_before_hour_min: int = 3        # flat and idle from this many minutes before each hour...
+    pause_after_hour_min: int = 12        # ...to this many after, while the hourly bot trades
+    max_daily_loss_usd: float = 200.0     # realised loss in a UTC day that stops it until the next day
+    max_trades_per_day: int = 300
 
 
 @dataclass
@@ -600,6 +631,7 @@ class Config:
     api: ApiConfig = field(default_factory=ApiConfig)
     live: LiveConfig = field(default_factory=LiveConfig)
     breakers: BreakerConfig = field(default_factory=BreakerConfig)
+    scalper: ScalperConfig = field(default_factory=ScalperConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
 
     def to_dict(self) -> Dict[str, Any]:
