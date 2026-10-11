@@ -255,6 +255,16 @@ Every hour, a minute after the candle closes, the live bot:
 6. Reconciles the strategy state with the new wallet, records everything, and saves
    its state.
 
+Between the hourly cycles, with `live.minute_checks` (on for the competition account since 12
+October 2026), the bot reads Roostoo's ticker once a minute (one call prices every pair) and
+re-runs the strategy on the hourly candles plus a bar for the hour so far at those prices. If a
+held position's stop is hit on the minute's price, or BTC's 168/672-hour filter has been off for 3
+minutes in a row while the rotation holds coins, it runs an early cycle that sends only those
+exits (sells and covers; buys wait for the hourly cycle), at most 3 an hour and never in the 2
+minutes before the hourly cycle. Over October 2025 to October 2026 (research H138) the minute
+stops were a wash against the hourly close (+81.7% against +82.5%, worst drawdown 30.4% against
+31.2%) and the faster rotation exit added about +0.7% a year.
+
 The bot never assumes it starts flat. On start-up and before each cycle it cancels any
 order left open by a crashed run, and it rebuilds positions from the real wallet. It also
 re-reads Roostoo's trading rules every cycle: a pair Roostoo has halted (`CanTrade` false) or
@@ -297,7 +307,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `08a629f`, 8 October 2026 | `08a629f` | Trailing stops back at 10 ATRs (shorts) and 8 (longs), plus a cap 3 ATRs past the entry price (H118: +1,466% over six years, 14-day composite 4.03, worst drawdown 33%), kept in `config/comp_book_cap3.json` |
 | The restart after `c7d408b`, 9 October 2026 | `c7d408b` | Flat: the minimum EMA gap set to 100%, so the book held nothing and the bot sold and covered everything (the user's choice, to restart its positions from cash) |
 | The restart after `10e0236`, 9 October 2026 | `10e0236` | Restored: the same strategy as `08a629f` (`config/comp_book_cap3.json`), entering afresh from cash |
-| The restart after this push, 12 October 2026 | the commit that adds this row | B1 with a 60% rotation (`config/comp_b1_60.json`, the user's choice): with the account at -6% and six days left, B1 gained 6.6% or more in 22% of six-day windows over three years against 13% for the book alone (H129) |
+| The restart after `0875ba5`, 12 October 2026 | `0875ba5` | B1 with a 60% rotation (`config/comp_b1_60.json`, the user's choice): with the account at -6% and six days left, B1 gained 6.6% or more in 22% of six-day windows over three years against 13% for the book alone (H129) |
+| The restart after this push, 12 October 2026 | the commit that adds this row | The same with minute checks between the hourly cycles (`live.minute_checks`, the user's choice): stops on the minute's price and the rotation out once BTC's filter has been off for 3 minutes, exits only (H138) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -442,7 +453,7 @@ Unknown keys are rejected, so a typo cannot silently fall back to a default.
 Without `--config`, the live bot uses `config/<account>.json` if it exists, so each account's
 settings are committed and a restart picks them up. `config/comp.json` runs the competition
 account: since 12 October 2026, B1 at 60/40 (`config/comp_b1_60.json`, which is `config/comp_b1.json`
-with a 60% rotation). Before that, a 55% rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1 beside
+with a 60% rotation, checked every minute between the hourly cycles: `live.minute_checks`). Before that, a 55% rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1 beside
 the long-short book weighted by each coin's 30-day efficiency ratio, its shorts on 24/72-hour
 EMAs, the book taking the whole account while BTC's filter is off; since the last change of 7
 October the rotation is off and the whole book follows 24/72-hour EMAs, holding a coin only

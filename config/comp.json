@@ -11,5 +11,8 @@
     "rotation_weight": 0.6,
     "ls_er_hours": 720,
     "ls_absorb_rotation": 1.0
+  },
+  "live": {
+    "minute_checks": true
   }
 }
