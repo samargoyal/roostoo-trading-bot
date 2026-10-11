@@ -2260,9 +2260,11 @@ October 2023 to October 2026 (taker fees) and counted every six-day window start
 |---|---|---|---|---|---|
 | The book alone, 24/72-hour EMAs (`config/comp_book_cap3.json`, live 9-12 October) | 13.1% | 14.1% | 1.8% | -0.6% | 10.8% |
 | B1, 55% rotation (`config/comp_b1.json`) | 22.2% | 15.3% | 3.8% | +0.4% | 18.2% |
+| B1, 60% rotation (`config/comp_b1_60.json`, live from 12 October) | 22.9% | 16.4% | 4.2% | +0.4% | 19.1% |
 | K2, 3 coins, 75% (`config/comp_k2_3.json`) | 20.2% | 12.8% | 4.5% | +0.5% | 12.6% |
 | R54b (`config/comp_r54b.json`) | 20.6% | 13.8% | 5.0% | +0.6% | 12.0% |
 
 B1 most often gained 6.6% in six days, overall and in the latest year, for about the same chance of
 a 5% loss as the book alone. The user chose B1 with a 60% rotation (`config/comp_b1_60.json`),
-live from 12 October 2026. Even B1 reaches the gain in only about one window in five.
+live from 12 October 2026: a little more often up 6.6% than at 55%, for a little more often down 5%.
+Even B1 reaches the gain in only about one window in five.
