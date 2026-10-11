@@ -21,8 +21,10 @@ strategy, and every order, decision and hourly equity point is recorded.
 Two books share the account, trading the 45 most traded crypto pairs on Roostoo plus PAXG
 (gold-backed):
 
-- **Momentum rotation, off since the later of the 7 October 2026 changes** (the user switched the
-  account to the book alone; `config/comp_b1_fast.json` keeps the rotation below). Before that:
+- **Momentum rotation, 60% of equity since 12 October 2026 while BTC's 168-hour EMA is above its
+  672-hour EMA** (B1 at 60/40, [`config/comp_b1_60.json`](config/comp_b1_60.json), the user's
+  choice: of the kept setups, B1 most often gained the 6.6% the account needed in six days, H129).
+  From the later of the 7 October changes until then it was off (the book alone). Before that:
   **55% of equity while BTC's 168-hour EMA is above its 672-hour EMA.** When
   that filter turns off, the rotation's share runs the long-short book instead of PAXG or cash,
   so the account is the book alone in bear markets and back to 55/45 when the filter recovers
@@ -35,9 +37,10 @@ Two books share the account, trading the 45 most traded crypto pairs on Roostoo 
   [`config/comp_r54b.json`](config/comp_r54b.json)); the ranking sums that one's score and the
   multi-horizon bot's (round 82), and a third coin lets it take 75% for about the same drawdown
   (round 85).
-- **Long-short trend book, all of equity** (45% beside the rotation before; the competition account
+- **Long-short trend book, 40% beside the rotation and all of equity while BTC's filter is off**
+  (since 12 October 2026; all of equity from 7 to 12 October; 45% beside the rotation before; the competition account
   since 5 October 2026, through [`config/comp.json`](config/comp.json); 25% before 7 October).
-  Since 7 October its shorts follow 24- and 72-hour EMAs (longs the 240/960-hour pair, a coin
+  From 7 to 12 October its shorts followed 24- and 72-hour EMAs (longs the 240/960-hour pair, a coin
   flat while the two disagree), so it shorts within a day or two of a coin turning down
   (round 111). Every coin long while its 240-hour EMA is
   above its 960-hour EMA and short while below, with a trailing stop on each short and no short
@@ -293,7 +296,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `8f9d312`, 8 October 2026, if the server pulled it before the next commit | `8f9d312` | Trailing stops at 5 ATRs for longs and shorts, every position also closed once it went past its entry price the wrong way: backtested at -93% over six years (H119) and replaced within hours; kept in `config/comp_book_5atr_cap0.json` |
 | The restart after `08a629f`, 8 October 2026 | `08a629f` | Trailing stops back at 10 ATRs (shorts) and 8 (longs), plus a cap 3 ATRs past the entry price (H118: +1,466% over six years, 14-day composite 4.03, worst drawdown 33%), kept in `config/comp_book_cap3.json` |
 | The restart after `c7d408b`, 9 October 2026 | `c7d408b` | Flat: the minimum EMA gap set to 100%, so the book held nothing and the bot sold and covered everything (the user's choice, to restart its positions from cash) |
-| The restart after this push, 9 October 2026 | the commit that adds this row | Restored: the same strategy as `08a629f` (`config/comp_book_cap3.json`), entering afresh from cash |
+| The restart after `10e0236`, 9 October 2026 | `10e0236` | Restored: the same strategy as `08a629f` (`config/comp_book_cap3.json`), entering afresh from cash |
+| The restart after this push, 12 October 2026 | the commit that adds this row | B1 with a 60% rotation (`config/comp_b1_60.json`, the user's choice): with the account at -6% and six days left, B1 gained 6.6% or more in 22% of six-day windows over three years against 13% for the book alone (H129) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -437,7 +441,8 @@ Unknown keys are rejected, so a typo cannot silently fall back to a default.
 
 Without `--config`, the live bot uses `config/<account>.json` if it exists, so each account's
 settings are committed and a restart picks them up. `config/comp.json` runs the competition
-account: a 55% rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1 beside
+account: since 12 October 2026, B1 at 60/40 (`config/comp_b1_60.json`, which is `config/comp_b1.json`
+with a 60% rotation). Before that, a 55% rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1 beside
 the long-short book weighted by each coin's 30-day efficiency ratio, its shorts on 24/72-hour
 EMAs, the book taking the whole account while BTC's filter is off; since the last change of 7
 October the rotation is off and the whole book follows 24/72-hour EMAs, holding a coin only
@@ -445,8 +450,8 @@ while the gap between them is at least 0.4% (`ls_band`), and a stopped coin may 
 after 12 hours (`stop_cooldown_hours`). Shorts are covered 10 ATRs or 10% above their lowest
 close since entry, longs 8 ATRs below their highest, and any position once it closes 3 ATRs
 past its entry price the wrong way (`stop_cap_entry_atr` 3), whichever comes first; each coin is
-weighted by its HAR volatility forecast (`ls_sizing`) times its efficiency. Eighteen alternatives
-are kept: `config/comp_book_har_12h.json` (the same without the entry cap),
+weighted by its HAR volatility forecast (`ls_sizing`) times its efficiency. Nineteen alternatives
+are kept: `config/comp_book_cap3.json` (the setup of 9 to 12 October), `config/comp_book_har_12h.json` (that without the entry cap),
 `config/comp_book_5atr_cap0.json` (5-ATR trails and a cap at the entry price; -93% in backtests),
 `config/comp_book_har_24h.json` (those with a 24-hour block),
 `config/comp_book_har_6h.json` (a 6-hour block),

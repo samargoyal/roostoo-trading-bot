@@ -1,21 +1,15 @@
 {
   "strategy": {
     "book_mode": "long_short",
-    "ls_trend": [24, 72],
+    "ls_trend": [240, 960],
     "short_stop_atr": 10.0,
     "short_exclude_external": true,
     "rotation_ranking": "multi",
     "rotation_horizons": [168, 336, 504],
     "rotation_horizon_weights": [2.0, 2.0, 1.0],
     "rotation_top": 3,
-    "rotation_weight": 0.0,
+    "rotation_weight": 0.6,
     "ls_er_hours": 720,
-    "ls_absorb_rotation": 1.0,
-    "ls_band": 0.004,
-    "stop_cooldown_hours": 12,
-    "short_stop_pct": 0.1,
-    "ls_long_stop_atr": 8.0,
-    "ls_sizing": "har",
-    "stop_cap_entry_atr": 3.0
+    "ls_absorb_rotation": 1.0
   }
 }

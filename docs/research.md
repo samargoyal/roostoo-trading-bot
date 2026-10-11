@@ -2248,3 +2248,21 @@ Shorting the losers added up to about ten points over the crashes on the slow bo
 of the return between them (losers bounce, and the sleeve has no stop). Buying the winners was far
 better on return and the 14-day yardstick with either book. For comparison, B1 (55% winners beside
 the efficiency book, the book alone in bear markets) made +98,491%, 14.89 and +36.2% over the crashes.
+
+## The odds of a 6.6% week (H129)
+
+On 12 October 2026 the account was at -6% with six days of the competition left. Cash cannot win
+back 6.6%, and in a choppy market the book alone on 24/72-hour EMAs loses slowly to whipsaws and
+fees. `research/h129_six_day_odds.py` ran the kept setups through the production backtester from
+October 2023 to October 2026 (taker fees) and counted every six-day window starting on an hour.
+
+| Setup | Gain of 6.6% or more | Loss of 5% or more | Loss of 10% or more | Median | Gain of 6.6%, 2025-26 |
+|---|---|---|---|---|---|
+| The book alone, 24/72-hour EMAs (`config/comp_book_cap3.json`, live 9-12 October) | 13.1% | 14.1% | 1.8% | -0.6% | 10.8% |
+| B1, 55% rotation (`config/comp_b1.json`) | 22.2% | 15.3% | 3.8% | +0.4% | 18.2% |
+| K2, 3 coins, 75% (`config/comp_k2_3.json`) | 20.2% | 12.8% | 4.5% | +0.5% | 12.6% |
+| R54b (`config/comp_r54b.json`) | 20.6% | 13.8% | 5.0% | +0.6% | 12.0% |
+
+B1 most often gained 6.6% in six days, overall and in the latest year, for about the same chance of
+a 5% loss as the book alone. The user chose B1 with a 60% rotation (`config/comp_b1_60.json`),
+live from 12 October 2026. Even B1 reaches the gain in only about one window in five.
