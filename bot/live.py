@@ -417,8 +417,11 @@ class LiveBot:
         return self.client.short_positions()
 
     def _bars(self, pair: str, now_ms: int) -> List[Bar]:
+        count = self.cfg.live.history_bars
+        if pair == self.cfg.strategy.regime_pair:
+            count = max(count, self.cfg.live.regime_history_bars)
         try:
-            bars = self.binance.recent_closed(binance_symbol(pair), self.cfg.live.history_bars, now_ms)
+            bars = self.binance.recent_closed(binance_symbol(pair), count, now_ms)
         except BinanceError as exc:
             self.binance_failed.add(pair)
             cached = self.history.get(pair, [])

@@ -96,6 +96,8 @@ python -m research.h50_long_short   # the long-short screen
 | `h134_strong_coin_dips.py`, `h135_meta_labels.py`, `h136_meta_exits.py` | Hourly dips in strong coins, meta-labeled by a classifier, with wider exits |
 | `h137_significance.py` | Randomness checks: block bootstrap, deflated Sharpe, permutation against random picks |
 | `h138_minute_checks.py` | B1 checked every minute: stops on minute closes, and the rotation filter within the hour |
+| `h139_book_significance.py` | EMA books (100% book) tested for significance and over every crash since 2018 |
+| `h140_switch.py`, `h141_switch_backtest.py` | Switching between B1 and the book by a market rule; the chosen rule inside the strategy |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

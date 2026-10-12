@@ -139,6 +139,9 @@ class StrategyConfig:
     ls_long_stop_atr: float = 0.0         # > 0: the book sells a long this many ATRs below its highest close
                                           # since entry and leaves the coin for stop_cooldown_hours (round 64)
     ls_short_trend: List[int] = field(default_factory=list)  # [fast, slow]: shorts follow this (faster) EMA
+    switch_sma_hours: int = 0             # > 0 (H140): while the regime pair closes below its simple average
+                                          # over this many hours, the strategy runs with switch_overrides
+    switch_overrides: Dict[str, Any] = field(default_factory=dict)  # e.g. B1 -> the book alone, fast shorts
                                           # pair, longs ls_trend; flat while the two disagree (round 64)
     ls_absorb_rotation: float = 0.0       # > 0: while the rotation's BTC filter is off, this fraction of its
                                           # share runs the long-short book instead of PAXG or cash (round 61)
@@ -557,6 +560,8 @@ class LiveConfig:
                                         # minutes in a row. Early cycles send exits only.
     minute_persist: int = 3             # minutes the filter must stay off before the rotation exits
     minute_max_early: int = 3           # early cycles allowed in any one hour
+    regime_history_bars: int = 0        # > history_bars: this many hourly candles for the regime pair only
+                                        # (strategy.switch_sma_hours needs more than the others)
 
 
 @dataclass

@@ -265,3 +265,58 @@ class TrendBasketTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SwitchTest(unittest.TestCase):
+    """H140: B1 above BTC's long average, the book alone with fast shorts below it."""
+
+    def market(self, btc_close, sol_short_trend_down=True):
+        out = {}
+        for pair, up, vol in (("BTC/USD", True, 0.005), ("ETH/USD", True, 0.01), ("SOL/USD", True, 0.02),
+                              ("DOGE/USD", False, 0.02), ("PAXG/USD", True, 0.002)):
+            s = sig(up, vol, rot=0.3 if pair == "ETH/USD" else 0.1)
+            s = s._replace(sma_long=100.0, ls_short_fast=99.0 if pair in ("SOL/USD", "DOGE/USD") and sol_short_trend_down else 101.0,
+                           ls_short_slow=100.0)
+            if pair == "BTC/USD":
+                s = s._replace(close=btc_close)
+            out[pair] = s
+        return out
+
+    def strategy(self, signals):
+        return make(signals, rotation_weight=0.6, switch_sma_hours=4800,
+                    switch_overrides={"rotation_weight": 0.0, "ls_short_trend": [24, 72]})
+
+    def test_above_the_average_it_runs_b1(self):
+        state = StrategyState()
+        st = self.strategy(self.market(btc_close=110.0))
+        d = st.decide(DAY, 1.0, {}, state)
+        self.assertFalse(st.switched)
+        self.assertTrue(d.rotation)
+        self.assertGreater(d.targets["SOL/USD"], 0.0)            # only the slow trend counts: SOL still long
+
+    def test_below_the_average_it_runs_the_book_with_fast_shorts(self):
+        state = StrategyState()
+        self.strategy(self.market(btc_close=110.0)).decide(DAY, 1.0, {}, state)
+        self.assertTrue(state.rotation_plan)
+        st = self.strategy(self.market(btc_close=90.0))
+        d = st.decide(DAY + HOUR_MS, 1.0, {}, state)
+        self.assertTrue(st.switched)
+        self.assertEqual(d.rotation, {})
+        self.assertEqual(state.rotation_plan, {})
+        self.assertEqual(d.targets["SOL/USD"], 0.0)              # its 24/72 trend turned down: out of the long
+        self.assertLess(d.targets["DOGE/USD"], 0.0)              # both trends down: short
+        self.assertAlmostEqual(sum(abs(t) for t in d.targets.values()), 1.0)   # the whole account
+
+    def test_back_above_the_average_the_rotation_picks_again_at_once(self):
+        state = StrategyState()
+        self.strategy(self.market(btc_close=90.0)).decide(DAY, 1.0, {}, state)
+        d = self.strategy(self.market(btc_close=110.0)).decide(DAY + 5 * HOUR_MS, 1.0, {}, state)
+        self.assertTrue(d.rotation)                              # not waiting for 00:00 UTC
+
+    def test_the_competition_config_switches_on_btcs_200_day_average(self):
+        from bot.config import load_config
+        c = load_config("config/comp_switch.json")
+        self.assertEqual((c.strategy.switch_sma_hours, c.strategy.rotation_weight), (4800, 0.6))
+        self.assertEqual(c.strategy.switch_overrides, {"rotation_weight": 0.0, "ls_short_trend": [24, 72]})
+        self.assertGreaterEqual(c.live.regime_history_bars, 4800 + 200)
+        self.assertTrue(c.live.minute_checks)

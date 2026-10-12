@@ -2495,3 +2495,69 @@ long stops cost return either way. BTC's rotation filter turned 13.8 times a yea
 minute data (since September 2025) the cross showed within the hour's first minutes, and acting on
 it then would have added about +1.2% over the 9 turns off (the rotation out sooner) and lost about
 0.5% over the 10 turns on, about +0.7% over the year in all.
+
+## An EMA book with a significant edge that holds in crashes (H139)
+
+The user asked for an EMA strategy like the 24/72-hour book (H137: p = 0.25) but significant at the
+5% level, 100% book, and good in sudden crashes. `research/h139_book_significance.py`, fixed before
+running: the long-short book alone (`config/comp_book.json`: efficiency and inverse-volatility
+weights, 10-ATR short stops, no crowded shorts) on EMA pairs of 72/288, 120/480, 168/672, 240/960
+and 336/1344 hours, with shorts on the same EMAs or on 24/72-hour ones; ten designs on the eight
+yearly folds (October 2018 to October 2026, taker fees), the one with the best development Sharpe
+ratio (October 2020 to October 2024) chosen and tested on validation (October 2024 to October 2026)
+and the holdout (October 2018 to October 2020), and over BTC's eight crashes of 25% or more.
+
+| Design | Development Sharpe | Validation Sharpe, p | Holdout Sharpe, p | Crash mean | Crashes lost |
+|---|---|---|---|---|---|
+| 72/288 | 1.57 | 0.59, 0.22 | 1.91, 0.004 | +33.0% | 2 |
+| 120/480 | 1.77 | 1.12, 0.068 | 1.80, 0.008 | +35.7% | 2 |
+| 168/672 | 1.94 | 1.16, 0.064 | 1.68, 0.010 | +34.7% | 1 |
+| 240/960 | 1.91 | 1.35, 0.037 | 1.78, 0.008 | +32.8% | 1 |
+| **240/960, shorts 24/72 (chosen)** | **2.10** | **1.31, 0.055** | **1.76, 0.008** | **+35.9%** | **0** |
+| 336/1344 | 1.68 | 1.33, 0.036 | 1.57, 0.016 | +29.9% | 2 |
+| The 24/72-hour book (live 9 to 12 October) | 1.53 | 0.63, 0.21 | 1.04, 0.072 | +18.4% | 2 |
+| B1 60/40 (live now) | 2.35 | 1.52, 0.026 | 1.92, 0.006 | +37.9% | 2 |
+
+(The other shorts-24/72 variants: 72/288 1.50, 0.25, 0.009, +32.4%; 120/480 1.76, 0.12, 0.010,
++33.4%; 168/672 1.99, 0.073, 0.011, +35.1%; 336/1344 1.98, 0.053, 0.016, +33.9%.)
+
+The chosen design, the longs on 240/960-hour EMAs and the shorts on 24/72 (the same as
+`config/comp_book_fast_shorts.json`), missed the pre-set 5% level in validation by a hair (p =
+0.055) and passed it in the holdout (0.008); over the four out-of-sample years together p = 0.003,
+over all eight 0.0001, and its deflated Sharpe ratio over validation with N = 10 is 0.90. It is
+the only design that made money in every crash (+60%, +105%, +12%, +39%, +29%, +7%, +14%, +21%)
+and in every year (+123%, +89%, +695%, +28%, +15%, +49%, +53%, +30%), with a worst drawdown of 21%
+over 2023-26 against B1's 51%. It is far steadier than B1 but slower: over six days it gained 6.6%
+or more 8.9% of the time from October 2023 (B1 20.7%), lost 5% or more 2.4% of the time (B1 14.9%)
+and never lost 10% (B1 3.8%). In the competition's first week it lost 1.1% (worst drawdown 4.5%)
+where B1 lost 6.1%.
+
+## Switching between B1 and the crash-proof book (H140, H141)
+
+The user asked to combine B1 and H139's book and let the bot decide between them.
+`research/h140_switch.py`, fixed before running, ran one or the other each hour by a rule (held at
+least 24 hours, 0.25% a switch): the book while BTC's 168h EMA is below its 672h EMA (R1), while BTC
+is below its 200-day average (R2), while BTC's 30-day volatility is above its one-year median (R3),
+while fewer than half the pairs are in an uptrend (R4), for 7 days after a 10% weekly fall (R5),
+once the account is 10% or 15% below its peak (R6), or whichever of the two made more over 14 or 30
+days (R7). The best development Sharpe chose R2 (2.67 against 2.35 for B1 alone). R6 at 15% had the
+best risk figures (crashes +54.6%, none lost, worst drawdown 26%) but was not the rule chosen.
+
+`research/h141_switch_backtest.py` ran R2 inside the strategy (`strategy.switch_sma_hours` 4,800
+and `switch_overrides`: the rotation off and the shorts on 24/72-hour EMAs below BTC's 200-day
+average; `config/comp_switch.json`) through the production backtester, 5,200 hours of warm-up:
+
+| Eight folds, taker fees | Switch | B1 60/40 | Book alone |
+|---|---|---|---|
+| Development Sharpe | 2.60 | 2.35 | 2.11 |
+| Validation Sharpe, p | 1.44, 0.032 | 1.51, 0.023 | 1.30, 0.059 |
+| Holdout Sharpe, p | 2.01, 0.004 | 1.91, 0.007 | 1.77, 0.008 |
+| Crash mean, crashes lost | +40.2%, 1 | +36.6%, 2 | +36.0%, 0 |
+| Six days from October 2023: gain 6.6%, lose 5%, lose 10% | 18.1%, 10.8%, 2.6% | 20.6%, 14.9%, 3.8% | 8.8%, 2.3%, 0.0% |
+| Worst drawdown from October 2023 | 51% | 51% | 21% |
+| Years 2018-19 to 2025-26 | +201%, +156%, +2,878%, +30%, +98%, +416%, +91%, +90% | +151%, +208%, +3,357%, -9%, +74%, +411%, +125%, +92% | +125%, +90%, +694%, +27%, +16%, +49%, +52%, +30% |
+
+The switch is significant in both out-of-sample periods, made money in every year (B1 lost 9% in
+2021-22), lost in one crash of eight, and keeps most of B1's chance of a strong week with fewer bad
+ones; its worst drawdown is no better than B1's. With BTC 17% above its 200-day average on 12
+October 2026 it runs B1, and turns to the book if BTC falls below that average.

@@ -53,6 +53,7 @@ The project brief's baseline (EMA 20/100, 24h/72h momentum, 2.5 ATR stops, hourl
 churned and lost money after fees, so slower settings replaced it, and research found that low
 volatility, not momentum, predicted which coin would do better next. See the README.
 """
+import dataclasses
 import math
 from dataclasses import asdict, dataclass, field
 from typing import AbstractSet, Dict, List, Optional, Tuple
@@ -192,6 +193,10 @@ class Strategy(ResearchRules):
         (research only) maps each day's 00:00 bar time to model scores, for the "external"
         rankings."""
         self.cfg = cfg
+        self.base_cfg = cfg
+        # H140: below the regime pair's long average, run with switch_overrides instead
+        self.switch_cfg = (dataclasses.replace(cfg, **cfg.switch_overrides) if cfg.switch_sma_hours > 0 else None)
+        self.switched = False
         self.external_scores = external_scores or {}
         self.indicators = {
             pair: IndicatorSet(cfg.fast_ema, cfg.slow_ema, cfg.regime_ema, cfg.atr_period,
@@ -200,9 +205,9 @@ class Strategy(ResearchRules):
                                cfg.rotation_trend_fast, cfg.rotation_trend_slow,
                                tuple(cfg.slow_filter) if cfg.slow_filter else None,
                                tuple(cfg.ls_trend) if cfg.book_mode in ("long_short", "hybrid", "overlay") else None,
-                               cfg.short_regime_hours or cfg.ls_absorb_sma_hours,
+                               cfg.short_regime_hours or cfg.ls_absorb_sma_hours or cfg.switch_sma_hours,
                                [tuple(p) for p in cfg.ls_ensemble] if cfg.book_mode != "trend" else None,
-                               tuple(cfg.ls_short_trend) if cfg.ls_short_trend and cfg.book_mode != "trend" else None)
+                               _short_trend(cfg, self.switch_cfg))
             for pair in (pairs if pairs is not None else cfg.universe)
         }
 
@@ -269,6 +274,13 @@ class Strategy(ResearchRules):
         `frozen` pairs cannot be traded now (halted on the exchange): they keep their
         current weight, and the rest of the portfolio is planned around them.
         """
+        if self.switch_cfg is not None:
+            regime = self.signals().get(self.base_cfg.regime_pair)
+            self.switched = regime is not None and 0 < regime.close < regime.sma_long
+            self.cfg = self.switch_cfg if self.switched else self.base_cfg
+            if self.switched:
+                # the rotation is out; on the way back it re-picks at once instead of reusing old picks
+                state.rotation_plan, state.rotation_settings = {}, ""
         c = self.cfg
         account = weights
         self.stop_fills: Dict[str, float] = {}      # research (intrabar_stops): stop prices for the backtester
@@ -796,3 +808,11 @@ def _cap_weights(weights: Dict[str, float], cap: float) -> Dict[str, float]:
         for p, v in free.items():
             w[p] = v + excess * v / total
     return w
+
+
+def _short_trend(cfg: StrategyConfig, switch: Optional[StrategyConfig]):
+    """The short trend's EMA spans the indicators must keep: the config's, or the switch's."""
+    for c in (cfg, switch):
+        if c is not None and c.ls_short_trend and c.book_mode != "trend":
+            return tuple(c.ls_short_trend)
+    return None
