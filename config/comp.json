@@ -10,9 +10,18 @@
     "rotation_top": 3,
     "rotation_weight": 0.6,
     "ls_er_hours": 720,
-    "ls_absorb_rotation": 1.0
+    "ls_absorb_rotation": 1.0,
+    "switch_sma_hours": 4800,
+    "switch_overrides": {
+      "rotation_weight": 0.0,
+      "ls_short_trend": [24, 72]
+    }
   },
   "live": {
-    "minute_checks": true
+    "minute_checks": true,
+    "regime_history_bars": 5200
+  },
+  "backtest": {
+    "warmup_bars": 5200
   }
 }

@@ -51,8 +51,13 @@ class EfficiencyRatioTest(unittest.TestCase):
     def test_the_competition_config_is_the_previous_one_plus_the_ratio(self):
         before, live = (read(p)["strategy"] for p in ("config/comp_k2_3.json", "config/comp_book_cap3.json"))
         # 9 October 2026: the account flattened (ls_band 1.0), then restored to config/comp_book_cap3.json;
-        # 12 October 2026: B1 with a 60% rotation (config/comp_b1_60.json)
-        self.assertEqual(read("config/comp.json"), read("config/comp_b1_60.json"))
+        # 12 October 2026: B1 with a 60% rotation (config/comp_b1_60.json), then the same switching to
+        # the book alone with fast shorts below BTC's 200-day average (config/comp_switch.json, H140-H141)
+        self.assertEqual(read("config/comp.json"), read("config/comp_switch.json"))
+        switch = read("config/comp_switch.json")["strategy"]
+        for key in ("switch_sma_hours", "switch_overrides"):
+            del switch[key]
+        self.assertEqual(switch, read("config/comp_b1_60.json")["strategy"])
         self.assertEqual(dict(before, ls_er_hours=720, rotation_weight=0.0, ls_absorb_rotation=1.0,
                               ls_trend=[24, 72], ls_band=0.004, stop_cooldown_hours=12, short_stop_pct=0.10,
                               ls_long_stop_atr=8.0, short_stop_atr=10.0, stop_cap_entry_atr=3.0,

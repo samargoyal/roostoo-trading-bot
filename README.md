@@ -21,6 +21,12 @@ strategy, and every order, decision and hourly equity point is recorded.
 Two books share the account, trading the 45 most traded crypto pairs on Roostoo plus PAXG
 (gold-backed):
 
+- **Since the later change of 12 October 2026, a switch** (`config/comp_switch.json`, research H140
+  and H141): while BTC closes below its 200-day average the account is the long-short book alone,
+  its shorts on 24/72-hour EMAs (made money in every BTC crash since 2018, H139); otherwise it runs
+  as below. Over the eight yearly folds since 2018 the switch beat B1 on development Sharpe (2.60
+  against 2.35), was significant in validation (p = 0.032) and the holdout (0.004), and made money
+  in every year.
 - **Momentum rotation, 60% of equity since 12 October 2026 while BTC's 168-hour EMA is above its
   672-hour EMA** (B1 at 60/40, [`config/comp_b1_60.json`](config/comp_b1_60.json), the user's
   choice: of the kept setups, B1 most often gained the 6.6% the account needed in six days, H129).
@@ -308,7 +314,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `c7d408b`, 9 October 2026 | `c7d408b` | Flat: the minimum EMA gap set to 100%, so the book held nothing and the bot sold and covered everything (the user's choice, to restart its positions from cash) |
 | The restart after `10e0236`, 9 October 2026 | `10e0236` | Restored: the same strategy as `08a629f` (`config/comp_book_cap3.json`), entering afresh from cash |
 | The restart after `0875ba5`, 12 October 2026 | `0875ba5` | B1 with a 60% rotation (`config/comp_b1_60.json`, the user's choice): with the account at -6% and six days left, B1 gained 6.6% or more in 22% of six-day windows over three years against 13% for the book alone (H129) |
-| The restart after this push, 12 October 2026 | the commit that adds this row | The same with minute checks between the hourly cycles (`live.minute_checks`, the user's choice): stops on the minute's price and the rotation out once BTC's filter has been off for 3 minutes, exits only (H138) |
+| The restart after `e186193`, 12 October 2026 | `e186193` | The same with minute checks between the hourly cycles (`live.minute_checks`, the user's choice): stops on the minute's price and the rotation out once BTC's filter has been off for 3 minutes, exits only (H138) |
+| The restart after this push, 12 October 2026 | the commit that adds this row | The same, switching to the book alone with shorts on 24/72-hour EMAs while BTC is below its 200-day average (`config/comp_switch.json`, the user's request to combine the two; H140, H141) |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -453,7 +460,10 @@ Unknown keys are rejected, so a typo cannot silently fall back to a default.
 Without `--config`, the live bot uses `config/<account>.json` if it exists, so each account's
 settings are committed and a restart picks them up. `config/comp.json` runs the competition
 account: since 12 October 2026, B1 at 60/40 (`config/comp_b1_60.json`, which is `config/comp_b1.json`
-with a 60% rotation, checked every minute between the hourly cycles: `live.minute_checks`). Before that, a 55% rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1 beside
+with a 60% rotation, checked every minute between the hourly cycles: `live.minute_checks`), and
+since the later change that day switching to the book alone with 24/72-hour shorts while BTC is
+below its 200-day average (`config/comp_switch.json`: `switch_sma_hours`, `switch_overrides`; BTC's
+history is fetched 5,200 hours deep for it, `live.regime_history_bars`). Before that, a 55% rotation of 3 coins ranked on 1-, 2- and 3-week returns weighted 2/2/1 beside
 the long-short book weighted by each coin's 30-day efficiency ratio, its shorts on 24/72-hour
 EMAs, the book taking the whole account while BTC's filter is off; since the last change of 7
 October the rotation is off and the whole book follows 24/72-hour EMAs, holding a coin only
