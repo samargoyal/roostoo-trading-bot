@@ -191,10 +191,16 @@ class ResearchRules:
             rising = {p: r for p, r in rising.items() if table.get(p, 0.0) <= c.rotation_max_external}
         if c.rotation_max_z > 0:
             rising = {p: r for p, r in rising.items() if self._zscore(p) <= c.rotation_max_z}
+        if c.rotation_volume_rising:                                       # H145
+            rising = {p: r for p, r in rising.items() if self._volume_rising(p)}
         if c.rotation_ranking == "residual":
             rising = {p: self._residual_return(p, r) for p, r in rising.items()}
         elif c.rotation_ranking == "kalman":
             rising = {p: signals[p].trend_strength for p in rising}
+        elif c.rotation_ranking == "risk_adjusted":                       # H144: return over volatility
+            scale = math.sqrt(c.rotation_lookback)
+            rising = {p: math.log1p(r) / (signals[p].volatility * scale) for p, r in rising.items()
+                      if signals[p].volatility > 0}
         elif c.rotation_ranking == "multi" and len(rising) > 1:
             rising = self._multi_horizon(list(rising))
         elif c.rotation_ranking == "external" and self._external(ts):
@@ -1512,6 +1518,13 @@ class ResearchRules:
         daily = sorted(sum(hourly[t:t + 24]) for t in range(len(hourly) - 23))
         tail = daily[:max(1, int(len(daily) * (1 - level)))]
         return max(0.0, -sum(tail) / len(tail))
+
+    def _volume_rising(self, pair: str) -> bool:
+        """H145: the last 7 days' average hourly dollar volume above the last 30 days'."""
+        d = list(self.indicators[pair].dollar)
+        if len(d) < self.indicators[pair].dollar.maxlen:
+            return False
+        return sum(d[-168:]) / 168 > sum(d) / len(d)
 
     def _zscore(self, pair: str) -> float:
         """How many standard deviations the latest close is above its mean over rotation_z_hours."""

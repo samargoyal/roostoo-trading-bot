@@ -98,6 +98,10 @@ python -m research.h50_long_short   # the long-short screen
 | `h138_minute_checks.py` | B1 checked every minute: stops on minute closes, and the rotation filter within the hour |
 | `h139_book_significance.py` | EMA books (100% book) tested for significance and over every crash since 2018 |
 | `h140_switch.py`, `h141_switch_backtest.py` | Switching between B1 and the book by a market rule; the chosen rule inside the strategy |
+| `h143_timesfm_forecasts.py`, `h143_timesfm.py` | TimesFM 3.0 forecasts as a ranking for the all-in coin |
+| `h144_bomber_search.py`, `h145_bomber_search2.py` | A fast search for the all-in coin: significance, random picks, the competition |
+| `h146_long_short_bomber.py`, `h147_dollar_neutral.py`, `h148_parallel_searches.py` | The all-in coin long or short, and dollar neutral |
+| `h149_neutral_tilts.py`, `h150_repick_times.py` | Long/short tilts (70/30 chosen) and when to re-pick |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |

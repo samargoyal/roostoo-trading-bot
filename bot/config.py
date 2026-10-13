@@ -339,6 +339,8 @@ class StrategyConfig:
     rotation_ranking: str = "return"      # "return", "residual": the return left after removing
                                           # the coin's beta to the regime pair (BTC) over the lookback,
                                           # "kalman": the Kalman trend slope over its standard deviation,
+                                          # "risk_adjusted": the log return over the lookback divided by the
+                                          # hourly volatility scaled to the lookback (H144),
                                           # or "external" (research only): saved model scores
     rotation_exclude_external: bool = False  # research only: skip coins whose saved external score is
                                           # negative (research H30, funding-rate crowding)
@@ -418,6 +420,8 @@ class StrategyConfig:
     rotation_short_trend: bool = False    # round 85: only coins in their own downtrend (168h EMA below 672h)
     rotation_vol_forecast: str = ""       # "har" or "ewma": scale the sleeve down when BTC's forecast daily
                                           # volatility is above its 60-day median (research H31)
+    rotation_volume_rising: bool = False  # H145: only coins whose last 7 days' dollar volume averages above
+                                          # their last 30 days'
     rotation_max_z: float = 0.0           # > 0: skip a pick whose close is more than this many standard
                                           # deviations above its mean over rotation_z_hours
     rotation_z_hours: int = 168

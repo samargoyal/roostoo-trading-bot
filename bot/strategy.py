@@ -580,7 +580,10 @@ class Strategy(ResearchRules):
         if rw <= 0:
             return weights
         pairs = set(weights) | set(rotation)
-        return {p: (weights.get(p, 0.0) - rw * rotation.get(p, 0.0)) / (1.0 - rw) for p in pairs}
+        book = 1.0 - rw
+        if book <= 1e-9:                     # the rotation is the whole account: nothing to scale by
+            return {p: weights.get(p, 0.0) - rw * rotation.get(p, 0.0) for p in pairs}
+        return {p: (weights.get(p, 0.0) - rw * rotation.get(p, 0.0)) / book for p in pairs}
 
     def _long_short_book(self, signals: Dict[str, Signal], weights: Dict[str, float],
                          frozen: AbstractSet[str], regime: Optional[Signal], sides: Optional[str] = None,

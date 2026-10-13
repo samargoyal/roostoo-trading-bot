@@ -1,0 +1,27 @@
+{
+  "strategy": {
+    "book_mode": "long_short",
+    "ls_trend": [240, 960],
+    "short_stop_atr": 10.0,
+    "short_exclude_external": true,
+    "rotation_ranking": "return",
+    "rotation_top": 1,
+    "rotation_weight": 1.0,
+    "ls_er_hours": 720,
+    "ls_absorb_rotation": 0.0,
+    "rotation_breadth": 1e-09,
+    "rotation_breadth_mode": "only",
+    "universe": ["BTC/USD", "ETH/USD", "ZEC/USD", "SOL/USD", "XRP/USD", "NEAR/USD", "BNB/USD", "SUI/USD", "DOGE/USD", "UNI/USD", "ENA/USD", "AVAX/USD", "WLD/USD", "LINK/USD", "ADA/USD", "TAO/USD", "ARB/USD", "PUMP/USD", "LTC/USD", "TRX/USD", "ONDO/USD", "XLM/USD", "TRUMP/USD", "HBAR/USD", "AAVE/USD", "FIL/USD", "XPL/USD", "FET/USD", "ASTER/USD", "PENGU/USD", "DOT/USD", "APT/USD", "ICP/USD", "POL/USD", "CAKE/USD", "SEI/USD", "ZEN/USD", "TUT/USD", "VIRTUAL/USD", "PENDLE/USD", "CRV/USD", "FLOKI/USD", "EIGEN/USD", "WIF/USD", "PLUME/USD", "PAXG/USD", "1000CHEEMS/USD", "AVNT/USD", "BIO/USD", "BMT/USD", "BONK/USD", "CFX/USD", "EDEN/USD", "FORM/USD", "HEMI/USD", "LINEA/USD", "LISTA/USD", "MIRA/USD", "OPEN/USD", "PEPE/USD", "S/USD", "SHIB/USD", "SOMI/USD", "STO/USD", "WLFI/USD"],
+    "rotation_lookback": 600,
+    "rotation_rebalance_hours": 24,
+    "rotation_short_share": 0.3,
+    "rotation_short_count": 1
+  },
+  "live": {
+    "minute_checks": false
+  },
+  "universe": {
+    "size": 70,
+    "max_spread": 0.003
+  }
+}

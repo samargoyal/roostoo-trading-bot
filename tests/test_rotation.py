@@ -225,6 +225,31 @@ class ResidualAndZTest(unittest.TestCase):
         dipped["SOL/USD"] = sig(0.40)._replace(close=104.0)              # 5.5% below: out
         self.assertNotIn("SOL/USD", make(dipped, rotation_stop_entry=0.05).decide(DAY + 2 * HOUR_MS, 1.0, {}, state).rotation)
 
+    def test_the_rotation_can_take_the_whole_account(self):
+        d = make(market(), rotation_weight=1.0, rotation_top=1).decide(DAY, 1.0, {"SOL/USD": 1.0}, StrategyState())
+        self.assertEqual(d.rotation, {"SOL/USD": 1.0})
+        self.assertAlmostEqual(d.targets["SOL/USD"], 1.0)
+        self.assertAlmostEqual(sum(abs(t) for t in d.targets.values()), 1.0)
+
+    def test_risk_adjusted_ranking_prefers_the_steadier_climber(self):
+        signals = market()
+        signals["SOL/USD"] = sig(0.40, vol=0.04)                     # +40% but four times as volatile
+        signals["ETH/USD"] = sig(0.20, vol=0.01)
+        d = make(signals, rotation_ranking="risk_adjusted", rotation_top=1).decide(DAY, 1.0, {}, StrategyState())
+        self.assertEqual(list(d.rotation), ["ETH/USD"])
+        plain = make(signals, rotation_top=1).decide(DAY, 1.0, {}, StrategyState())
+        self.assertEqual(list(plain.rotation), ["SOL/USD"])
+
+    def test_volume_rising_filter_skips_coins_whose_volume_is_fading(self):
+        signals = market()
+        strategy = make(signals, rotation_volume_rising=True, rotation_top=1)
+        for pair, recent in (("SOL/USD", 0.5), ("ETH/USD", 2.0)):       # SOL's volume fading, ETH's rising
+            dollar = strategy.indicators[pair].dollar
+            for i in range(720):
+                dollar.append(recent if i >= 720 - 168 else 1.0)
+        d = strategy.decide(DAY, 1.0, {}, StrategyState())
+        self.assertEqual(list(d.rotation), ["ETH/USD"])
+
     def test_picks_must_beat_btc_and_btc_fills_the_rest(self):
         signals = market()
         signals["BTC/USD"] = sig(0.25)                      # only SOL (0.40) beats BTC

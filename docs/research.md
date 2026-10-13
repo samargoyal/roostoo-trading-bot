@@ -2561,3 +2561,131 @@ The switch is significant in both out-of-sample periods, made money in every yea
 2021-22), lost in one crash of eight, and keeps most of B1's chance of a strong week with fewer bad
 ones; its worst drawdown is no better than B1's. With BTC 17% above its 200-day average on 12
 October 2026 it runs B1, and turns to the book if BTC falls below that average.
+
+## The all-in contingency (H142)
+
+The user's plan if the account is not positive by 15 October 2026: the whole account in the single
+strongest coin, re-picked as the moves rotate. Seven designs, the rotation at 100% (a fix lets
+`rotation_weight` reach 1.0), backtested October 2023 to October 2026 (taker fees) and judged on
+three-day windows, the time that would be left:
+
+| Design (one coin, 100%) | +5% | +10% | +20% | -10% | -20% | Three years | Worst drawdown | Competition week |
+|---|---|---|---|---|---|---|---|---|
+| B1 60/40 (for comparison) | 20.5% | 7.0% | 1.3% | 1.9% | 0.0% | +2,086% | 50% | -6.1% |
+| A1 1-, 2-, 3-week ranking, daily, BTC filter | 24.6% | 14.5% | 6.7% | 11.1% | 2.0% | +2,274% | 90% | -5.5% |
+| A2 1-day, 3-day, 1-week ranking, every 4 hours, filter | 25.9% | 15.2% | 7.5% | 15.8% | 4.4% | -35% | 97% | |
+| A3 3-day and 1-week, every 12 hours, filter | 25.5% | 15.1% | 7.1% | 13.4% | 2.3% | +185% | 87% | |
+| A4 as A2, no filter | 25.6% | 15.1% | 7.4% | 15.7% | 4.3% | -33% | 96% | |
+| **A5 as A1, no filter** | **24.9%** | **14.8%** | **6.7%** | **11.1%** | **2.0%** | **+2,881%** | **83%** | **-2.4%** |
+| A6 the last 24 hours, every hour, no filter | 23.4% | 13.7% | 6.6% | 18.7% | 6.6% | -99% | 100% | |
+| A7 two coins at 50%, as A2 | 24.4% | 13.5% | 5.2% | 9.5% | 1.2% | +378% | 82% | -17.9% |
+
+(The percentages are the share of three-day windows reaching each gain or loss.) Any all-in design
+roughly doubles B1's chance of a 10% gain in three days and multiplies its chance of 20% by five,
+at five to eight times its chance of a 10% loss; the median three days is slightly negative. Faster
+re-picking churns its gains away in fees. A5, the live rotation's ranking in one coin with no BTC
+filter, is kept in `config/comp_bomber.json`, not live; on 12 October it would hold PLUME alone.
+
+The user then asked to let the all-in coin come from every pair, the wide-spread ones too (PEPE,
+SHIB, BONK, new listings): the universe rule's spread limit raised from 0.1% to 0.3% (70 pairs; each
+trade still pays its pair's own spread). Three-day windows, October 2023 to October 2026:
+
+| One coin, 100% | +5% | +10% | +20% | -10% | -20% | Three years (by year) | Competition week |
+|---|---|---|---|---|---|---|---|
+| A5, the usual 45 pairs | 24.9% | 14.8% | 6.7% | 11.1% | 2.0% | +2,881% (+3,160%, -28%, +30%) | -2.4% |
+| W1 A5 on every pair | 24.3% | 15.0% | 7.4% | 12.9% | 3.3% | +1,495% (+2,045%, -63%, +104%) | +0.6% (AVNT, S, CFX) |
+| W2 with BTC's filter | 24.0% | 14.7% | 7.5% | 12.7% | 3.2% | +1,412% (+2,429%, -63%, +66%) | +0.6% |
+| W3 1- and 2-week ranking | 23.0% | 13.6% | 7.2% | 12.3% | 3.2% | +724% (+964%, -7%, -16%) | +0.8% |
+
+The wider list adds a little to the chance of a 20% jump and more to the chance of a 20% fall,
+and did better in the latest year and the competition week but worse over three years. W1 is kept
+in `config/comp_bomber_wide.json` (the 65 crypto pairs listed); on 12 October it would hold S alone.
+
+Speeds and rankings for the all-in coin from every pair (three-day windows and years as above; the
+competition from 4 to 12 October):
+
+| One coin, every pair | +10% | +20% | -10% | -20% | Three years | By year | Competition |
+|---|---|---|---|---|---|---|---|
+| 1-, 2-, 3-week ranking, daily (W1) | 15.0% | 7.4% | 12.9% | 3.3% | +1,495% | +2,045%, -63%, +104% | -0.1% |
+| the same every 12 hours | 15.5% | 7.7% | 12.9% | 3.9% | +1,528% | +843%, -50%, +251% | -15.3% |
+| the same every 4 hours | 15.1% | 7.6% | 14.1% | 4.2% | +353% | +1,090%, -39%, -36% | -7.7% |
+| 1-day, 3-day, 1-week ranking every 4 hours | 14.6% | 7.7% | 17.6% | 7.1% | -87% | +592%, -85%, -87% | -29.8% |
+| K1 2-week return | 16.5% | 8.4% | 11.9% | 2.9% | +3,861% | +893%, +30%, +204% | -17.0% |
+| K2 3-day return | 14.1% | 7.8% | 14.9% | 3.7% | +79% | +80%, -25%, +35% | -25.9% |
+| K3 1-week return | 13.9% | 7.7% | 13.0% | 3.1% | +892% | +1,047%, -21%, +10% | -0.5% |
+| K4 return beyond BTC's (residual) | 15.3% | 7.5% | 11.5% | 2.8% | +1,100% | +586%, -48%, +236% | -17.0% |
+| K5 Kalman trend | 5.9% | 2.3% | 4.5% | 1.2% | +391% | +5%, -13%, +438% | -16.1% |
+| K6 W1 skipping coins 2 sd above their weekly mean | 14.7% | 6.5% | 12.0% | 2.4% | +492% | +1,810%, -71%, +9% | +6.3% |
+| K7 W1 skipping exhausted trends (round 69) | 16.1% | 7.9% | 12.4% | 3.0% | +4,674% | +1,839%, +57%, +60% | -17.5% |
+| K8 W1 among the 30 most traded | 14.1% | 6.6% | 11.3% | 1.4% | +636% | +1,807%, +13%, -65% | -15.7% |
+| K9 W1 skipping both | 14.5% | 6.8% | 10.9% | 2.3% | +942% | +932%, +11%, -7% | -14.7% |
+| **K10 2-week return skipping exhausted trends** | **17.2%** | **8.5%** | **11.0%** | **2.6%** | **+13,926%** | **+1,172%, +166%, +317%** | **-19.1%** |
+| K11 2-week return skipping overextended | 14.6% | 7.1% | 11.7% | 2.7% | +347% | +1,157%, -29%, -50% | -15.7% |
+| K12 2-week return skipping both | 15.0% | 7.4% | 11.0% | 2.4% | +803% | +908%, +18%, -23% | -18.2% |
+
+Faster re-picking churns the gains away. K10 leads on every three-day figure and every year, but it
+is the best of some twenty variants tried on the same three years, so its total flatters it, and
+like nearly all of them it lost in the competition week, which ended in a fall of the coins that
+had run hardest (S above all). It is kept in `config/comp_bomber_k10.json`; on 13 October it would
+hold S.
+
+## TimesFM 3.0 as a ranking (H143)
+
+The user asked to try Google's TimesFM 3.0 (and Microsoft's Aurora, a model of the atmosphere that
+takes weather grids, not price series, so it has nothing to forecast here).
+`research/h143_timesfm_forecasts.py` ran TimesFM 3.0 zero-shot (google/timesfm-3.0-pytorch, on the
+GPU in its own environment) on every pair's daily log closes, up to 512 days ending at each close
+from September 2023, for the next three days: 53,613 forecasts. `research/h143_timesfm.py`: the
+daily rank correlation across pairs between the forecast and the realised return (IC) was +0.009
+for one day (t 1.6), +0.008 for three (t 1.4) and +0.009 risk-adjusted (t 1.6), none significant.
+The all-in coin ranked on the forecasts made +38% (expected return) and -61% (risk-adjusted) over
+October 2023 to October 2026 against +13,655% for momentum (K10), and lost 20% and 15% in the
+competition week. TimesFM is not used. Its weights are licensed for non-commercial,
+non-production use only.
+
+## A wider search for the all-in coin (H144, H145)
+
+The user's brief: the all-in coin must be significant (p < 0.05), beat random picks and have made
++10% or more in the competition so far. `research/h144_bomber_search.py` simulates it fast on daily
+closes (every pair, the top one or two held 1 to 7 days, fees and each pair's half spread on every
+change), October 2023 to October 2026: the mean daily return by a 7-day block bootstrap, the total
+against 1,000 runs picking random eligible pairs, and the competition from 4 October to the latest
+price. 324 designs (27 rankings) in H144 and 360 more in `research/h145_bomber_search2.py`; 11 and
+21 passed all three, every one built on 21- to 35-day momentum (raw or over volatility). The 1-,
+3-, 5-, 7- and 10-day returns, the biggest losers, RSI, BTC-relative strength and TimesFM did not.
+In the real backtester, the 28-day return re-picked every 2 days (`config/comp_bomber_c2.json`):
+p = 0.037, +1,410% over three years (+324%, -26%, +385%), +10.4% in the competition (it held NEAR
+all week). With some 700 designs tried and the competition week used to choose, the passes are
+flattered; the common thread, about a month of momentum, is the more trustworthy finding.
+
+## The all-in coin long and short (H146-H150)
+
+After the altcoin fall of 11-13 October (the coins that had run hardest down 6-15% while BTC
+hardly moved, so BTC's filter never turned), the user asked for an all-in design that can be short
+too, and a dollar-neutral one, with the same pass marks (p < 0.05 for the mean daily return and
+against random picks over October 2023 to October 2026, +10% in the competition so far).
+
+- **H146, long or short with the whole account** (`research/h146_long_short_bomber.py`): the side
+  chosen by breadth (fewer than half the pairs up over 3 to 28 days: short), an equal-weight
+  index, BTC, or the larger of the strongest and weakest scores. 300 designs; flipping the whole
+  account lost 36-100% over the three years in nearly every version (the side signal turns at
+  the wrong times and every flip pays fees), though some made +17-24% in the competition week.
+- **H147, dollar neutral** (`research/h147_dollar_neutral.py`): half long the top 1-3 pairs, half
+  short the bottom 1-3. The best (two a side, 21 days, held two days) +489%, p = 0.028 and 0.001
+  against random picks, +7.9% in the competition, +10.3% over the three days of the fall.
+  `research/h148_parallel_searches.py` ran both across CPU cores; none passed all three.
+- **H149, tilted** (`research/h149_neutral_tilts.py`): the long side at 50%, 60% or 70%, 14-35 days,
+  1-3 pairs a side, holds of 1-5 days, and half in C2. 234 designs, none passing all three; the
+  best, **70% long the pair with the best 25-day return and 30% short the one with the worst,
+  re-picked daily**: +4,293%, p = 0.016 and 0.001, +7.7% in the competition, +10.2% over the fall.
+- **H150, when to re-pick it** (`research/h150_repick_times.py`, hourly data): every 1, 2, 4, 6 and
+  8 hours lost (-98% to +166% over three years), every 12 hours +336% (p = 0.058); daily at 00:00
+  UTC +1,217% (p = 0.025, +10.9% in the competition) and every 48 hours +1,950% (p = 0.019,
+  +10.9%) passed all three; daily at 06:00, 12:00 and 18:00 UTC +7%, +286% and +969%, so the hour
+  matters a great deal and the bot's usual 00:00 UTC was kept rather than the best of the four.
+
+In the production backtester (`rotation_short_share` 0.3, `rotation_short_count` 1, the rotation at
+100% on every pair, 600-hour returns, re-picked daily, no BTC filter, no book): +5,850% over
+October 2023 to October 2026 (+485%, +185%, +253%), p = 0.0077, a median 14-day competition score
+of 1.95 (C2 0.99), and +8.4% in the competition (worst dip 12.8%). The user deployed it on 13
+October 2026 (`config/comp_ls7030.json`).
