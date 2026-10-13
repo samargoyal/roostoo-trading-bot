@@ -328,7 +328,7 @@ class MultiHorizonTest(unittest.TestCase):
         self.assertEqual(load_config("config/comp_r54b.json").strategy.rotation_ranking, "return")
         switch = load_config("config/comp_switch.json").strategy
         self.assertEqual((switch.rotation_top, switch.rotation_weight), (3, 0.6))
-        live = load_config("config/comp.json").strategy                 # since 13 October 2026 (H150)
+        live = load_config("config/comp_ls7030.json").strategy          # live 13 October 2026 (H150)
         self.assertEqual((live.rotation_ranking, live.rotation_lookback, live.rotation_top, live.rotation_weight,
                           live.rotation_short_share, live.rotation_short_count, live.rotation_rebalance_hours),
                          ("return", 600, 1, 1.0, 0.3, 1, 24))

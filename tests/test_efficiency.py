@@ -55,7 +55,10 @@ class EfficiencyRatioTest(unittest.TestCase):
         # the book alone with fast shorts below BTC's 200-day average (config/comp_switch.json, H140-H141)
         # 13 October 2026: the rotation alone at 100%, 70% long the best 25-day pair and 30% short the
         # worst, re-picked daily (config/comp_ls7030.json, H149-H150)
-        self.assertEqual(read("config/comp.json"), read("config/comp_ls7030.json"))
+        # 13 October 2026, later: flat (config/comp_flat.json, the user's call): everything sold and covered
+        self.assertEqual(read("config/comp.json"), read("config/comp_flat.json"))
+        self.assertEqual(dict(read("config/comp_ls7030.json")["strategy"], rotation_weight=0.0, rotation_short_share=0.0,
+                              ls_band=1.0), read("config/comp_flat.json")["strategy"])
         switch = read("config/comp_switch.json")["strategy"]
         for key in ("switch_sma_hours", "switch_overrides"):
             del switch[key]
@@ -97,3 +100,20 @@ class EfficiencyRatioTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FlatConfigTest(unittest.TestCase):
+    def test_the_flat_config_holds_nothing(self):
+        from bot.strategy import Strategy, StrategyState, ShortInfo, PositionInfo
+        cfg = load_config("config/comp_flat.json").strategy
+        self.assertEqual((cfg.rotation_weight, cfg.ls_band), (0.0, 1.0))
+        cfg.universe = ["BTC/USD", "ETH/USD", "SOL/USD", "PAXG/USD"]
+        strategy = Strategy(cfg)
+        strategy.signals = lambda: {"BTC/USD": sig(True, 0.01)._replace(ls_fast=150.0, ls_slow=100.0),
+                                    "ETH/USD": sig(False, 0.02)._replace(ls_fast=50.0, ls_slow=100.0),
+                                    "SOL/USD": sig(True, 0.02), "PAXG/USD": sig(True, 0.002)}
+        state = StrategyState()
+        state.shorts["ETH/USD"] = ShortInfo(0, 100.0, 100.0)
+        state.positions["BTC/USD"] = PositionInfo(0, 100.0, 100.0)
+        targets = strategy.decide(DAY, 1.0, {"BTC/USD": 0.5, "ETH/USD": -0.3}, state).targets
+        self.assertTrue(all(t == 0.0 for t in targets.values()))
