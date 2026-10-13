@@ -53,7 +53,9 @@ class EfficiencyRatioTest(unittest.TestCase):
         # 9 October 2026: the account flattened (ls_band 1.0), then restored to config/comp_book_cap3.json;
         # 12 October 2026: B1 with a 60% rotation (config/comp_b1_60.json), then the same switching to
         # the book alone with fast shorts below BTC's 200-day average (config/comp_switch.json, H140-H141)
-        self.assertEqual(read("config/comp.json"), read("config/comp_switch.json"))
+        # 13 October 2026: the rotation alone at 100%, 70% long the best 25-day pair and 30% short the
+        # worst, re-picked daily (config/comp_ls7030.json, H149-H150)
+        self.assertEqual(read("config/comp.json"), read("config/comp_ls7030.json"))
         switch = read("config/comp_switch.json")["strategy"]
         for key in ("switch_sma_hours", "switch_overrides"):
             del switch[key]
@@ -89,7 +91,7 @@ class EfficiencyRatioTest(unittest.TestCase):
         self.assertEqual(dict(before, ls_er_hours=720, rotation_weight=0.0), read("config/comp_book.json")["strategy"])
         self.assertEqual(dict(before, ls_er_hours=720, rotation_weight=0.55), read("config/comp_er_55.json")["strategy"])
         self.assertEqual(dict(before, ls_er_hours=720), read("config/comp_er_75.json")["strategy"])
-        self.assertEqual(load_config("config/comp.json").strategy.ls_er_hours, 720)
+        self.assertEqual(load_config("config/comp_switch.json").strategy.ls_er_hours, 720)
         self.assertEqual(load_config("config/comp_k2_3.json").strategy.ls_er_hours, 0)
 
 

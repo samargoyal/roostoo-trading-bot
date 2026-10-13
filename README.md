@@ -21,7 +21,15 @@ strategy, and every order, decision and hourly equity point is recorded.
 Two books share the account, trading the 45 most traded crypto pairs on Roostoo plus PAXG
 (gold-backed):
 
-- **Since the later change of 12 October 2026, a switch** (`config/comp_switch.json`, research H140
+- **Since 13 October 2026, long and short in one pair each** (`config/comp_ls7030.json`, research
+  H142-H150): the whole account is the rotation on every crypto pair Roostoo lists, 70% long the
+  pair with the best 25-day (600-hour) return and 30% short the one with the worst (none where
+  funding shows shorts crowded), re-picked daily at 00:00 UTC, without BTC's filter or the book.
+  Over October 2023 to October 2026: +5,850% (+485%, +185%, +253% by year), p = 0.0077 for the mean
+  daily return, a median 14-day competition score of 1.95, and +8.4% in the competition's first
+  nine days; the user chose it after the altcoin fall of 11-13 October. The strategies below ran
+  before it.
+- **From the later change of 12 October 2026, a switch** (`config/comp_switch.json`, research H140
   and H141): while BTC closes below its 200-day average the account is the long-short book alone,
   its shorts on 24/72-hour EMAs (made money in every BTC crash since 2018, H139); otherwise it runs
   as below. Over the eight yearly folds since 2018 the switch beat B1 on development Sharpe (2.60
@@ -315,7 +323,8 @@ config file to `bot.log` at every start, and `runs/comp/restarts.log` records ea
 | The restart after `10e0236`, 9 October 2026 | `10e0236` | Restored: the same strategy as `08a629f` (`config/comp_book_cap3.json`), entering afresh from cash |
 | The restart after `0875ba5`, 12 October 2026 | `0875ba5` | B1 with a 60% rotation (`config/comp_b1_60.json`, the user's choice): with the account at -6% and six days left, B1 gained 6.6% or more in 22% of six-day windows over three years against 13% for the book alone (H129) |
 | The restart after `e186193`, 12 October 2026 | `e186193` | The same with minute checks between the hourly cycles (`live.minute_checks`, the user's choice): stops on the minute's price and the rotation out once BTC's filter has been off for 3 minutes, exits only (H138) |
-| The restart after this push, 12 October 2026 | the commit that adds this row | The same, switching to the book alone with shorts on 24/72-hour EMAs while BTC is below its 200-day average (`config/comp_switch.json`, the user's request to combine the two; H140, H141) |
+| The restart after `b4e4360`, 12 October 2026 | `b4e4360` | The same, switching to the book alone with shorts on 24/72-hour EMAs while BTC is below its 200-day average (`config/comp_switch.json`, the user's request to combine the two; H140, H141) |
+| The restart after this push, 13 October 2026 | the commit that adds this row | 70% long the pair with the best 25-day return and 30% short the worst, every pair, re-picked daily (`config/comp_ls7030.json`, the user's choice; H149, H150); no book and no minute checks |
 
 Later commits that do not change the strategy (refactoring, documentation, research) are not
 listed; the backtests check that they trade exactly as before.
@@ -459,7 +468,10 @@ Unknown keys are rejected, so a typo cannot silently fall back to a default.
 
 Without `--config`, the live bot uses `config/<account>.json` if it exists, so each account's
 settings are committed and a restart picks them up. `config/comp.json` runs the competition
-account: since 12 October 2026, B1 at 60/40 (`config/comp_b1_60.json`, which is `config/comp_b1.json`
+account: since 13 October 2026, 70% long the best 25-day pair and 30% short the worst on every crypto
+pair (`config/comp_ls7030.json`: `rotation_weight` 1.0, `rotation_top` 1, `rotation_lookback` 600,
+`rotation_short_share` 0.3, `rotation_short_count` 1, the universe listed in full). Before that,
+from 12 October 2026, B1 at 60/40 (`config/comp_b1_60.json`, which is `config/comp_b1.json`
 with a 60% rotation, checked every minute between the hourly cycles: `live.minute_checks`), and
 since the later change that day switching to the book alone with 24/72-hour shorts while BTC is
 below its 200-day average (`config/comp_switch.json`: `switch_sma_hours`, `switch_overrides`; BTC's

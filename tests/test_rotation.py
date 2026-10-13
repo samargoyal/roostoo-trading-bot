@@ -320,14 +320,18 @@ class MultiHorizonTest(unittest.TestCase):
 
     def test_the_competition_configs_load_their_rankings(self):
         from bot.config import load_config
-        for path, weights in (("config/comp.json", [2.0, 2.0, 1.0]), ("config/comp_k2.json", [2.0, 2.0, 1.0]),
+        for path, weights in (("config/comp_switch.json", [2.0, 2.0, 1.0]), ("config/comp_k2.json", [2.0, 2.0, 1.0]),
                               ("config/comp_multi.json", [2.0, 1.0, 1.0])):
             c = load_config(path).strategy
             self.assertEqual((c.rotation_ranking, c.rotation_horizons, c.rotation_horizon_weights),
                              ("multi", [168, 336, 504], weights))
         self.assertEqual(load_config("config/comp_r54b.json").strategy.rotation_ranking, "return")
-        live = load_config("config/comp.json").strategy
-        self.assertEqual((live.rotation_top, live.rotation_weight), (3, 0.6))
+        switch = load_config("config/comp_switch.json").strategy
+        self.assertEqual((switch.rotation_top, switch.rotation_weight), (3, 0.6))
+        live = load_config("config/comp.json").strategy                 # since 13 October 2026 (H150)
+        self.assertEqual((live.rotation_ranking, live.rotation_lookback, live.rotation_top, live.rotation_weight,
+                          live.rotation_short_share, live.rotation_short_count, live.rotation_rebalance_hours),
+                         ("return", 600, 1, 1.0, 0.3, 1, 24))
 
 
 class SettingsChangeTest(unittest.TestCase):
