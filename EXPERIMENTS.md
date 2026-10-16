@@ -99,6 +99,7 @@ research below was sound; the deployment discipline was not.
 | Shorts on 24/72-hour EMAs | profit in all 8 crashes since 2018 (H139) |
 | Switching to the crash-proof book below BTC's 200-day average | development Sharpe 2.60 against 2.35; p = 0.032 and 0.004 out of sample; positive every year (H141) |
 | **70% long the best 25-day pair, 30% short the worst, daily** | **+5,850% over 2023-26, positive every year, p = 0.008; median 14-day composite 1.95** (H149, H150) |
+| **Ensembling the momentum lookbacks** (the 70/30 ranked on the mean rank of 14-35 day returns; from another competition's teacher ensembles) | 14-day competition score 2.87 against 1.95 in the production backtester, median 14-day return doubled, same significance; less total return (H151) |
 | Filtering trades with a classifier (meta-labeling) | picks beat random candidates in both out-of-sample periods (p ≤ 0.003), though its profit was significant in only one (H135) |
 
 ---
@@ -119,7 +120,7 @@ for 1,008 designs tried).
 take-profits and profit locks; rotation stops of 4-15%; volatility targeting; drawdown brakes;
 hourly regime switches.
 
-**Models.** ML rankings (ridge, GBM, MLP, GRU); TimesFM 3.0; convex and mean-variance optimisers;
+**Models.** ML rankings (ridge, GBM, MLP, GRU); TimesFM 3.0; regime and class specialists, distributional cell tables and choosing on the competition score itself (all overfit the fit period, H151); convex and mean-variance optimisers;
 VECM pairs trading (lost even without costs).
 
 **Shorting the losers outright.** As a sleeve, all-in, or as the bear-market half of a flip: losers

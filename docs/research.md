@@ -2689,3 +2689,32 @@ In the production backtester (`rotation_short_share` 0.3, `rotation_short_count`
 October 2023 to October 2026 (+485%, +185%, +253%), p = 0.0077, a median 14-day competition score
 of 1.95 (C2 0.99), and +8.4% in the competition (worst dip 12.8%). The user deployed it on 13
 October 2026 (`config/comp_ls7030.json`).
+
+## Ideas from another forecasting competition (H151)
+
+The user shared the experiment log of a sequence-forecasting competition (a GRU on order-book
+events, per-class specialists, a distributional head, ensembles distilled into one model) and asked
+for strategies built from its ideas. `research/h151_from_experiments.py` turned seven of them into
+ways of choosing the 70/30 design's long and short pair, every choice made on October 2020 to
+October 2023 and judged on October 2023 to October 2026 (daily simulation, costs and spreads):
+
+| Idea from the log | Design | Test 3 years | By year | p | 14-day score | Competition |
+|---|---|---|---|---|---|---|
+| | baseline, the 25-day return | +4,293% | +377%, +332%, +113% | 0.012 | 2.53 | +0.2% |
+| teacher ensembles, seed averages | **E1: the mean rank over 14, 21, 25, 28 and 35 days** | **+5,914%** | +376%, +584%, +85% | 0.013 | **6.23** | +4.8% |
+| per-class specialists and a detector | E2: the best lookback in each of four BTC regimes | +1,365% | +384%, +149%, +21% | 0.029 | 1.73 | +1.5% |
+| a distributional head, E[y|y|]/E[|y|] | E3: momentum decile x volatility tercile cells | +626% | +55%, -56%, +968% | 0.073 | -0.04 | -7.4% |
+| weighting training rows towards the scored ones | E4: E3 within today's regime | -64% | all negative | 0.63 | -2.27 | +8.1% |
+| row-to-row change features | E5: momentum plus its 7-day change | +77% | +240%, +7%, -52% | 0.11 | -0.56 | -3.3% |
+| a metric-aware loss | E6: chosen on the fit period's 14-day score | -41% | +4%, -6%, -40% | 0.23 | -0.48 | +6.8% |
+| per-class behaviour | E7: a lookback per volatility class | +268% | +128%, +121%, -27% | 0.070 | -1.04 | -6.2% |
+
+All beat 1,000 random-pick runs (p 0.001-0.048). Only the ensemble improved on the baseline: fine
+splits of three years (specialists, cells, class lookbacks) and choosing on a noisy score both
+overfit. Eight neighbouring sets of lookbacks were all profitable in every test year (p 0.010-0.031)
+and six of eight had a better 14-day score than the single lookback, so the gain is not one lucky
+set. In the production backtester (the bot's `multi` ranking, 14, 18, 21, 25, 28 and 35 days at
+equal weight, shorts ranked the same way): +4,287% over the three years against +5,850% for the
+single 25-day lookback, p = 0.0085 against 0.0077, a median 14-day competition score of 2.87
+against 1.95 and a median 14-day return of +3.0% against +1.5%; in the competition to 16 October
+-1.1% against +1.7%. A better fit to the competition's score rather than a better strategy outright.

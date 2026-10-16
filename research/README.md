@@ -102,6 +102,7 @@ python -m research.h50_long_short   # the long-short screen
 | `h144_bomber_search.py`, `h145_bomber_search2.py` | A fast search for the all-in coin: significance, random picks, the competition |
 | `h146_long_short_bomber.py`, `h147_dollar_neutral.py`, `h148_parallel_searches.py` | The all-in coin long or short, and dollar neutral |
 | `h149_neutral_tilts.py`, `h150_repick_times.py` | Long/short tilts (70/30 chosen) and when to re-pick |
+| `h151_from_experiments.py` | Ideas from another forecasting competition's log (ensembles, specialists, distributional ranking) |
 | `h62_attention.py` | Retail attention (Wikipedia page views): 14 strategies |
 | `h68_lock_in.py` | Locking in a 14-day window's gains, the competition's horizon |
 | `h69_trend_exit.py` | Do indicators, votes or machine learning tell when a trend is over? (rounds 69 and 70) |
