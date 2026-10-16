@@ -5,6 +5,9 @@ mock exchange, built by Team124 for the HK vs AU vs IN Quant Trading Hackathon. 
 through the Roostoo REST API with no manual intervention: every order comes from the
 strategy, and every order, decision and hourly equity point is recorded.
 
+**Start with [EXPERIMENTS.md](EXPERIMENTS.md)**: what we tested, what worked, how each live version was
+chosen, and `python -m bot.compliance`, which checks the account's own records against the committed code.
+
 - [Strategy](#strategy)
 - [Which assets it trades](#which-assets-it-trades)
 - [Strategy research](#strategy-research)
@@ -15,6 +18,7 @@ strategy, and every order, decision and hourly equity point is recorded.
 - [Configuration](#configuration)
 - [Records for judging](#records-for-judging)
 - [Tests](#tests)
+
 
 ## Strategy
 
@@ -517,6 +521,12 @@ collateral plus unrealised profit, opens shorts with `/v6/short_open` (market, c
 taken from free cash alongside buys) and covers with `/v6/short_close`.
 
 ## Records for judging
+
+`python -m bot.compliance --account comp` (add `--exchange` on the server, which has the keys) checks
+these records against the repository and writes `runs/comp/compliance.md`: every start ran a committed
+config, every order came from the strategy's decision before it, every reason is the strategy's, the
+days traded, no order on Roostoo that the bot did not record, and the account's score. See
+[EXPERIMENTS.md](EXPERIMENTS.md#8-checking-the-account-against-the-code).
 
 Each account keeps these under `runs/<account>/`:
 
